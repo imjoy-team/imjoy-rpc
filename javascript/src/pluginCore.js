@@ -7,7 +7,7 @@
 
 /*global JailedSite connection*/
 /*eslint no-global-assign: "off"*/
-import { JailedSite } from "./JailedSite.js";
+import { JailedSite } from "./jailedSite.js";
 
 export default function setupCore(connection, root) {
   root.connection = connection;
