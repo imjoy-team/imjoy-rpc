@@ -229,54 +229,38 @@ export default function setupIframe(config) {
     }
   };
 
-  if (config.messageHandler) {
-    config.messageHandler.send = function(data, transferables) {
-      parent.postMessage(data, "*", transferables);
-    };
-    // if a config.messageProcessor is specified, use it to process the message.
-    window.addEventListener("message", function(e) {
-      config.messageHandler.handleMessage(e.data);
-    });
-
-    if (!config.messageHandler.handleMessage) {
-      throw new Error(
-        "handleMessage method is required for the messageHanlder"
-      );
+  // connection object for the ImJoyRPC constructor
+  const conn = {
+    disconnect: function() {},
+    send: function(data, transferables) {
+      parent.postMessage({ type: "message", data: data }, "*", transferables);
+    },
+    onMessage: function(h) {
+      conn._messageHandler = h;
+    },
+    _messageHandler: function() {},
+    onDisconnect: function() {}
+  };
+  // event listener for the plugin message
+  window.addEventListener("message", function(e) {
+    var m = e.data && e.data.data;
+    switch (m && m.type) {
+      case "import":
+      case "importJailed": // already jailed in the iframe
+        importScript(m.url);
+        break;
+      case "execute":
+        execute(m.code);
+        break;
+      case "message":
+        conn._messageHandler(m.data);
+        break;
     }
-  } else {
-    // connection object for the JailedSite constructor
-    const conn = {
-      disconnect: function() {},
-      send: function(data, transferables) {
-        parent.postMessage({ type: "message", data: data }, "*", transferables);
-      },
-      onMessage: function(h) {
-        conn._messageHandler = h;
-      },
-      _messageHandler: function() {},
-      onDisconnect: function() {}
-    };
-    // event listener for the plugin message
-    window.addEventListener("message", function(e) {
-      var m = e.data && e.data.data;
-      switch (m && m.type) {
-        case "import":
-        case "importJailed": // already jailed in the iframe
-          importScript(m.url);
-          break;
-        case "execute":
-          execute(m.code);
-          break;
-        case "message":
-          conn._messageHandler(m.data);
-          break;
-      }
-    });
+  });
 
-    setupCore(conn, window, {
-      remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
-    });
-  }
+  setupCore(conn, window, {
+    remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
+  });
 
   parent.postMessage(
     {

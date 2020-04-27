@@ -8,7 +8,7 @@ const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
 const config =  (env, argv) => ({
   mode: 'development',
   entry: {
-    index: './src/imjoyRPC.js',
+    index: './src/index.js',
   },
   output: {
     filename: argv.filename || 'imjoy-rpc.js',

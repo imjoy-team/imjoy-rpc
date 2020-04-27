@@ -131,7 +131,7 @@ self.application = {};
   };
 
   /**
-   * Connection object provided to the JailedSite constructor,
+   * Connection object provided to the ImJoyRPC constructor,
    * plugin site implementation for the web-based environment.
    * Global will be then cleared to prevent exposure into the
    * Worker, so we put this local connection object into a closure

@@ -4,9 +4,9 @@
  * Initializes the plugin-site API global methods.
  */
 
-/*global JailedSite connection*/
+/*global ImJoyRPC connection*/
 /*eslint no-global-assign: "off"*/
-import { JailedSite } from "./jailedSite.js";
+import { ImJoyRPC } from "./imjoyRPC.js";
 
 export default function setupCore(connection, root, config) {
   config = config || {};
@@ -14,7 +14,7 @@ export default function setupCore(connection, root, config) {
   root.application = {};
   root.api = null;
   // localize
-  var site = new JailedSite(connection, config);
+  var site = new ImJoyRPC(connection, config);
 
   site.onGetInterface(function() {
     launchConnected();

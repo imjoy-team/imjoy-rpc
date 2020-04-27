@@ -284,7 +284,7 @@ export default function setupWebPython(config) {
     }
   };
 
-  // connection object for the JailedSite constructor
+  // connection object for the ImJoyRPC constructor
   const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
