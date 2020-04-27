@@ -16,6 +16,9 @@ jobs:
     strategy:
       matrix:
         node-version: [13.3.0]
+    defaults:
+      run:
+        working-directory: javascript
     steps:
       - uses: actions/checkout@v2
       - name: Use Node.js ${{ matrix.node-version }}
@@ -30,13 +33,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
       - run: npm ci
-        working-directory: ./javascript
       - run: npm run check-format
-        working-directory: ./javascript
       - run: npm run test
-        working-directory: ./javascript
       - run: npm run build
-        working-directory: ./javascript
       - name: Save build output
         uses: actions/upload-artifact@v1
         with:
@@ -49,6 +48,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: test-and-build
     if: github.ref == 'refs/heads/master'
+    defaults:
+      run:
+        working-directory: javascript
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
