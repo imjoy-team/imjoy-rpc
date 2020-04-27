@@ -260,7 +260,9 @@ export default function setupIframe() {
     onDisconnect: function() {}
   };
 
-  setupCore(conn, window);
+  setupCore(conn, window, {
+    remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
+  });
   parent.postMessage(
     {
       type: "initialized",

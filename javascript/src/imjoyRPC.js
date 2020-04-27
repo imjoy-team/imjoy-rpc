@@ -13,135 +13,134 @@ import setupWebPython from "./pluginWebPython.js";
 
 export { JailedSite } from "./jailedSite.js";
 
-(function() {
-  function inIframe() {
-    try {
-      return window.self !== window.top;
-    } catch (e) {
-      return true;
-    }
+function inIframe() {
+  try {
+    return window.self !== window.top;
+  } catch (e) {
+    return true;
   }
+}
 
-  var getParamValue = function(paramName) {
-    var url = window.location.search.substring(1); //get rid of "?" in querystring
-    var qArray = url.split("&"); //get key-value pairs
-    for (var i = 0; i < qArray.length; i++) {
-      var pArr = qArray[i].split("="); //split key and value
-      if (pArr[0] == paramName) return pArr[1]; //return value
+function getParamValue(paramName) {
+  const url = window.location.search.substring(1); //get rid of "?" in querystring
+  const qArray = url.split("&"); //get key-value pairs
+  for (let i = 0; i < qArray.length; i++) {
+    const pArr = qArray[i].split("="); //split key and value
+    if (pArr[0] == paramName) return pArr[1]; //return value
+  }
+}
+
+function cacheUrlInServiceWorker(url) {
+  return new Promise(function(resolve, reject) {
+    const message = {
+      command: "add",
+      url: url
+    };
+    if (!navigator.serviceWorker || !navigator.serviceWorker.register) {
+      reject("Service worker is not supported.");
+      return;
     }
-  };
-
-  var plugin_mode = getParamValue("_plugin_type");
-
-  function cacheUrlInServiceWorker(url) {
-    return new Promise(function(resolve, reject) {
-      const message = {
-        command: "add",
-        url: url
-      };
-      if (!navigator.serviceWorker || !navigator.serviceWorker.register) {
-        reject("Service worker is not supported.");
-        return;
-      }
-      const messageChannel = new MessageChannel();
-      messageChannel.port1.onmessage = function(event) {
-        if (event.data && event.data.error) {
-          reject(event.data.error);
-        } else {
-          resolve(event.data && event.data.result);
-        }
-      };
-
-      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage(message, [
-          messageChannel.port2
-        ]);
+    const messageChannel = new MessageChannel();
+    messageChannel.port1.onmessage = function(event) {
+      if (event.data && event.data.error) {
+        reject(event.data.error);
       } else {
-        reject("Service worker controller is not available");
+        resolve(event.data && event.data.result);
       }
-    });
-  }
+    };
 
-  async function cacheRequirements(requirements) {
-    if (requirements && requirements.length > 0) {
-      for (let req of requirements) {
-        //remove prefix
-        if (req.startsWith("js:")) req = req.slice(3);
-        if (req.startsWith("css:")) req = req.slice(4);
-        if (req.startsWith("cache:")) req = req.slice(6);
-        if (!req.startsWith("http")) continue;
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage(message, [
+        messageChannel.port2
+      ]);
+    } else {
+      reject("Service worker controller is not available");
+    }
+  });
+}
 
-        await cacheUrlInServiceWorker(req).catch(e => {
-          console.error(e);
-        });
-      }
+async function cacheRequirements(requirements) {
+  if (requirements && requirements.length > 0) {
+    for (let req of requirements) {
+      //remove prefix
+      if (req.startsWith("js:")) req = req.slice(3);
+      if (req.startsWith("css:")) req = req.slice(4);
+      if (req.startsWith("cache:")) req = req.slice(6);
+      if (!req.startsWith("http")) continue;
+
+      await cacheUrlInServiceWorker(req).catch(e => {
+        console.error(e);
+      });
     }
   }
+}
 
-  /**
-   * Initializes the plugin inside a web worker. May throw an exception
-   * in case this was not permitted by the browser.
-   */
-  var initWebworkerPlugin = function() {
-    var worker = new PluginWorker();
+/**
+ * Initializes the plugin inside a web worker. May throw an exception
+ * in case this was not permitted by the browser.
+ */
+function setupWebWorker() {
+  const worker = new PluginWorker();
 
-    // mixed content warning in Chrome silently skips worker
-    // initialization without exception, handling this with timeout
-    var fallbackTimeout = setTimeout(function() {
+  // mixed content warning in Chrome silently skips worker
+  // initialization without exception, handling this with timeout
+  const fallbackTimeout = setTimeout(function() {
+    worker.terminate();
+    console.warn(
+      `Plugin failed to start as a web-worker, running in an iframe instead.`
+    );
+    setupIframe();
+  }, 2000);
+
+  // forwarding messages between the worker and parent window
+  worker.addEventListener("message", function(m) {
+    let transferables = undefined;
+    if (m.data.type == "initialized") {
+      clearTimeout(fallbackTimeout);
+    } else if (m.data.type == "disconnect") {
       worker.terminate();
-      console.warn(
-        `Plugin failed to start as a web-worker, running in an iframe instead.`
-      );
-      setupIframe();
-    }, 2000);
-
-    // forwarding messages between the worker and parent window
-    worker.addEventListener("message", function(m) {
-      var transferables = undefined;
-      if (m.data.type == "initialized") {
-        clearTimeout(fallbackTimeout);
-      } else if (m.data.type == "disconnect") {
-        worker.terminate();
-      } else if (m.data.type == "message") {
-        if (m.data.data.__transferables__) {
-          transferables = m.data.data.__transferables__;
-          delete m.data.data.__transferables__;
-        }
+    } else if (m.data.type == "message") {
+      if (m.data.data.__transferables__) {
+        transferables = m.data.data.__transferables__;
+        delete m.data.data.__transferables__;
       }
-      parent.postMessage(m.data, "*", transferables);
-    });
+    }
+    parent.postMessage(m.data, "*", transferables);
+  });
 
-    window.addEventListener("message", function(m) {
-      var transferables = undefined;
-      if (m.data.type == "message") {
-        if (m.data.data.__transferables__) {
-          transferables = m.data.data.__transferables__;
-          delete m.data.data.__transferables__;
-        }
+  window.addEventListener("message", function(m) {
+    let transferables = undefined;
+    if (m.data.type == "message") {
+      if (m.data.data.__transferables__) {
+        transferables = m.data.data.__transferables__;
+        delete m.data.data.__transferables__;
       }
-      worker.postMessage(m.data, transferables);
-    });
-  };
+    }
+    worker.postMessage(m.data, transferables);
+  });
+}
 
+export function initializeRPC(plugin_type) {
+  plugin_type = plugin_type || getParamValue("_plugin_type");
   if (inIframe()) {
-    plugin_mode = plugin_mode || "window";
-    if (plugin_mode === "web-worker") {
+    plugin_type = plugin_type || "window";
+    if (plugin_type === "web-worker") {
       try {
-        initWebworkerPlugin();
+        setupWebWorker();
       } catch (e) {
         // fallback to iframe
         setupIframe();
       }
     } else if (
-      plugin_mode === "web-python" ||
-      plugin_mode === "web-python-window"
+      plugin_type === "web-python" ||
+      plugin_type === "web-python-window"
     ) {
       setupWebPython();
-    } else if (plugin_mode === "iframe" || plugin_mode === "window") {
+    } else if (plugin_type === "iframe" || plugin_type === "window") {
       setupIframe();
     } else {
-      console.error("Unsupported plugin type: " + plugin_mode);
-      throw "Unsupported plugin type: " + plugin_mode;
+      console.error("Unsupported plugin type: " + plugin_type);
+      throw "Unsupported plugin type: " + plugin_type;
     }
 
     // register service worker for offline access
@@ -165,7 +164,7 @@ export { JailedSite } from "./jailedSite.js";
 
     // event listener for the plugin message
     window.addEventListener("message", function(e) {
-      var m = e.data && e.data.data;
+      const m = e.data && e.data.data;
       if (m && m.type === "execute") {
         const code = m.code;
         if (code.type == "requirements") {
@@ -177,6 +176,6 @@ export { JailedSite } from "./jailedSite.js";
       }
     });
   } else {
-    console.warn("_frame.js should only run inside an iframe.");
+    console.warn("imjoy-rpc should only run inside an iframe.");
   }
-})();
+}

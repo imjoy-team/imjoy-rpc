@@ -14,7 +14,8 @@ const config =  (env, argv) => ({
     filename: argv.filename || 'imjoy-rpc.js',
     path: path.resolve(__dirname, 'dist'),
     library: 'imjoyRPC',
-    libraryTarget: argv.libraryTarget ? argv.libraryTarget : 'umd'
+    libraryTarget: argv.libraryTarget ? argv.libraryTarget : 'umd',
+    umdNamedDefine: true,
   },
   devtool: 'cheap-module-eval-source-map',
   devServer: {

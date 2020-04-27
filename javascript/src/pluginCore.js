@@ -9,12 +9,12 @@
 /*eslint no-global-assign: "off"*/
 import { JailedSite } from "./jailedSite.js";
 
-export default function setupCore(connection, root) {
+export default function setupCore(connection, root, config) {
   root.connection = connection;
   root.application = {};
   root.api = null;
   // localize
-  var site = new JailedSite(connection, "__plugin__", "javascript");
+  var site = new JailedSite(connection, config);
 
   site.onGetInterface(function() {
     launchConnected();

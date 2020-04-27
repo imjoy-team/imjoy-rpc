@@ -53,9 +53,8 @@ function getKeyByValue(object, value) {
  * and receive messages from the opposite site (basically it
  * should only provide send() and onMessage() methods)
  */
-export function JailedSite(connection, id, lang) {
-  this.id = id;
-  this.lang = lang;
+export function JailedSite(connection, config) {
+  this.config = config || {};
   this._interface = {
     // this initial setup will make sure we wait until the api is exported.
     setup: () => {
@@ -142,37 +141,11 @@ JailedSite.prototype.getRemote = function() {
  * @param {Object} _interface to set
  */
 JailedSite.prototype.setInterface = function(_interface) {
-  if (this.id === "__plugin__") {
-    // if it's not a webworker
-    if (
-      typeof WorkerGlobalScope === "undefined" ||
-      !(self instanceof WorkerGlobalScope)
-    ) {
-      if (window && window.__imjoy_plugin_type__ === "window") {
-        // these functions will be exposed as window plugin api
-        _interface.close = () => {
-          this._remote.close();
-        };
-        _interface.resize = () => {
-          this._remote.resize();
-        };
-        _interface.on = (name, cb) => {
-          this._remote.on(name, cb);
-        };
-        _interface.off = (name, cb) => {
-          this._remote.off(name, cb);
-        };
-        _interface.emit = (name, data) => {
-          this._remote.emit(name, data);
-        };
-        _interface.refresh = () => {
-          this._remote.refresh();
-        };
-        // deprecated
-        _interface.onClose = cb => {
-          this._remote.onClose(cb);
-        };
-      }
+  if (this.config.remote_interfaces) {
+    for (let func_name of this.config.remote_interfaces) {
+      _interface[func_name] = (...args) => {
+        this._remote[func_name](...args);
+      };
     }
   }
   this._interface = _interface;
