@@ -45,9 +45,9 @@ function loadScript(path, sCb, fCb) {
   document.head.appendChild(script);
 }
 
-export default function setupWebPython() {
+export default function setupWebPython(config) {
+  config = config || {};
   /*global api pyodide languagePluginLoader*/
-  window.__imjoy_plugin_type__ = "web-python";
 
   // Create a new, plain <span> element
   function _htmlToElement(html) {
@@ -85,23 +85,6 @@ export default function setupWebPython() {
       await _importScript(args[i]);
     }
   }
-
-  // event listener for the plugin message
-  window.addEventListener("message", function(e) {
-    var m = e.data && e.data.data;
-    switch (m && m.type) {
-      case "import":
-      case "importJailed": // already jailed in the iframe
-        importScript(m.url);
-        break;
-      case "execute":
-        execute(m.code);
-        break;
-      case "message":
-        conn._messageHandler(m.data);
-        break;
-    }
-  });
 
   // loads and executes the javascript file with the given url
   var importScript = function(url) {
@@ -302,7 +285,7 @@ export default function setupWebPython() {
   };
 
   // connection object for the JailedSite constructor
-  var conn = {
+  const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
       parent.postMessage({ type: "message", data: data }, "*", transferables);
@@ -313,6 +296,23 @@ export default function setupWebPython() {
     _messageHandler: function() {},
     onDisconnect: function() {}
   };
+
+  // event listener for the plugin message
+  window.addEventListener("message", function(e) {
+    var m = e.data && e.data.data;
+    switch (m && m.type) {
+      case "import":
+      case "importJailed": // already jailed in the iframe
+        importScript(m.url);
+        break;
+      case "execute":
+        execute(m.code);
+        break;
+      case "message":
+        conn._messageHandler(m.data);
+        break;
+    }
+  });
 
   window.languagePluginUrl = "https://static.imjoy.io/pyodide/";
 

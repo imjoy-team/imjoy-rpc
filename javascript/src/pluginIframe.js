@@ -44,9 +44,8 @@ function loadScript(path, sCb, fCb) {
   document.head.appendChild(script);
 }
 
-export default function setupIframe() {
-  window.__imjoy_plugin_type__ = "window";
-
+export default function setupIframe(config) {
+  config = config || {};
   // Create a new, plain <span> element
   function _htmlToElement(html) {
     var template = document.createElement("template");
@@ -84,23 +83,6 @@ export default function setupIframe() {
       await _importScript(args[i]);
     }
   }
-
-  // event listener for the plugin message
-  window.addEventListener("message", function(e) {
-    var m = e.data && e.data.data;
-    switch (m && m.type) {
-      case "import":
-      case "importJailed": // already jailed in the iframe
-        importScript(m.url);
-        break;
-      case "execute":
-        execute(m.code);
-        break;
-      case "message":
-        conn._messageHandler(m.data);
-        break;
-    }
-  });
 
   // loads and executes the javascript file with the given url
   var importScript = function(url) {
@@ -247,22 +229,55 @@ export default function setupIframe() {
     }
   };
 
-  // connection object for the JailedSite constructor
-  var conn = {
-    disconnect: function() {},
-    send: function(data, transferables) {
-      parent.postMessage({ type: "message", data: data }, "*", transferables);
-    },
-    onMessage: function(h) {
-      conn._messageHandler = h;
-    },
-    _messageHandler: function() {},
-    onDisconnect: function() {}
-  };
+  if (config.messageHandler) {
+    config.messageHandler.send = function(data, transferables) {
+      parent.postMessage(data, "*", transferables);
+    };
+    // if a config.messageProcessor is specified, use it to process the message.
+    window.addEventListener("message", function(e) {
+      config.messageHandler.handleMessage(e.data);
+    });
 
-  setupCore(conn, window, {
-    remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
-  });
+    if (!config.messageHandler.handleMessage) {
+      throw new Error(
+        "handleMessage method is required for the messageHanlder"
+      );
+    }
+  } else {
+    // connection object for the JailedSite constructor
+    const conn = {
+      disconnect: function() {},
+      send: function(data, transferables) {
+        parent.postMessage({ type: "message", data: data }, "*", transferables);
+      },
+      onMessage: function(h) {
+        conn._messageHandler = h;
+      },
+      _messageHandler: function() {},
+      onDisconnect: function() {}
+    };
+    // event listener for the plugin message
+    window.addEventListener("message", function(e) {
+      var m = e.data && e.data.data;
+      switch (m && m.type) {
+        case "import":
+        case "importJailed": // already jailed in the iframe
+          importScript(m.url);
+          break;
+        case "execute":
+          execute(m.code);
+          break;
+        case "message":
+          conn._messageHandler(m.data);
+          break;
+      }
+    });
+
+    setupCore(conn, window, {
+      remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
+    });
+  }
+
   parent.postMessage(
     {
       type: "initialized",

@@ -11,25 +11,6 @@ self.application = {};
 
 (function() {
   /**
-   * Event lisener for the plugin message
-   */
-  self.addEventListener("message", function(e) {
-    var m = e.data && e.data.data;
-    switch (m && m.type) {
-      case "import":
-      case "importJailed": // already jailed in the iframe
-        importScript(m.url);
-        break;
-      case "execute":
-        execute(m.code);
-        break;
-      case "message":
-        conn._messageHandler(m.data);
-        break;
-    }
-  });
-
-  /**
    * Loads and executes the JavaScript file with the given url
    *
    * @param {String} url to load
@@ -155,7 +136,7 @@ self.application = {};
    * Global will be then cleared to prevent exposure into the
    * Worker, so we put this local connection object into a closure
    */
-  var conn = {
+  const conn = {
     disconnect: function() {
       self.close();
     },
@@ -169,6 +150,26 @@ self.application = {};
     _messageHandler: function() {},
     onDisconnect: function() {}
   };
+
+  /**
+   * Event lisener for the plugin message
+   */
+  self.addEventListener("message", function(e) {
+    var m = e.data && e.data.data;
+    switch (m && m.type) {
+      case "import":
+      case "importJailed": // already jailed in the iframe
+        importScript(m.url);
+        break;
+      case "execute":
+        execute(m.code);
+        break;
+      case "message":
+        conn._messageHandler(m.data);
+        break;
+    }
+  });
+
   setupCore(conn, self);
   self.postMessage({
     type: "initialized",

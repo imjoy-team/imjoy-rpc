@@ -1,4 +1,3 @@
-/* eslint-disable */
 /**
  * Core plugin script loaded into the plugin process/thread.
  *
@@ -10,6 +9,7 @@
 import { JailedSite } from "./jailedSite.js";
 
 export default function setupCore(connection, root, config) {
+  config = config || {};
   root.connection = connection;
   root.application = {};
   root.api = null;

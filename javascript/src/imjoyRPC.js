@@ -8,7 +8,7 @@
  * same thread)
  */
 import PluginWorker from "./pluginWebWorker.js";
-import setupIframe from "./pluginWebIframe.js";
+import setupIframe from "./pluginIframe.js";
 import setupWebPython from "./pluginWebPython.js";
 
 export { JailedSite } from "./jailedSite.js";
@@ -79,7 +79,7 @@ async function cacheRequirements(requirements) {
  * Initializes the plugin inside a web worker. May throw an exception
  * in case this was not permitted by the browser.
  */
-function setupWebWorker() {
+function setupWebWorker(config) {
   const worker = new PluginWorker();
 
   // mixed content warning in Chrome silently skips worker
@@ -89,7 +89,7 @@ function setupWebWorker() {
     console.warn(
       `Plugin failed to start as a web-worker, running in an iframe instead.`
     );
-    setupIframe();
+    setupIframe(config);
   }, 2000);
 
   // forwarding messages between the worker and parent window
@@ -120,24 +120,25 @@ function setupWebWorker() {
   });
 }
 
-export function initializeRPC(plugin_type) {
-  plugin_type = plugin_type || getParamValue("_plugin_type");
+export function initializeRPC(config) {
+  config = config || {};
+  const plugin_type = config.plugin_type || getParamValue("_plugin_type");
   if (inIframe()) {
     plugin_type = plugin_type || "window";
     if (plugin_type === "web-worker") {
       try {
-        setupWebWorker();
+        setupWebWorker(config);
       } catch (e) {
         // fallback to iframe
-        setupIframe();
+        setupIframe(config);
       }
     } else if (
       plugin_type === "web-python" ||
       plugin_type === "web-python-window"
     ) {
-      setupWebPython();
+      setupWebPython(config);
     } else if (plugin_type === "iframe" || plugin_type === "window") {
-      setupIframe();
+      setupIframe(config);
     } else {
       console.error("Unsupported plugin type: " + plugin_type);
       throw "Unsupported plugin type: " + plugin_type;
