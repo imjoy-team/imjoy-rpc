@@ -4,6 +4,7 @@ __pycache__
 node_modules
 __websocket_relay__.js
 dist
+report.html
 
 # local env files
 .env.local

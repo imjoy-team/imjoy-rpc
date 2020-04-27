@@ -1,1 +1,1 @@
-module.exports = require('./src/imjoyRPC');
+module.exports = require('./src/main.js');

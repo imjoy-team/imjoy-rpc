@@ -30,51 +30,6 @@ function getParamValue(paramName) {
   }
 }
 
-function cacheUrlInServiceWorker(url) {
-  return new Promise(function(resolve, reject) {
-    const message = {
-      command: "add",
-      url: url
-    };
-    if (!navigator.serviceWorker || !navigator.serviceWorker.register) {
-      reject("Service worker is not supported.");
-      return;
-    }
-    const messageChannel = new MessageChannel();
-    messageChannel.port1.onmessage = function(event) {
-      if (event.data && event.data.error) {
-        reject(event.data.error);
-      } else {
-        resolve(event.data && event.data.result);
-      }
-    };
-
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage(message, [
-        messageChannel.port2
-      ]);
-    } else {
-      reject("Service worker controller is not available");
-    }
-  });
-}
-
-async function cacheRequirements(requirements) {
-  if (requirements && requirements.length > 0) {
-    for (let req of requirements) {
-      //remove prefix
-      if (req.startsWith("js:")) req = req.slice(3);
-      if (req.startsWith("css:")) req = req.slice(4);
-      if (req.startsWith("cache:")) req = req.slice(6);
-      if (!req.startsWith("http")) continue;
-
-      await cacheUrlInServiceWorker(req).catch(e => {
-        console.error(e);
-      });
-    }
-  }
-}
-
 /**
  * Initializes the plugin inside a web worker. May throw an exception
  * in case this was not permitted by the browser.
@@ -96,6 +51,8 @@ function setupWebWorker(config) {
   worker.addEventListener("message", function(m) {
     let transferables = undefined;
     if (m.data.type == "initialized") {
+      // send config to the worker
+      worker.postMessage({ type: "config", config: config });
       clearTimeout(fallbackTimeout);
     } else if (m.data.type == "disconnect") {
       worker.terminate();
@@ -120,16 +77,26 @@ function setupWebWorker(config) {
   });
 }
 
-export function initializeRPC(config) {
+export function initBaseFrame(config) {
+  config = config || {};
+  config.allow_execution = config.allow_execution || true;
+  config.enable_service_worker = config.enable_service_worker || true;
+  return imjoyRPC.initRPC(config);
+}
+
+export function initRPC(config) {
   config = config || {};
   if (inIframe()) {
     if (config.messageHandler) {
-      config.messageHandler.send = function(data, transferables) {
-        parent.postMessage(data, "*", transferables);
+      const targetOrigin = config.target_origin || "*";
+      config.messageHandler.send = function(data, targetOrigin, transferables) {
+        parent.postMessage(data, targetOrigin, transferables);
       };
       // if a config.messageProcessor is specified, use it to process the message.
-      window.addEventListener("message", function(e) {
-        config.messageHandler.handleMessage(e.data);
+      window.addEventListener("message", function(event) {
+        if (targetOrigin === "*" || event.origin === targetOrigin) {
+          config.messageHandler.handleMessage(event.data);
+        }
       });
 
       if (!config.messageHandler.handleMessage) {
@@ -158,39 +125,6 @@ export function initializeRPC(config) {
         console.error("Unsupported plugin type: " + plugin_type);
         throw "Unsupported plugin type: " + plugin_type;
       }
-
-      // register service worker for offline access
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", function() {
-          navigator.serviceWorker.register("/plugin-service-worker.js").then(
-            function(registration) {
-              // Registration was successful
-              console.log(
-                "ServiceWorker registration successful with scope: ",
-                registration.scope
-              );
-            },
-            function(err) {
-              // registration failed :(
-              console.log("ServiceWorker registration failed: ", err);
-            }
-          );
-        });
-      }
-
-      // event listener for the plugin message
-      window.addEventListener("message", function(e) {
-        const m = e.data && e.data.data;
-        if (m && m.type === "execute") {
-          const code = m.code;
-          if (code.type == "requirements") {
-            if (!Array.isArray(code.requirements)) {
-              code.requirements = [code.requirements];
-            }
-            cacheRequirements(code.requirements);
-          }
-        }
-      });
     }
   } else {
     throw new Error("imjoy-rpc should only run inside an iframe.");

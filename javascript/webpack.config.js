@@ -8,7 +8,7 @@ const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
 const config =  (env, argv) => ({
   mode: 'development',
   entry: {
-    index: './src/index.js',
+    index: './src/main.js',
   },
   output: {
     filename: argv.filename || 'imjoy-rpc.js',
@@ -30,18 +30,11 @@ const config =  (env, argv) => ({
     }
   },
   plugins: [
-    new HtmlWebpackPlugin(
-      {
-        filename: 'base_frame.html',
-        template: path.resolve(__dirname, 'src', 'base_frame.html'),
-        inject: false
-      }
-    ),
     new BundleAnalyzerPlugin({
       analyzerMode: 'static',
       openAnalyzer: false,
+      reportFilename: path.join(__dirname, 'report.html'),
     }),
-    // new WriteFilePlugin(),
   ],
   module: {
     rules: [

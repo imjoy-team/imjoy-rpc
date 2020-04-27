@@ -6,7 +6,7 @@
  * connection object for the plugin site
  */
 
-import setupCore from "./pluginCore.js";
+import { setupCore, cacheRequirements } from "./pluginCore.js";
 
 function loadScript(path, sCb, fCb) {
   let currentErrorHandler;
@@ -299,18 +299,39 @@ export default function setupWebPython(config) {
 
   // event listener for the plugin message
   window.addEventListener("message", function(e) {
-    var m = e.data && e.data.data;
-    switch (m && m.type) {
-      case "import":
-      case "importJailed": // already jailed in the iframe
-        importScript(m.url);
-        break;
-      case "execute":
-        execute(m.code);
-        break;
-      case "message":
-        conn._messageHandler(m.data);
-        break;
+    const targetOrigin = config.target_origin || "*";
+    if (targetOrigin === "*" || e.origin === targetOrigin) {
+      var m = e.data && e.data.data;
+      switch (m && m.type) {
+        case "import":
+        case "importJailed": // already jailed in the iframe
+          if (config.allow_execution) {
+            importScript(m.url);
+          } else {
+            console.warn(
+              "import script is not allowed (allow_execution=false)"
+            );
+          }
+          break;
+        case "execute":
+          if (config.allow_execution) {
+            execute(m.code);
+            if (m.code.type == "requirements") {
+              if (!Array.isArray(m.code.requirements)) {
+                m.code.requirements = [m.code.requirements];
+              }
+              cacheRequirements(m.code.requirements);
+            }
+          } else {
+            console.warn(
+              "import script is not allowed (allow_execution=false)"
+            );
+          }
+          break;
+        case "message":
+          conn._messageHandler(m.data);
+          break;
+      }
     }
   });
 
