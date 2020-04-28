@@ -155,18 +155,19 @@ export function setupRPC(config) {
 
 class CustomRPC {
   init(config) {
+    config = config || {}
+    const targetOrigin = config.target_origin || "*";
     parent.postMessage(
       {
         type: "initialized",
         dedicatedThread: false,
-        allowExecution: config.allow_execution
+        allowExecution: true
       },
-      "*"
+      targetOrigin
     );
 
     // event listener for the plugin message
     window.addEventListener("message", e => {
-      const targetOrigin = config.target_origin || "*";
       if (targetOrigin === "*" || e.origin === targetOrigin) {
         var m = e.data && e.data.data;
         switch (m && m.type) {
@@ -183,6 +184,10 @@ class CustomRPC {
         }
       }
     });
+  }
+
+  send(){
+
   }
 
   import() {}
