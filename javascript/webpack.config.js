@@ -47,24 +47,25 @@ const config =  (env, argv) => ({
       {
         test: /\.js$/,
         exclude: /node_modules/,
-        use: {
-          loader: 'babel-loader',
-          options: {
-            presets: [
-              [
-                '@babel/preset-env',
-                {
-                  targets: { browsers: ['last 2 Chrome versions'] },
-                  useBuiltIns: 'entry',
-                  modules: false,
-                },
+        use: [{
+            loader: 'babel-loader',
+            options: {
+              presets: [
+                [
+                  '@babel/preset-env',
+                  {
+                    targets: { browsers: ['last 2 Chrome versions'] },
+                    useBuiltIns: 'entry',
+                    modules: false,
+                  },
+                ],
               ],
-            ],
-            plugins: ['@babel/plugin-syntax-dynamic-import'],
-            cacheDirectory: true,
-          },
+              plugins: ['@babel/plugin-syntax-dynamic-import'],
+              cacheDirectory: true,
+            },
         },
-      },
+        "eslint-loader"
+      ],},
       {
         test: /\.css$/,
         use: ['style-loader', 'css-loader'],
