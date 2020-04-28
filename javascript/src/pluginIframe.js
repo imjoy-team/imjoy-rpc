@@ -46,6 +46,7 @@ function loadScript(path, sCb, fCb) {
 
 export default function setupIframe(config) {
   config = config || {};
+  const targetOrigin = config.target_origin || "*";
   // Create a new, plain <span> element
   function _htmlToElement(html) {
     var template = document.createElement("template");
@@ -92,7 +93,7 @@ export default function setupIframe(config) {
           type: "importSuccess",
           url: url
         },
-        "*"
+        targetOrigin
       );
     };
 
@@ -103,7 +104,7 @@ export default function setupIframe(config) {
           url: url,
           error: error.stack || String(error)
         },
-        "*"
+        targetOrigin
       );
     };
 
@@ -219,12 +220,12 @@ export default function setupIframe(config) {
       } else {
         throw "unsupported code type.";
       }
-      parent.postMessage({ type: "executeSuccess" }, "*");
+      parent.postMessage({ type: "executeSuccess" }, targetOrigin);
     } catch (e) {
       console.error("failed to execute scripts: ", code, e);
       parent.postMessage(
         { type: "executeFailure", error: e.stack || String(e) },
-        "*"
+        targetOrigin
       );
     }
   };
@@ -233,7 +234,7 @@ export default function setupIframe(config) {
   const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
-      parent.postMessage({ type: "message", data: data }, "*", transferables);
+      parent.postMessage({ type: "message", data: data }, targetOrigin, transferables);
     },
     onMessage: function(h) {
       conn._messageHandler = h;
@@ -243,7 +244,6 @@ export default function setupIframe(config) {
   };
   // event listener for the plugin message
   window.addEventListener("message", function(e) {
-    const targetOrigin = config.target_origin || "*";
     if (targetOrigin === "*" || e.origin === targetOrigin) {
       var m = e.data && e.data.data;
       switch (m && m.type) {
@@ -291,6 +291,6 @@ export default function setupIframe(config) {
       dedicatedThread: false,
       allowExecution: config.allow_execution
     },
-    "*"
+    targetOrigin
   );
 }
