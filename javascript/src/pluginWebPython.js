@@ -66,7 +66,7 @@ export default function setupWebPython(config) {
       scriptTag.src = url;
       scriptTag.onload = resolve;
       scriptTag.onreadystatechange = function() {
-        if (this.readyState === "loaded" || this.readyState == "complete") {
+        if (this.readyState === "loaded" || this.readyState === "complete") {
           resolve();
         }
       };
@@ -173,7 +173,7 @@ export default function setupWebPython(config) {
   // evaluates the provided string
   var execute = async function(code) {
     try {
-      if (code.type == "requirements") {
+      if (code.type === "requirements") {
         if (code.requirements) {
           code.requirements =
             typeof code.requirements === "string"
@@ -227,7 +227,7 @@ export default function setupWebPython(config) {
             throw "unsupported requirements definition";
           }
         }
-      } else if (code.type == "script") {
+      } else if (code.type === "script") {
         if (code.src) {
           var script_node = document.createElement("script");
           script_node.setAttribute("type", code.attrs.type);
@@ -250,14 +250,14 @@ export default function setupWebPython(config) {
             document.body.appendChild(node);
           }
         }
-      } else if (code.type == "style") {
+      } else if (code.type === "style") {
         var style_node = document.createElement("style");
         if (code.src) {
           style_node.src = code.src;
         }
         style_node.innerHTML = code.content;
         document.head.appendChild(style_node);
-      } else if (code.type == "link") {
+      } else if (code.type === "link") {
         var link_node = document.createElement("link");
         if (code.rel) {
           link_node.rel = code.rel;
@@ -269,7 +269,7 @@ export default function setupWebPython(config) {
           link_node.type = code.attrs.type;
         }
         document.head.appendChild(link_node);
-      } else if (code.type == "html") {
+      } else if (code.type === "html") {
         document.body.appendChild(_htmlToElement(code.content));
       } else {
         throw "unsupported code type.";
@@ -316,7 +316,7 @@ export default function setupWebPython(config) {
         case "execute":
           if (config.allow_execution) {
             execute(m.code);
-            if (m.code.type == "requirements") {
+            if (m.code.type === "requirements") {
               if (!Array.isArray(m.code.requirements)) {
                 m.code.requirements = [m.code.requirements];
               }

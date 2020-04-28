@@ -66,7 +66,7 @@ export function setupCore(connection, config) {
 
   var checkHandler = function(handler) {
     var type = typeof handler;
-    if (type != "function") {
+    if (type !== "function") {
       var msg =
         "A function may only be subsribed to the event, " +
         type +

@@ -16,7 +16,7 @@ class BasicConnection {
     this.id = id;
     var iframe_container = config.iframe_container;
     var sample = document.createElement("iframe");
-    this._loggingHandler = () => {};
+    this._disconnectHandler = () => {};
     sample.src = config.base_frame;
     sample.sandbox = "";
     sample.frameBorder = "0";
@@ -95,15 +95,17 @@ class BasicConnection {
       if (iframe_container) {
         me._frame.style.display = "block";
         iframe_container.appendChild(me._frame);
+        me.iframe_container = iframe_container;
       } else {
         document.body.appendChild(me._frame);
+        me.iframe_container = null;
       }
     } else {
       document.body.appendChild(me._frame);
     }
     window.addEventListener("message", function(e) {
       if (e.source === me._frame.contentWindow) {
-        if (e.data.type == "initialized") {
+        if (e.data.type === "initialized") {
           me.dedicatedThread = e.data.dedicatedThread;
           me.allowExecution = e.data.allowExecution;
           me._init.emit();
@@ -158,9 +160,6 @@ class BasicConnection {
       );
   }
 
-  onLogging(handler) {
-    this._loggingHandler = handler;
-  }
   /**
    * Adds a handler for a message received from the plugin site
    *
@@ -176,7 +175,9 @@ class BasicConnection {
    *
    * @param {Function} handler to call upon a disconnect
    */
-  onDisconnect() {}
+  onDisconnect(handler) {
+    this._disconnectHandler = handler;
+  }
 
   /**
    * Disconnects the plugin (= kills the frame)
@@ -184,9 +185,10 @@ class BasicConnection {
   disconnect() {
     if (!this._disconnected) {
       this._disconnected = true;
-      if (typeof this._frame != "undefined") {
+      if (typeof this._frame !== "undefined") {
         this._frame.parentNode.removeChild(this._frame);
       } // otherwise farme is not yet created
+      this._disconnectHandler();
     }
   }
 }

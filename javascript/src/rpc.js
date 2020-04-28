@@ -221,7 +221,7 @@ RPC.prototype._processMessage = function(data) {
           return;
         }
       }
-      if (data.name.indexOf(".") != -1) {
+      if (data.name.indexOf(".") !== -1) {
         var names = data.name.split(".");
         method = _interface[names[0]][names[1]];
       } else {
@@ -315,7 +315,7 @@ RPC.prototype.requestRemote = function() {
 
 RPC.prototype._ndarray = function(typedArray, shape, dtype) {
   var _dtype = _typedarray2dtype[typedArray.constructor.name];
-  if (dtype && dtype != _dtype) {
+  if (dtype && dtype !== _dtype) {
     throw "dtype doesn't match the type of the array: " +
       _dtype +
       " != " +
@@ -459,7 +459,7 @@ RPC.prototype._encode_interface = function(aObject, bObject) {
       }
       v = aObject[k];
 
-      if (typeof v == "function") {
+      if (typeof v === "function") {
         bObject[k] = {
           __jailed_type__: "plugin_interface",
           __plugin_id__: aObject["__id__"],
@@ -505,7 +505,7 @@ RPC.prototype._encode = function(aObject, as_interface) {
 
   //encode interfaces
   if (
-    typeof aObject == "object" &&
+    typeof aObject === "object" &&
     !Array.isArray(aObject) &&
     (aObject.__as_interface__ || as_interface)
   ) {
@@ -586,7 +586,7 @@ RPC.prototype._encode = function(aObject, as_interface) {
         }
       } else if (
         /*global tf*/
-        typeof tf != "undefined" &&
+        typeof tf !== "undefined" &&
         tf.Tensor &&
         v instanceof tf.Tensor
       ) {
@@ -618,7 +618,7 @@ RPC.prototype._encode = function(aObject, as_interface) {
         };
       } else if (
         /*global nj*/
-        typeof nj != "undefined" &&
+        typeof nj !== "undefined" &&
         nj.NdArray &&
         v instanceof nj.NdArray
       ) {
@@ -729,7 +729,7 @@ RPC.prototype._decode = function(aObject, callbackId, withPromise) {
     } else if (aObject.__jailed_type__ === "ndarray") {
       /*global nj tf*/
       //create build array/tensor if used in the plugin
-      if (this.id === "__plugin__" && typeof nj != "undefined" && nj.array) {
+      if (this.id === "__plugin__" && typeof nj !== "undefined" && nj.array) {
         if (Array.isArray(aObject.__value__)) {
           aObject.__value__ = aObject.__value__.reduce(_appendBuffer);
         }
@@ -738,7 +738,7 @@ RPC.prototype._decode = function(aObject, callbackId, withPromise) {
           .reshape(aObject.__shape__);
       } else if (
         this.id === "__plugin__" &&
-        typeof tf != "undefined" &&
+        typeof tf !== "undefined" &&
         tf.Tensor
       ) {
         if (Array.isArray(aObject.__value__)) {
@@ -961,7 +961,7 @@ ReferenceStore.prototype.getStack = function() {
  */
 ReferenceStore.prototype._genId = function() {
   var id;
-  if (this._indices.length == 1) {
+  if (this._indices.length === 1) {
     id = this._indices[0]++;
   } else {
     id = this._indices.shift();
@@ -986,7 +986,7 @@ ReferenceStore.prototype._releaseId = function(id) {
 
   // cleaning-up the sequence tail
   for (i = this._indices.length - 1; i >= 0; i--) {
-    if (this._indices[i] - 1 == this._indices[i - 1]) {
+    if (this._indices[i] - 1 === this._indices[i - 1]) {
       this._indices.pop();
     } else {
       break;
@@ -1002,7 +1002,7 @@ ReferenceStore.prototype._releaseId = function(id) {
  * @returns {Number} reference id of the stored object
  */
 ReferenceStore.prototype.put = function(obj) {
-  if (this._busyHandler && Object.keys(this._store).length == 0) {
+  if (this._busyHandler && Object.keys(this._store).length === 0) {
     this._busyHandler();
   }
   var id = this._genId();
@@ -1020,7 +1020,7 @@ ReferenceStore.prototype.fetch = function(id) {
   if (obj && !obj.__remote_method) {
     delete this._store[id];
     this._releaseId(id);
-    if (this._readyHandler && Object.keys(this._store).length == 0) {
+    if (this._readyHandler && Object.keys(this._store).length === 0) {
       this._readyHandler();
     }
   }

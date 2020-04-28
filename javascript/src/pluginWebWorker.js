@@ -26,7 +26,7 @@ import { setupCore } from "./pluginCore.js";
       console.error("error occured when loading " + url, e);
     }
 
-    if (error || typeof returned != "undefined") {
+    if (error || typeof returned !== "undefined") {
       self.postMessage({
         type: "importFailure",
         url: url,
@@ -49,7 +49,7 @@ import { setupCore } from "./pluginCore.js";
    */
   var execute = function(code) {
     try {
-      if (code.type == "requirements") {
+      if (code.type === "requirements") {
         try {
           if (
             code.requirements &&
@@ -92,7 +92,7 @@ import { setupCore } from "./pluginCore.js";
         } catch (e) {
           throw e;
         }
-      } else if (code.type == "script") {
+      } else if (code.type === "script") {
         try {
           if (
             code.requirements &&
@@ -160,7 +160,7 @@ import { setupCore } from "./pluginCore.js";
         break;
       case "execute":
         execute(m.code);
-        if (m.code.type == "requirements") {
+        if (m.code.type === "requirements") {
           if (!Array.isArray(m.code.requirements)) {
             m.code.requirements = [m.code.requirements];
           }

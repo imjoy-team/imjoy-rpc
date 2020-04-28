@@ -29,7 +29,7 @@ function getParamValue(paramName) {
   const qArray = url.split("&"); //get key-value pairs
   for (let i = 0; i < qArray.length; i++) {
     const pArr = qArray[i].split("="); //split key and value
-    if (pArr[0] == paramName) return pArr[1]; //return value
+    if (pArr[0] === paramName) return pArr[1]; //return value
   }
 }
 
@@ -56,7 +56,7 @@ function setupWebWorker(config) {
   // forwarding messages between the worker and parent window
   worker.addEventListener("message", function(m) {
     let transferables = undefined;
-    if (m.data.type == "initialized") {
+    if (m.data.type === "initialized") {
       // remove functions
       const filteredConfig = Object.keys(config).reduce((p, c) => {
         if (typeof config[c] !== "function") p[c] = config[c];
@@ -67,19 +67,19 @@ function setupWebWorker(config) {
         data: { type: "setupCore", config: filteredConfig }
       });
       clearTimeout(fallbackTimeout);
-    } else if (m.data.type == "imjoy_remote_api_ready") {
+    } else if (m.data.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
       window.dispatchEvent(
         new CustomEvent("imjoy_remote_api_ready", { detail: null })
       );
     } else if (
-      m.data.type == "cacheRequirements" &&
+      m.data.type === "cacheRequirements" &&
       config.cache_requirements
     ) {
       config.cache_requirements(m.data.requirements);
-    } else if (m.data.type == "disconnect") {
+    } else if (m.data.type === "disconnect") {
       worker.terminate();
-    } else if (m.data.type == "message") {
+    } else if (m.data.type === "message") {
       if (m.data.data.__transferables__) {
         transferables = m.data.data.__transferables__;
         delete m.data.data.__transferables__;
@@ -90,7 +90,7 @@ function setupWebWorker(config) {
 
   window.addEventListener("message", function(m) {
     let transferables = undefined;
-    if (m.data.type == "message") {
+    if (m.data.type === "message") {
       if (m.data.data.__transferables__) {
         transferables = m.data.data.__transferables__;
         delete m.data.data.__transferables__;

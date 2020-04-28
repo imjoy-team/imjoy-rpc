@@ -64,7 +64,7 @@ export default function setupIframe(config) {
       scriptTag.type = "text/javascript";
       scriptTag.onload = resolve;
       scriptTag.onreadystatechange = function() {
-        if (this.readyState === "loaded" || this.readyState == "complete") {
+        if (this.readyState === "loaded" || this.readyState === "complete") {
           resolve();
         }
       };
@@ -123,7 +123,7 @@ export default function setupIframe(config) {
   // evaluates the provided string
   var execute = async function(code) {
     try {
-      if (code.type == "requirements") {
+      if (code.type === "requirements") {
         if (
           code.requirements &&
           (Array.isArray(code.requirements) ||
@@ -174,7 +174,7 @@ export default function setupIframe(config) {
               code.requirements.toString();
           }
         }
-      } else if (code.type == "script") {
+      } else if (code.type === "script") {
         if (code.src) {
           var script_node = document.createElement("script");
           script_node.setAttribute("type", code.attrs.type);
@@ -195,14 +195,14 @@ export default function setupIframe(config) {
             document.body.appendChild(node);
           }
         }
-      } else if (code.type == "style") {
+      } else if (code.type === "style") {
         var style_node = document.createElement("style");
         if (code.src) {
           style_node.src = code.src;
         }
         style_node.innerHTML = code.content;
         document.head.appendChild(style_node);
-      } else if (code.type == "link") {
+      } else if (code.type === "link") {
         var link_node_ = document.createElement("link");
         if (code.rel) {
           link_node_.rel = code.rel;
@@ -214,7 +214,7 @@ export default function setupIframe(config) {
           link_node_.type = code.attrs.type;
         }
         document.head.appendChild(link_node_);
-      } else if (code.type == "html") {
+      } else if (code.type === "html") {
         document.body.appendChild(_htmlToElement(code.content));
       } else {
         throw "unsupported code type.";
@@ -260,7 +260,7 @@ export default function setupIframe(config) {
         case "execute":
           if (config.allow_execution) {
             execute(m.code);
-            if (m.code.type == "requirements") {
+            if (m.code.type === "requirements") {
               if (!Array.isArray(m.code.requirements)) {
                 m.code.requirements = [m.code.requirements];
               }
