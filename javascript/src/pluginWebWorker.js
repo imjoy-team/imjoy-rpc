@@ -182,7 +182,10 @@ import { setupCore } from "./pluginCore.js";
   });
   self.postMessage({
     type: "initialized",
-    dedicatedThread: true,
-    allowExecution: true
+    spec: {
+      dedicatedThread: true,
+      allowExecution: true,
+      language: "javascript"
+    }
   });
 })();

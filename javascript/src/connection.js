@@ -14,6 +14,7 @@ class BasicConnection {
     this._fail = new Whenable();
     this._disconnected = false;
     this.id = id;
+    this.platformSpec = {};
     var iframe_container = config.iframe_container;
     var sample = document.createElement("iframe");
     this._disconnectHandler = () => {};
@@ -106,9 +107,8 @@ class BasicConnection {
     window.addEventListener("message", function(e) {
       if (e.source === me._frame.contentWindow) {
         if (e.data.type === "initialized") {
-          me.dedicatedThread = e.data.dedicatedThread;
-          me.allowExecution = e.data.allowExecution;
-          me._init.emit();
+          me.platformSpec = e.data.spec;
+          me._init.emit(me.platformSpec);
         } else {
           me._messageHandler(e.data);
         }
@@ -245,7 +245,7 @@ export function Connection(id, type, config) {
  * untrusted code
  */
 Connection.prototype.hasDedicatedThread = function() {
-  return this._platformConnection.dedicatedThread;
+  return this._platformConnection.platformSpec.dedicatedThread;
 };
 
 /**
@@ -255,7 +255,7 @@ Connection.prototype.hasDedicatedThread = function() {
  * untrusted code
  */
 Connection.prototype.checkAllowExecution = function() {
-  return this._platformConnection.allowExecution;
+  return this._platformConnection.platformSpec.allowExecution;
 };
 
 /**
@@ -302,10 +302,10 @@ Connection.prototype.execute = function(code) {
   return new Promise((resolve, reject) => {
     this._executeSCb = resolve;
     this._executeFCb = reject;
-    if (this._platformConnection.allowExecution) {
+    if (this._platformConnection.platformSpec.allowExecution) {
       this._platformConnection.send({ type: "execute", code: code });
     } else {
-      console.warn("Connection does not allow execution", code);
+      reject("Connection does not allow execution");
     }
   });
 };

@@ -155,13 +155,16 @@ export function setupRPC(config) {
 
 class CustomRPC {
   init(config) {
-    config = config || {}
+    config = config || {};
     const targetOrigin = config.target_origin || "*";
     parent.postMessage(
       {
         type: "initialized",
-        dedicatedThread: false,
-        allowExecution: true
+        spec: {
+          dedicatedThread: false,
+          allowExecution: true,
+          language: "javascript"
+        }
       },
       targetOrigin
     );
@@ -186,9 +189,7 @@ class CustomRPC {
     });
   }
 
-  send(){
-
-  }
+  send() {}
 
   import() {}
 

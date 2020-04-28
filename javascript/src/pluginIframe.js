@@ -234,7 +234,11 @@ export default function setupIframe(config) {
   const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
-      parent.postMessage({ type: "message", data: data }, targetOrigin, transferables);
+      parent.postMessage(
+        { type: "message", data: data },
+        targetOrigin,
+        transferables
+      );
     },
     onMessage: function(h) {
       conn._messageHandler = h;
@@ -288,8 +292,11 @@ export default function setupIframe(config) {
   parent.postMessage(
     {
       type: "initialized",
-      dedicatedThread: false,
-      allowExecution: config.allow_execution
+      spec: {
+        dedicatedThread: false,
+        allowExecution: config.allow_execution,
+        language: "javascript"
+      }
     },
     targetOrigin
   );
