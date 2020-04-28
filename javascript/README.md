@@ -46,20 +46,20 @@ imjoyRPC.setupRPC(config).then((api)=>{
 
 ### Configuration for `setupRPC`
  * allow_execution
-Allow code execution
+  Allow code execution
 
-Default: `false`
+  Default: `false`
 
  * target_origin
-Set the target origin for postMessage
+  Set the target origin for postMessage
 
-Default: `*`
+  Default: `*`
  * enable_service_worker
-Enable service worker for cachine requirements
+  Enable service worker for cachine requirements
 
-Default: `false`
+  Default: `false`
 
  * cache_requirements
-A callback function for caching requirements in the service worker
+  A callback function for caching requirements in the service worker
 
-Default: `null`
+  Default: `null`

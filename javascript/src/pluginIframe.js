@@ -288,7 +288,8 @@ export default function setupIframe(config) {
   parent.postMessage(
     {
       type: "initialized",
-      dedicatedThread: false
+      dedicatedThread: false,
+      allowExecution: config.allow_execution
     },
     "*"
   );

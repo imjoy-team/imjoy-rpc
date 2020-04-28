@@ -361,7 +361,8 @@ export default function setupWebPython(config) {
       parent.postMessage(
         {
           type: "initialized",
-          dedicatedThread: false
+          dedicatedThread: false,
+          allowExecution: config.allow_execution
         },
         "*"
       );

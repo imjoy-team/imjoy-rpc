@@ -13,6 +13,8 @@ import setupWebPython from "./pluginWebPython.js";
 import { setupServiceWorker, cacheRequirements } from "./utils.js";
 
 export { RPC } from "./rpc.js";
+export { Connection } from "./connection.js";
+export { Whenable } from "./utils.js";
 
 function inIframe() {
   try {
@@ -117,48 +119,25 @@ export function setupRPC(config) {
   config = config || {};
   return new Promise((resolve, reject) => {
     if (inIframe()) {
-      if (config.messageHandler) {
-        const targetOrigin = config.target_origin || "*";
-        config.messageHandler.send = function(
-          data,
-          targetOrigin,
-          transferables
-        ) {
-          parent.postMessage(data, targetOrigin, transferables);
-        };
-        // if a config.messageProcessor is specified, use it to process the message.
-        window.addEventListener("message", function(event) {
-          if (targetOrigin === "*" || event.origin === targetOrigin) {
-            config.messageHandler.handleMessage(event.data);
-          }
-        });
-
-        if (!config.messageHandler.handleMessage) {
-          reject(
-            new Error("handleMessage method is required for the messageHanlder")
-          );
-        }
-      } else {
-        const plugin_type =
-          config.plugin_type || getParamValue("_plugin_type") || "window";
-        if (plugin_type === "web-worker") {
-          try {
-            setupWebWorker(config);
-          } catch (e) {
-            // fallback to iframe
-            setupIframe(config);
-          }
-        } else if (
-          plugin_type === "web-python" ||
-          plugin_type === "web-python-window"
-        ) {
-          setupWebPython(config);
-        } else if (plugin_type === "iframe" || plugin_type === "window") {
+      const plugin_type =
+        config.plugin_type || getParamValue("_plugin_type") || "window";
+      if (plugin_type === "web-worker") {
+        try {
+          setupWebWorker(config);
+        } catch (e) {
+          // fallback to iframe
           setupIframe(config);
-        } else {
-          console.error("Unsupported plugin type: " + plugin_type);
-          reject("Unsupported plugin type: " + plugin_type);
         }
+      } else if (
+        plugin_type === "web-python" ||
+        plugin_type === "web-python-window"
+      ) {
+        setupWebPython(config);
+      } else if (plugin_type === "iframe" || plugin_type === "window") {
+        setupIframe(config);
+      } else {
+        console.error("Unsupported plugin type: " + plugin_type);
+        reject("Unsupported plugin type: " + plugin_type);
       }
       try {
         window.addEventListener("imjoy_remote_api_ready", e => {
@@ -172,4 +151,43 @@ export function setupRPC(config) {
       reject(new Error("imjoy-rpc should only run inside an iframe."));
     }
   });
+}
+
+class CustomRPC {
+  init(config) {
+    parent.postMessage(
+      {
+        type: "initialized",
+        dedicatedThread: false,
+        allowExecution: config.allow_execution
+      },
+      "*"
+    );
+
+    // event listener for the plugin message
+    window.addEventListener("message", e => {
+      const targetOrigin = config.target_origin || "*";
+      if (targetOrigin === "*" || e.origin === targetOrigin) {
+        var m = e.data && e.data.data;
+        switch (m && m.type) {
+          case "import":
+          case "importJailed": // already jailed in the iframe
+            this.import(m.url);
+            break;
+          case "execute":
+            this.execute(m.code);
+            break;
+          case "message":
+            this.processMessage(m.data);
+            break;
+        }
+      }
+    });
+  }
+
+  import() {}
+
+  execute() {}
+
+  processMessage() {}
 }
