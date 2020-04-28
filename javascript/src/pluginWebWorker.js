@@ -7,7 +7,6 @@
 import { setupCore, cacheRequirements } from "./pluginCore.js";
 
 /*global importScripts*/
-self.application = {};
 self.config = {};
 (function() {
   /**
@@ -131,7 +130,7 @@ self.config = {};
   };
 
   /**
-   * Connection object provided to the ImJoyRPC constructor,
+   * Connection object provided to the RPC constructor,
    * plugin site implementation for the web-based environment.
    * Global will be then cleared to prevent exposure into the
    * Worker, so we put this local connection object into a closure
@@ -180,8 +179,7 @@ self.config = {};
         break;
     }
   });
-
-  setupCore(conn, self);
+  setupCore(conn, self.config);
   self.postMessage({
     type: "initialized",
     dedicatedThread: true

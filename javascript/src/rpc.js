@@ -1,9 +1,7 @@
 /**
- * Contains the ImJoyRPC object used both by the application
+ * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-/*global ImJoyRPC WorkerGlobalScope*/
-/*eslint no-global-assign: "off"*/
 
 // var _dtype2typedarray = {
 //   int8: 'Int8Array',
@@ -16,7 +14,7 @@
 //   float64: 'Float64Array',
 //   array: 'Array'
 // }
-var _typedarray2dtype = {
+const _typedarray2dtype = {
   Int8Array: "int8",
   Int16Array: "int16",
   Int32Array: "int32",
@@ -27,12 +25,12 @@ var _typedarray2dtype = {
   Float64Array: "float64",
   Array: "array"
 };
-var ARRAY_CHUNK = 1000000;
-var ArrayBufferView = Object.getPrototypeOf(
+const ARRAY_CHUNK = 1000000;
+const ArrayBufferView = Object.getPrototypeOf(
   Object.getPrototypeOf(new Uint8Array())
 ).constructor;
-var _appendBuffer = function(buffer1, buffer2) {
-  var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
+const _appendBuffer = function(buffer1, buffer2) {
+  const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
   tmp.set(new Uint8Array(buffer1), 0);
   tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
   return tmp.buffer;
@@ -46,14 +44,14 @@ function getKeyByValue(object, value) {
   return Object.keys(object).find(key => object[key] === value);
 }
 /**
- * ImJoyRPC object represents a single site in the
+ * RPC object represents a single site in the
  * communication protocol between the application and the plugin
  *
  * @param {Object} connection a special object allowing to send
  * and receive messages from the opposite site (basically it
  * should only provide send() and onMessage() methods)
  */
-export function ImJoyRPC(connection, config) {
+export function RPC(connection, config) {
   this.config = config || {};
   this._interface = {
     // this initial setup will make sure we wait until the api is exported.
@@ -88,7 +86,7 @@ export function ImJoyRPC(connection, config) {
  *
  * @param {Function} handler
  */
-ImJoyRPC.prototype.onRemoteUpdate = function(handler) {
+RPC.prototype.onRemoteUpdate = function(handler) {
   this._remoteUpdateHandler = handler;
 };
 
@@ -99,19 +97,19 @@ ImJoyRPC.prototype.onRemoteUpdate = function(handler) {
  *
  * @param {Function} handler
  */
-ImJoyRPC.prototype.onInterfaceSetAsRemote = function(handler) {
+RPC.prototype.onInterfaceSetAsRemote = function(handler) {
   this._interfaceSetAsRemoteHandler = handler;
 };
 
-ImJoyRPC.prototype.onRemoteReady = function(handler) {
+RPC.prototype.onRemoteReady = function(handler) {
   this._method_refs.onReady(handler);
 };
 
-ImJoyRPC.prototype.onRemoteBusy = function(handler) {
+RPC.prototype.onRemoteBusy = function(handler) {
   this._method_refs.onBusy(handler);
 };
 
-ImJoyRPC.prototype.getRemoteCallStack = function() {
+RPC.prototype.getRemoteCallStack = function() {
   return this._method_refs.getStack();
 };
 /**
@@ -123,14 +121,14 @@ ImJoyRPC.prototype.getRemoteCallStack = function() {
  *
  * @param {Function} handler
  */
-ImJoyRPC.prototype.onGetInterface = function(handler) {
+RPC.prototype.onGetInterface = function(handler) {
   this._getInterfaceHandler = handler;
 };
 
 /**
  * @returns {Object} set of remote interface methods
  */
-ImJoyRPC.prototype.getRemote = function() {
+RPC.prototype.getRemote = function() {
   return this._remote;
 };
 
@@ -140,7 +138,7 @@ ImJoyRPC.prototype.getRemote = function() {
  *
  * @param {Object} _interface to set
  */
-ImJoyRPC.prototype.setInterface = function(_interface) {
+RPC.prototype.setInterface = function(_interface) {
   if (this.config.remote_interfaces) {
     for (let func_name of this.config.remote_interfaces) {
       _interface[func_name] = (...args) => {
@@ -156,7 +154,7 @@ ImJoyRPC.prototype.setInterface = function(_interface) {
  * Sends the actual interface to the remote site upon it was
  * updated or by a special request of the remote site
  */
-ImJoyRPC.prototype._sendInterface = function() {
+RPC.prototype._sendInterface = function() {
   var names = [];
   for (var name in this._interface) {
     if (this._interface.hasOwnProperty(name)) {
@@ -201,7 +199,7 @@ ImJoyRPC.prototype._sendInterface = function() {
  * Handles a message from the remote site
  */
 // var callback_reg = new RegExp("onupdate|run$")
-ImJoyRPC.prototype._processMessage = function(data) {
+RPC.prototype._processMessage = function(data) {
   var resolve, reject, method, args, result;
   switch (data.type) {
     case "method":
@@ -311,11 +309,11 @@ ImJoyRPC.prototype._processMessage = function(data) {
  * Sends a requests to the remote site asking it to provide its
  * current interface
  */
-ImJoyRPC.prototype.requestRemote = function() {
+RPC.prototype.requestRemote = function() {
   this._connection.send({ type: "getInterface" });
 };
 
-ImJoyRPC.prototype._ndarray = function(typedArray, shape, dtype) {
+RPC.prototype._ndarray = function(typedArray, shape, dtype) {
   var _dtype = _typedarray2dtype[typedArray.constructor.name];
   if (dtype && dtype != _dtype) {
     throw "dtype doesn't match the type of the array: " +
@@ -337,7 +335,7 @@ ImJoyRPC.prototype._ndarray = function(typedArray, shape, dtype) {
  *
  * @param {Array} names list of function names
  */
-ImJoyRPC.prototype._setRemote = function(api) {
+RPC.prototype._setRemote = function(api) {
   this._remote = { ndarray: this._ndarray };
   var i, name, data, type;
   for (i = 0; i < api.length; i++) {
@@ -381,7 +379,7 @@ ImJoyRPC.prototype._setRemote = function(api) {
  *
  * @returns {Function} wrapped remote method
  */
-ImJoyRPC.prototype._genRemoteMethod = function(name, plugin_id) {
+RPC.prototype._genRemoteMethod = function(name, plugin_id) {
   var me = this;
   var remoteMethod = function() {
     return new Promise((resolve, reject) => {
@@ -435,7 +433,7 @@ ImJoyRPC.prototype._genRemoteMethod = function(name, plugin_id) {
  * Sends a responce reporting that interface just provided by the
  * remote site was successfully set by this site as remote
  */
-ImJoyRPC.prototype._reportRemoteSet = function() {
+RPC.prototype._reportRemoteSet = function() {
   this._connection.send({ type: "interfaceSetAsRemote" });
 };
 
@@ -449,7 +447,7 @@ ImJoyRPC.prototype._reportRemoteSet = function() {
  * @returns {Array} wrapped arguments
  */
 
-ImJoyRPC.prototype._encode_interface = function(aObject, bObject) {
+RPC.prototype._encode_interface = function(aObject, bObject) {
   var v, k;
   const encoded_interface = {};
   aObject["__id__"] = aObject["__id__"] || randId();
@@ -487,7 +485,7 @@ ImJoyRPC.prototype._encode_interface = function(aObject, bObject) {
   }
 };
 
-ImJoyRPC.prototype._encode = function(aObject, as_interface) {
+RPC.prototype._encode = function(aObject, as_interface) {
   var transferables = [];
   if (!aObject) {
     return aObject;
@@ -703,7 +701,7 @@ ImJoyRPC.prototype._encode = function(aObject, as_interface) {
   return bObject;
 };
 
-ImJoyRPC.prototype._decode = function(aObject, callbackId, withPromise) {
+RPC.prototype._decode = function(aObject, callbackId, withPromise) {
   if (!aObject) {
     return aObject;
   }
@@ -780,7 +778,7 @@ ImJoyRPC.prototype._decode = function(aObject, callbackId, withPromise) {
   }
 };
 
-ImJoyRPC.prototype._wrap = function(args, as_interface) {
+RPC.prototype._wrap = function(args, as_interface) {
   var wrapped = this._encode(args, as_interface);
   var result = { args: wrapped };
   return result;
@@ -797,7 +795,7 @@ ImJoyRPC.prototype._wrap = function(args, as_interface) {
  *
  * @returns {Array} unwrapped args
  */
-ImJoyRPC.prototype._unwrap = function(args, withPromise) {
+RPC.prototype._unwrap = function(args, withPromise) {
   // var called = false;
 
   // wraps each callback so that the only one could be called
@@ -830,7 +828,7 @@ ImJoyRPC.prototype._unwrap = function(args, withPromise) {
  *
  * @returns {Function} wrapped remote callback
  */
-ImJoyRPC.prototype._genRemoteCallback = function(id, argNum, withPromise) {
+RPC.prototype._genRemoteCallback = function(id, argNum, withPromise) {
   var me = this;
   var remoteCallback;
   if (withPromise) {
@@ -884,7 +882,7 @@ ImJoyRPC.prototype._genRemoteCallback = function(id, argNum, withPromise) {
 /**
  * Sends the notification message and breaks the connection
  */
-ImJoyRPC.prototype.disconnect = function() {
+RPC.prototype.disconnect = function() {
   this._connection.send({ type: "disconnect" });
   setTimeout(this._connection.disconnect, 2000);
 };
@@ -895,7 +893,7 @@ ImJoyRPC.prototype.disconnect = function() {
  *
  * @param {Function} handler
  */
-ImJoyRPC.prototype.onDisconnect = function(handler) {
+RPC.prototype.onDisconnect = function(handler) {
   this._disconnectHandler = handler;
 };
 

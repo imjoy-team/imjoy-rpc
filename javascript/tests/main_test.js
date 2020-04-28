@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ImJoyRPC } from "../src/imjoyRPC.js";
+import { RPC } from "../src/rpc.js";
 
 describe("test", async () => {
   it("pass test", async () => {
@@ -12,7 +12,7 @@ describe("test", async () => {
       _messageHandler: function() {},
       onDisconnect: function() {}
     };
-    const site = new ImJoyRPC(conn);
+    const site = new RPC(conn);
     expect(true).to.be.true;
   });
 });

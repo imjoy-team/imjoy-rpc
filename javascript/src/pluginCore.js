@@ -3,24 +3,21 @@
  *
  * Initializes the plugin-site API global methods.
  */
-import { ImJoyRPC } from "./imjoyRPC.js";
+import { RPC } from "./rpc.js";
 
-export function setupCore(connection, root, config) {
+export function setupCore(connection, config) {
+  const application = {};
   config = config || {};
-  root.connection = connection;
-  root.application = {};
-  root.api = null;
-  // localize
-  var site = new ImJoyRPC(connection, config);
 
+  const site = new RPC(connection, config);
   site.onGetInterface(function() {
     launchConnected();
   });
 
   site.onRemoteUpdate(function() {
-    root.application.remote = site.getRemote();
-    if (!root.application.remote) return;
-    root.api = root.application.remote || {};
+    application.remote = site.getRemote();
+    if (!application.remote) return;
+    const api = application.remote || {};
     if (api.export) {
       console.error("WARNING: overwriting function 'export'.");
     }
@@ -34,13 +31,17 @@ export function setupCore(connection, root, config) {
     api.onLoad = application.whenConnected;
     api.dispose = application.disconnect;
     if (
-      !(
-        typeof WorkerGlobalScope !== "undefined" &&
-        self instanceof WorkerGlobalScope
-      ) &&
-      typeof window
+      typeof WorkerGlobalScope !== "undefined" &&
+      self instanceof WorkerGlobalScope
     ) {
-      window.dispatchEvent(new CustomEvent("imjoy_api_ready", { detail: api }));
+      self.api = api;
+      self.postMessage({
+        type: "imjoy_remote_api_ready"
+      });
+    } else if (typeof window) {
+      window.dispatchEvent(
+        new CustomEvent("imjoy_remote_api_ready", { detail: api })
+      );
     }
   });
 

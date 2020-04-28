@@ -229,7 +229,7 @@ export default function setupIframe(config) {
     }
   };
 
-  // connection object for the ImJoyRPC constructor
+  // connection object for the RPC constructor
   const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
@@ -279,7 +279,7 @@ export default function setupIframe(config) {
     }
   });
 
-  setupCore(conn, window, {
+  setupCore(conn, {
     remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
   });
 

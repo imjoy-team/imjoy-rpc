@@ -284,7 +284,7 @@ export default function setupWebPython(config) {
     }
   };
 
-  // connection object for the ImJoyRPC constructor
+  // connection object for the RPC constructor
   const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
@@ -353,7 +353,7 @@ export default function setupWebPython(config) {
     languagePluginLoader.then(() => {
       // pyodide is now ready to use...
       console.log(pyodide.runPython("import sys\nsys.version"));
-      setupCore(conn, window, {
+      setupCore(conn, {
         remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
       });
       parent.postMessage(
