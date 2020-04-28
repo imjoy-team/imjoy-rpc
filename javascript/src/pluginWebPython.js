@@ -6,7 +6,7 @@
  * connection object for the plugin site
  */
 
-import { setupCore, cacheRequirements } from "./pluginCore.js";
+import { setupCore } from "./pluginCore.js";
 
 function loadScript(path, sCb, fCb) {
   let currentErrorHandler;
@@ -320,7 +320,9 @@ export default function setupWebPython(config) {
               if (!Array.isArray(m.code.requirements)) {
                 m.code.requirements = [m.code.requirements];
               }
-              cacheRequirements(m.code.requirements);
+              if (config.cache_requirements) {
+                config.cache_requirements(m.code.requirements);
+              }
             }
           } else {
             console.warn(

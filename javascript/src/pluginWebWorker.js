@@ -4,10 +4,8 @@
  * Initializes the web environment version of the platform-dependent
  * connection object for the plugin site
  */
-import { setupCore, cacheRequirements } from "./pluginCore.js";
+import { setupCore } from "./pluginCore.js";
 
-/*global importScripts*/
-self.config = {};
 (function() {
   /**
    * Loads and executes the JavaScript file with the given url
@@ -166,7 +164,10 @@ self.config = {};
           if (!Array.isArray(m.code.requirements)) {
             m.code.requirements = [m.code.requirements];
           }
-          cacheRequirements(m.code.requirements);
+          self.postMessage({
+            type: "cacheRequirements",
+            requirements: m.code.requirements
+          });
         }
         break;
       case "message":
@@ -174,12 +175,11 @@ self.config = {};
         break;
 
       // for webworker only
-      case "config":
-        self.config = e.data.config;
+      case "setupCore":
+        setupCore(conn, m.config);
         break;
     }
   });
-  setupCore(conn, self.config);
   self.postMessage({
     type: "initialized",
     dedicatedThread: true
