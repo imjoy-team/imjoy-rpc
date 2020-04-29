@@ -86,42 +86,6 @@ export default function setupWebPython(config) {
     }
   }
 
-  // loads and executes the javascript file with the given url
-  var importScript = function(url) {
-    var success = function() {
-      parent.postMessage(
-        {
-          type: "importSuccess",
-          url: url
-        },
-        "*"
-      );
-    };
-
-    var failure = function(error) {
-      parent.postMessage(
-        {
-          type: "importFailure",
-          url: url,
-          error: error.stack || String(error)
-        },
-        "*"
-      );
-    };
-
-    var error = null;
-    try {
-      loadScript(url, success, failure);
-    } catch (e) {
-      error = e;
-    }
-
-    if (error) {
-      failure(error);
-      throw error;
-    }
-  };
-
   var startup_script = `
   from js import api
   import sys
@@ -303,15 +267,6 @@ export default function setupWebPython(config) {
     if (targetOrigin === "*" || e.origin === targetOrigin) {
       const m = e.data;
       switch (m && m.type) {
-        case "import":
-          if (config.allow_execution) {
-            importScript(m.url);
-          } else {
-            console.warn(
-              "import script is not allowed (allow_execution=false)"
-            );
-          }
-          break;
         case "execute":
           if (config.allow_execution) {
             execute(m.code);
@@ -325,7 +280,7 @@ export default function setupWebPython(config) {
             }
           } else {
             console.warn(
-              "import script is not allowed (allow_execution=false)"
+              "execute script is not allowed (allow_execution=false)"
             );
           }
           break;

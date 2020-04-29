@@ -169,9 +169,6 @@ class CustomRPC {
       if (targetOrigin === "*" || e.origin === targetOrigin) {
         var m = e.data;
         switch (m && m.type) {
-          case "import":
-            this.import(m.url);
-            break;
           case "execute":
             this.execute(m.code);
             break;

@@ -16,39 +16,6 @@ import { setupCore } from "./pluginCore.js";
     throw new Error("This script can only loaded in a webworker");
   }
   /**
-   * Loads and executes the JavaScript file with the given url
-   *
-   * @param {String} url to load
-   */
-  var importScript = function(url) {
-    var error = null;
-
-    // importScripts does not throw an exception in old webkits
-    // (Opera 15.0), but we can determine a failure by the
-    // returned value which must be undefined in case of success
-    var returned = true;
-    try {
-      returned = importScripts(url);
-    } catch (e) {
-      error = e;
-      console.error("error occured when loading " + url, e);
-    }
-
-    if (error || typeof returned !== "undefined") {
-      self.postMessage({
-        type: "importFailure",
-        url: url,
-        error: error.stack || String(error)
-      });
-      if (error) {
-        throw error;
-      }
-    } else {
-      self.postMessage({ type: "importSuccess", url: url });
-    }
-  };
-
-  /**
    * Executes the given code in a jailed environment. For web
    * implementation, we're already jailed in the iframe and the
    * worker, so simply eval()
@@ -162,9 +129,6 @@ import { setupCore } from "./pluginCore.js";
   self.addEventListener("message", function(e) {
     const m = e.data;
     switch (m && m.type) {
-      case "import":
-        importScript(m.url);
-        break;
       case "execute":
         execute(m.code);
         if (m.code.type === "requirements") {

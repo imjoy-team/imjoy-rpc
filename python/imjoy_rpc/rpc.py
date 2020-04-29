@@ -255,9 +255,7 @@ class RPC():
             self.emit({"type": "error", "message": traceback_error})
 
     def _processMessage(self, data):
-        if data["type"] == "import":
-            self.emit({"type": "importSuccess", "url": data["url"]})
-        elif data["type"] == "disconnect":
+        if data["type"] == "disconnect":
             conn.abort.set()
             try:
                 if "exit" in conn.interface and callable(conn.interface["exit"]):

@@ -6,7 +6,6 @@ export class BasicConnection {
     this._fail = new Whenable(true);
     this._disconnected = false;
     this.platformSpec = {};
-    this._importCallbacks = {};
     this._executeSCb = function() {};
     this._executeFCb = function() {};
     this._messageHandler = function() {};
@@ -21,12 +20,6 @@ export class BasicConnection {
             this.platformSpec = m.spec;
             this._init.emit(this.platformSpec);
             break;
-          case "importSuccess":
-            this._handleImportSuccess(m.url);
-            break;
-          case "importFailure":
-            this._handleImportFailure(m.url, m.error);
-            break;
           case "executeSuccess":
             this._executeSCb();
             break;
@@ -40,12 +33,6 @@ export class BasicConnection {
     });
   }
 
-  importScript(path, sCb, fCb) {
-    var f = function() {};
-    this._importCallbacks[path] = { sCb: sCb || f, fCb: fCb || f };
-    this.send({ type: "import", url: path });
-  }
-
   execute(code) {
     return new Promise((resolve, reject) => {
       this._executeSCb = resolve;
@@ -56,30 +43,6 @@ export class BasicConnection {
         reject("Connection does not allow execution");
       }
     });
-  }
-
-  /**
-   * Handles import succeeded message from the plugin
-   *
-   * @param {String} url of a script loaded by the plugin
-   */
-  _handleImportSuccess(url) {
-    var sCb = this._importCallbacks[url].sCb;
-    this._importCallbacks[url] = null;
-    delete this._importCallbacks[url];
-    sCb();
-  }
-
-  /**
-   * Handles import failure message from the plugin
-   *
-   * @param {String} url of a script loaded by the plugin
-   */
-  _handleImportFailure(url, error) {
-    var fCb = this._importCallbacks[url].fCb;
-    this._importCallbacks[url] = null;
-    delete this._importCallbacks[url];
-    fCb(error);
   }
 
   /**

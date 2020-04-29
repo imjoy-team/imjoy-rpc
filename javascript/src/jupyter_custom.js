@@ -50,8 +50,8 @@ $.getScript("http://127.0.0.1:8080/imjoy-loader.js").done(function() {
   // tree view
   if (Jupyter.notebook_list) {
     if (window.self !== window.top) {
-      loadImJoyRPC().then(()=>{
-        imjoyRPC.setupRPC().then((api)=>{
+      loadImJoyRPC().then(() => {
+        imjoyRPC.setupRPC().then(api => {
           function setup() {
             Jupyter._target = "self";
             api.showMessage("ImJoy plugin initialized.");
@@ -60,18 +60,17 @@ $.getScript("http://127.0.0.1:8080/imjoy-loader.js").done(function() {
             return Jupyter.notebook_list.selected;
           }
           api.export({ setup, getSelections });
-        })
-      })
-    }
-    else{
-      loadImJoyCore().then(()=>{
+        });
+      });
+    } else {
+      loadImJoyCore().then(() => {
         const imjoy = new imjoyCore.ImJoy({
           imjoy_api: {}
         });
         imjoy.start({ workspace: "default" }).then(() => {
           console.log("ImJoy Core started successfully!");
         });
-      })
+      });
     }
   }
 });

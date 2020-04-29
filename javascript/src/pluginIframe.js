@@ -85,42 +85,6 @@ export default function setupIframe(config) {
     }
   }
 
-  // loads and executes the javascript file with the given url
-  var importScript = function(url) {
-    var success = function() {
-      parent.postMessage(
-        {
-          type: "importSuccess",
-          url: url
-        },
-        targetOrigin
-      );
-    };
-
-    var failure = function(error) {
-      parent.postMessage(
-        {
-          type: "importFailure",
-          url: url,
-          error: error.stack || String(error)
-        },
-        targetOrigin
-      );
-    };
-
-    var error = null;
-    try {
-      loadScript(url, success, failure);
-    } catch (e) {
-      error = e;
-    }
-
-    if (error) {
-      failure(error);
-      throw error;
-    }
-  };
-
   // evaluates the provided string
   var execute = async function(code) {
     try {
@@ -247,15 +211,6 @@ export default function setupIframe(config) {
     if (targetOrigin === "*" || e.origin === targetOrigin) {
       const m = e.data;
       switch (m && m.type) {
-        case "import":
-          if (config.allow_execution) {
-            importScript(m.url);
-          } else {
-            console.warn(
-              "import script is not allowed (allow_execution=false)"
-            );
-          }
-          break;
         case "execute":
           if (config.allow_execution) {
             execute(m.code);
