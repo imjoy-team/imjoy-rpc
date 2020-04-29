@@ -11,7 +11,7 @@ import { Whenable } from "./utils.js";
 class BasicConnection {
   constructor(id, type, config) {
     this._init = new Whenable(true);
-    this._fail = new Whenable();
+    this._fail = new Whenable(true);
     this._disconnected = false;
     this.id = id;
     this.platformSpec = {};

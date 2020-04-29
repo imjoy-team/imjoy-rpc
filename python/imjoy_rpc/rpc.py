@@ -34,7 +34,6 @@ class RPC():
         self.transport.connect()
         self.transport.on(self.channel, self.processMessage)
         self.local = dotdict()
-        self._init = False
         self._plugin_interfaces = {}
         self._remote_set = False
         self._store = ReferenceStore()
@@ -289,9 +288,6 @@ class RPC():
             elif d["type"] == "setInterface":
                 self.set_remote(d["api"])
                 self.emit({"type": "interfaceSetAsRemote"})
-                if not self._init:
-                    self.emit({"type": "getInterface"})
-                    self._init = True
             elif d["type"] == "interfaceSetAsRemote":
                 # self.emit({'type':'getInterface'})
                 self._remote_set = True
