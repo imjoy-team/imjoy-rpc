@@ -49,28 +49,27 @@ $.getScript("http://127.0.0.1:8080/imjoy-loader.js").done(function() {
   }
   // tree view
   if (Jupyter.notebook_list) {
-    if (window.self !== window.top) {
-      loadImJoyRPC().then(() => {
-        imjoyRPC.setupRPC().then(api => {
-          function setup() {
-            Jupyter._target = "self";
-            api.showMessage("ImJoy plugin initialized.");
-          }
-          function getSelections() {
-            return Jupyter.notebook_list.selected;
-          }
-          api.export({ setup, getSelections });
-        });
-      });
-    } else {
-      loadImJoyCore().then(() => {
+    loadImJoyAuto({ debug: true, version: "0.1.4" }).then(imjoyAuto => {
+      if (imjoyAuto.mode === "core") {
         const imjoy = new imjoyCore.ImJoy({
           imjoy_api: {}
+          //imjoy config
         });
         imjoy.start({ workspace: "default" }).then(() => {
           console.log("ImJoy Core started successfully!");
         });
-      });
-    }
+      }
+      if (imjoyAuto.mode === "plugin") {
+        const api = imjoyAuto.api;
+        function setup() {
+          Jupyter._target = "self";
+          api.alert("ImJoy plugin initialized.");
+        }
+        function getSelections() {
+          return Jupyter.notebook_list.selected;
+        }
+        api.export({ setup, getSelections });
+      }
+    });
   }
 });
