@@ -41,7 +41,7 @@ const config =  (env, argv) => ({
       {
         test: /WebWorker\.js$/,
         use: [
-          { loader: 'worker-loader',  options: { inline: true, name: (argv.filename).split('.').slice(0, -1).join('-')+'-webworker.js', fallback: true}},
+          { loader: 'worker-loader',  options: { inline: true, name: (argv.filename).split('.').slice(0, -1).join('-')+'-webworker.js', fallback: false}},
         ],
       },
       {

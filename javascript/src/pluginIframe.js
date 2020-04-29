@@ -234,11 +234,7 @@ export default function setupIframe(config) {
   const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
-      parent.postMessage(
-        { type: "message", data: data },
-        targetOrigin,
-        transferables
-      );
+      parent.postMessage(data, targetOrigin, transferables);
     },
     onMessage: function(h) {
       conn._messageHandler = h;
@@ -249,7 +245,7 @@ export default function setupIframe(config) {
   // event listener for the plugin message
   window.addEventListener("message", function(e) {
     if (targetOrigin === "*" || e.origin === targetOrigin) {
-      var m = e.data && e.data.data;
+      const m = e.data;
       switch (m && m.type) {
         case "import":
         case "importJailed": // already jailed in the iframe
@@ -278,9 +274,8 @@ export default function setupIframe(config) {
             );
           }
           break;
-        case "message":
-          conn._messageHandler(m.data);
-          break;
+        default:
+          conn._messageHandler(m);
       }
     }
   });

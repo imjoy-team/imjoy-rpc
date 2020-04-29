@@ -288,7 +288,7 @@ export default function setupWebPython(config) {
   const conn = {
     disconnect: function() {},
     send: function(data, transferables) {
-      parent.postMessage({ type: "message", data: data }, "*", transferables);
+      parent.postMessage(data, "*", transferables);
     },
     onMessage: function(h) {
       conn._messageHandler = h;
@@ -301,7 +301,7 @@ export default function setupWebPython(config) {
   window.addEventListener("message", function(e) {
     const targetOrigin = config.target_origin || "*";
     if (targetOrigin === "*" || e.origin === targetOrigin) {
-      var m = e.data && e.data.data;
+      const m = e.data;
       switch (m && m.type) {
         case "import":
         case "importJailed": // already jailed in the iframe
@@ -330,9 +330,8 @@ export default function setupWebPython(config) {
             );
           }
           break;
-        case "message":
-          conn._messageHandler(m.data);
-          break;
+        default:
+          conn._messageHandler(m);
       }
     }
   });

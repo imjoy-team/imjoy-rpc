@@ -7,7 +7,7 @@
  * this happens, the plugin initialized right inside the frame (in the
  * same thread)
  */
-import PluginWorker from "./pluginWebWorker.js";
+import PluginWorker from 'worker-loader!./pluginWebWorker.js';
 import setupIframe from "./pluginIframe.js";
 import setupWebPython from "./pluginWebPython.js";
 import { setupServiceWorker, cacheRequirements } from "./utils.js";
@@ -54,49 +54,44 @@ function setupWebWorker(config) {
   }, 2000);
 
   // forwarding messages between the worker and parent window
-  worker.addEventListener("message", function(m) {
+  worker.addEventListener("message", function(e) {
     let transferables = undefined;
-    if (m.data.type === "initialized") {
+    const m = e.data;
+    if (m.type === "initialized") {
       // remove functions
       const filteredConfig = Object.keys(config).reduce((p, c) => {
         if (typeof config[c] !== "function") p[c] = config[c];
         return p;
       }, {});
       // send config to the worker
-      worker.postMessage({
-        data: { type: "setupCore", config: filteredConfig }
-      });
+      worker.postMessage({ type: "setupCore", config: filteredConfig });
       clearTimeout(fallbackTimeout);
-    } else if (m.data.type === "imjoy_remote_api_ready") {
+    } else if (m.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
       window.dispatchEvent(
         new CustomEvent("imjoy_remote_api_ready", { detail: null })
       );
-    } else if (
-      m.data.type === "cacheRequirements" &&
-      config.cache_requirements
-    ) {
-      config.cache_requirements(m.data.requirements);
-    } else if (m.data.type === "disconnect") {
+    } else if (m.type === "cacheRequirements" && config.cache_requirements) {
+      config.cache_requirements(m.requirements);
+    } else if (m.type === "disconnect") {
       worker.terminate();
-    } else if (m.data.type === "message") {
-      if (m.data.data.__transferables__) {
-        transferables = m.data.data.__transferables__;
-        delete m.data.data.__transferables__;
+    } else {
+      if (m.__transferables__) {
+        transferables = m.__transferables__;
+        delete m.__transferables__;
       }
     }
-    parent.postMessage(m.data, "*", transferables);
+    parent.postMessage(m, "*", transferables);
   });
 
-  window.addEventListener("message", function(m) {
+  window.addEventListener("message", function(e) {
     let transferables = undefined;
-    if (m.data.type === "message") {
-      if (m.data.data.__transferables__) {
-        transferables = m.data.data.__transferables__;
-        delete m.data.data.__transferables__;
-      }
+    const m = e.data;
+    if (m.__transferables__) {
+      transferables = m.__transferables__;
+      delete m.__transferables__;
     }
-    worker.postMessage(m.data, transferables);
+    worker.postMessage(m, transferables);
   });
 }
 
@@ -172,7 +167,7 @@ class CustomRPC {
     // event listener for the plugin message
     window.addEventListener("message", e => {
       if (targetOrigin === "*" || e.origin === targetOrigin) {
-        var m = e.data && e.data.data;
+        var m = e.data;
         switch (m && m.type) {
           case "import":
           case "importJailed": // already jailed in the iframe
@@ -181,9 +176,8 @@ class CustomRPC {
           case "execute":
             this.execute(m.code);
             break;
-          case "message":
-            this.processMessage(m.data);
-            break;
+          default:
+            this.processMessage(m);
         }
       }
     });

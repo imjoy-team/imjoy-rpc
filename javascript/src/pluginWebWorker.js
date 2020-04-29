@@ -7,6 +7,14 @@
 import { setupCore } from "./pluginCore.js";
 
 (function() {
+  // make sure this runs inside a webworker
+  if (
+    typeof WorkerGlobalScope === "undefined" ||
+    !self ||
+    !(self instanceof WorkerGlobalScope)
+  ) {
+    throw new Error("This script can only loaded in a webworker")
+  }
   /**
    * Loads and executes the JavaScript file with the given url
    *
@@ -139,7 +147,7 @@ import { setupCore } from "./pluginCore.js";
     },
     send: function(data, transferables) {
       data.__transferables__ = transferables;
-      self.postMessage({ type: "message", data: data }, transferables);
+      self.postMessage(data, transferables);
     },
     onMessage: function(h) {
       conn._messageHandler = h;
@@ -152,7 +160,7 @@ import { setupCore } from "./pluginCore.js";
    * Event lisener for the plugin message
    */
   self.addEventListener("message", function(e) {
-    var m = e.data && e.data.data;
+    const m = e.data;
     switch (m && m.type) {
       case "import":
       case "importJailed": // already jailed in the iframe
@@ -170,14 +178,12 @@ import { setupCore } from "./pluginCore.js";
           });
         }
         break;
-      case "message":
-        conn._messageHandler(m.data);
-        break;
-
       // for webworker only
       case "setupCore":
         setupCore(conn, m.config);
         break;
+      default:
+        conn._messageHandler(m);
     }
   });
   self.postMessage({

@@ -69,9 +69,6 @@ class RPC():
     def emit(self, msg):
         self.transport.emit(self.channel, msg)
 
-    def emit_message(self, msg):
-        self.transport.emit(self.channel, {"type": "message", "data": msg})
-
     def load(self, plugin_path):
         local.api = dotdict(export=self.export)
         execfile(plugin_path, local.api)
@@ -136,7 +133,7 @@ class RPC():
                     names.append({"name": name, "data": data2})
                 elif isinstance(data, (str, int, float, bool)):
                     names.append({"name": name, "data": data})
-        self.emit_message({"type": "setInterface", "api": names})
+        self.emit({"type": "setInterface", "api": names})
 
     def _gen_remote_method(self, name, plugin_id=None):
         """Return remote method."""
@@ -157,7 +154,7 @@ class RPC():
                     "args": self.wrap(arguments),
                     "promise": self.wrap([resolve, reject]),
                 }
-                self.emit_message(call_func)
+                self.emit(call_func)
 
             return FuturePromise(pfunc, self.loop)
 
@@ -177,7 +174,7 @@ class RPC():
                 def pfunc(resolve, reject):
                     resolve.__jailed_pairs__ = reject
                     reject.__jailed_pairs__ = resolve
-                    self.emit_message(
+                    self.emit(
                         {
                             "type": "callback",
                             "id": id_,
@@ -197,7 +194,7 @@ class RPC():
                 # wrap keywords to a dictionary and pass to the first argument
                 if not arguments and kwargs:
                     arguments = [kwargs]
-                self.emit_message(
+                self.emit(
                     {
                         "type": "callback",
                         "id": id_,
@@ -274,9 +271,8 @@ class RPC():
             else:
                 logger.debug("Skip execution")
                 self.emit({"type": "executeSuccess"})
-        elif data["type"] == "message":
-            _data = data["data"]
-            self.queue.put(_data)
+        else:
+            self.queue.put(data)
             logger.debug("Added task to the queue")
     
     async def task_worker(self):
@@ -292,12 +288,12 @@ class RPC():
                 self.send_interface()
             elif d["type"] == "setInterface":
                 self.set_remote(d["api"])
-                self.emit_message({"type": "interfaceSetAsRemote"})
+                self.emit({"type": "interfaceSetAsRemote"})
                 if not self._init:
-                    self.emit_message({"type": "getInterface"})
+                    self.emit({"type": "getInterface"})
                     self._init = True
             elif d["type"] == "interfaceSetAsRemote":
-                # self.emit_message({'type':'getInterface'})
+                # self.emit({'type':'getInterface'})
                 self._remote_set = True
             elif d["type"] == "execute":
                 if not self._executed:

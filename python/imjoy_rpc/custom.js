@@ -5,12 +5,8 @@ function setupRPC(config){
      // event listener for the plugin message
      window.addEventListener("message", e => {
         if (this.targetOrigin  === "*" || e.origin === this.targetOrigin) {
-            const m = e.data.data
-            if(m && m.type ==='message')
-                this.comm.send(m)
-            else{
-                console.warn(m)
-            }
+            const m = e.data
+            this.comm.send(m)
         }
     });
 

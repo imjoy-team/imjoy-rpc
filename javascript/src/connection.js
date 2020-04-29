@@ -106,11 +106,12 @@ class BasicConnection {
     }
     window.addEventListener("message", function(e) {
       if (e.source === me._frame.contentWindow) {
-        if (e.data.type === "initialized") {
-          me.platformSpec = e.data.spec;
+        const m = e.data;
+        if (m.type === "initialized") {
+          me.platformSpec = m.spec;
           me._init.emit(me.platformSpec);
         } else {
-          me._messageHandler(e.data);
+          me._messageHandler(m);
         }
       }
     });
@@ -153,11 +154,7 @@ class BasicConnection {
    */
   send(data, transferables) {
     this._frame.contentWindow &&
-      this._frame.contentWindow.postMessage(
-        { type: "message", data: data },
-        "*",
-        transferables
-      );
+      this._frame.contentWindow.postMessage(data, "*", transferables);
   }
 
   /**
@@ -219,9 +216,6 @@ export function Connection(id, type, config) {
 
   this._platformConnection.onMessage(function(m) {
     switch (m && m.type) {
-      case "message":
-        me._messageHandler(m.data);
-        break;
       case "importSuccess":
         me._handleImportSuccess(m.url);
         break;
@@ -234,6 +228,8 @@ export function Connection(id, type, config) {
       case "executeFailure":
         me._executeFCb(m.error);
         break;
+      default:
+        me._messageHandler(m);
     }
   });
 }
@@ -335,13 +331,7 @@ Connection.prototype.onDisconnect = function(handler) {
  * @param {Object} data of the message to send
  */
 Connection.prototype.send = function(data, transferables) {
-  this._platformConnection.send(
-    {
-      type: "message",
-      data: data
-    },
-    transferables
-  );
+  this._platformConnection.send(data, transferables);
 };
 
 /**
