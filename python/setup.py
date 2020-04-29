@@ -10,10 +10,13 @@ DESCRIPTION = (
 )
 
 ROOT_DIR = os.path.dirname(__file__)
+
+
 def read(name):
     """Read file name contents and return it."""
     with open(os.path.join(ROOT_DIR, name)) as fil:
         return fil.read()
+
 
 with open(os.path.join(ROOT_DIR, "imjoy_rpc", "VERSION"), "r") as f:
     VERSION = json.load(f)["version"]
@@ -22,7 +25,7 @@ setup(
     name="imjoy-rpc",
     version=VERSION,
     description=DESCRIPTION,
-    long_description=read('README.md'),
+    long_description=read("README.md"),
     long_description_content_type="text/markdown",
     url="http://github.com/imjoy-team/imjoy-rpc",
     author="ImJoy Team",

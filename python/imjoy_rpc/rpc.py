@@ -1,4 +1,3 @@
-
 import os
 import sys
 import asyncio
@@ -7,78 +6,73 @@ import logging
 import janus
 import time
 import threading
-from types import ModuleType
 from werkzeug.local import Local, LocalProxy, LocalManager
-from .transports import JupyterCommTransport
+from .connection import JupyterConnection
 import inspect
 from .utils import dotdict, ReferenceStore, format_traceback
 from .utils3 import FuturePromise
-local = Local()
-local_manager = LocalManager([local])
-api = LocalProxy(local, 'api')
+
+local_context = Local()
+local_manager = LocalManager([local_context])
+api = LocalProxy(local_context, "api")
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
 logger.setLevel(logging.INFO)
 
-def start_background_loop(loop: asyncio.AbstractEventLoop) -> None:
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
 
-class RPC():
-    def __init__(self, service_class,channel='imjoy_rpc'):
+def initial_export(interface):
+    rpc = RPC()
+    rpc.set_interface(interface)
+    rpc.init()
+
+
+local_context.api = dotdict(export=initial_export)
+
+
+class RPC:
+    def __init__(self, channel="imjoy_rpc", id=None):
         self.manager_api = {}
         self.channel = channel
         self.services = {}
-        self.transport = JupyterCommTransport()
-        self.transport.connect()
-        self.transport.on(self.channel, self.processMessage)
         self.local = dotdict()
         self._plugin_interfaces = {}
         self._remote_set = False
         self._store = ReferenceStore()
         self._executed = False
         self.work_dir = os.getcwd()
-        self.loop = asyncio.get_event_loop()
-        # self.loop = asyncio.new_event_loop()
-        # t = threading.Thread(target=start_background_loop, args=(self.loop,), daemon=True)
-        # t.start()
-        self.service_class = service_class
-        self.id = '124'
+        self.id = id
         self.abort = threading.Event()
-        self.janus_queue = janus.Queue()
-        self.queue = self.janus_queue.sync_q
+        # self.janus_queue = janus.Queue()
+        # self.queue = self.janus_queue.sync_q
+        self.loop = asyncio.get_event_loop()
 
-    def run_forever(self):
-        """Run forever."""
-        # for _ in range(10):
-        #     self.loop.create_task(
-        #         self.task_worker(self.janus_queue.async_q)
-        #     )
-        asyncio.run_coroutine_threadsafe(self.task_worker(), self.loop)
-        asyncio.run_coroutine_threadsafe(self.task_worker(), self.loop)
+        self.transport = JupyterConnection()
+        self.transport.connect()
 
-        # self.loop.call_soon_threadsafe(self.task_worker)
-        # self.loop.call_soon_threadsafe(self.task_worker)
+        def process_message(msg):
+            self.loop.create_task(self.processMessage(msg))
+
+        self.transport.on(self.channel, process_message)
+
+    def init(self):
+        self.emit(
+            {
+                "type": "initialized",
+                "spec": {
+                    "dedicatedThread": True,
+                    "allowExecution": True,
+                    "language": "python",
+                },
+            }
+        )
 
     def start(self):
-        self.emit({"type": "initialized", "spec": {"dedicatedThread": True, "allowExecution": True, "language": "python"}})
         self.run_forever()
 
     def emit(self, msg):
         self.transport.emit(self.channel, msg)
 
-    def load(self, plugin_path):
-        local.api = dotdict(export=self.export)
-        execfile(plugin_path, local.api)
-        self.services['myservice']  = plugin_api
-
-    def on_connect(self, conn):
-        pass
-
-    def export(self, api_functions):
-        pass
- 
     def register(self, plugin_path):
         service = Service(plugin_path)
 
@@ -157,7 +151,6 @@ class RPC():
 
             return FuturePromise(pfunc, self.loop)
 
-
         remote_method.__remote_method = True  # pylint: disable=protected-access
         return remote_method
 
@@ -170,6 +163,7 @@ class RPC():
                 if not arguments and kwargs:
                     arguments = [kwargs]
                 self.emit({"type": "log", "message": str(arguments)})
+
                 def pfunc(resolve, reject):
                     resolve.__jailed_pairs__ = reject
                     reject.__jailed_pairs__ = resolve
@@ -183,7 +177,6 @@ class RPC():
                             "promise": self.wrap([resolve, reject]),
                         }
                     )
-
 
                 return FuturePromise(pfunc, self.loop)
 
@@ -232,29 +225,27 @@ class RPC():
         self._set_local_api(_remote)
         return _remote
 
+    def export(self, interface):
+        self.set_interface(interface)
+        self.init()
+
     def _set_local_api(self, _remote):
         """Set local API."""
-        _remote["export"] = self.set_interface
+        _remote["export"] = self.export
         _remote["utils"] = dotdict()
         _remote["WORK_DIR"] = self.work_dir
 
         self.local["api"] = _remote
-        self.set_interface(self.service_class(_remote))
+        local_context.api = _remote
 
-        # make a fake module with api
-        mod = ModuleType("imjoy")
-        sys.modules[mod.__name__] = mod  # pylint: disable=no-member
-        mod.__file__ = mod.__name__ + ".py"  # pylint: disable=no-member
-        mod.api = _remote
-
-    def processMessage(self, data):
+    async def processMessage(self, data):
         try:
-            self._processMessage(data)
+            await self._processMessage(data)
         except Exception:
             traceback_error = traceback.format_exc()
             self.emit({"type": "error", "message": traceback_error})
 
-    def _processMessage(self, data):
+    async def _processMessage(self, data):
         if data["type"] == "disconnect":
             conn.abort.set()
             try:
@@ -262,128 +253,117 @@ class RPC():
                     conn.interface["exit"]()
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Error when exiting: %s", exc)
+        elif data["type"] == "getInterface":
+            self.send_interface()
+        elif data["type"] == "setInterface":
+            self.set_remote(data["api"])
+            self.emit({"type": "interfaceSetAsRemote"})
+        elif data["type"] == "interfaceSetAsRemote":
+            # self.emit({'type':'getInterface'})
+            self._remote_set = True
         elif data["type"] == "execute":
-            if not conn.executed:
-                self.queue.put(data)
+            if not self._executed:
+                try:
+                    t = data["code"]["type"]
+                    if t == "script":
+                        content = data["code"]["content"]
+                        exec(content, self._local)
+                        self._executed = True
+                    elif t == "requirements":
+                        pass
+                    else:
+                        raise Exception("unsupported type")
+                    self.emit({"type": "executeSuccess"})
+                except Exception as e:
+                    traceback_error = traceback.format_exc()
+                    logger.error("error during execution: %s", traceback_error)
+                    self.emit({"type": "executeFailure", "error": traceback_error})
             else:
                 logger.debug("Skip execution")
                 self.emit({"type": "executeSuccess"})
-        else:
-            self.queue.put(data)
-            logger.debug("Added task to the queue")
-    
-    async def task_worker(self):
-        async_q = self.janus_queue.async_q
-        print('worker started.')
-        while True:
-            if self.abort is not None and self.abort.is_set():
-                break
-            d = await async_q.get()
-            if d is None:
-                continue
-            if d["type"] == "getInterface":
-                self.send_interface()
-            elif d["type"] == "setInterface":
-                self.set_remote(d["api"])
-                self.emit({"type": "interfaceSetAsRemote"})
-            elif d["type"] == "interfaceSetAsRemote":
-                # self.emit({'type':'getInterface'})
-                self._remote_set = True
-            elif d["type"] == "execute":
-                if not self._executed:
+        elif data["type"] == "method":
+            interface = self.interface
+            if "pid" in data and data["pid"] is not None:
+                interface = self._plugin_interfaces[data["pid"]]
+            if data["name"] in interface:
+                if "promise" in data:
+                    resolve, reject = self.unwrap(data["promise"], False)
                     try:
-                        t = d["code"]["type"]
-                        if t == "script":
-                            content = d["code"]["content"]
-                            exec(content, self._local)
-                            self._executed = True
-                        elif t == "requirements":
-                            pass
-                        else:
-                            raise Exception("unsupported type")
-                        self.emit({"type": "executeSuccess"})
-                    except Exception as e:
-                        traceback_error = traceback.format_exc()
-                        logger.error("error during execution: %s", traceback_error)
-                        self.emit({"type": "executeFailure", "error": traceback_error})
-            elif d["type"] == "method":
-                interface = self.interface
-                if "pid" in d and d["pid"] is not None:
-                    interface = self._plugin_interfaces[d["pid"]]
-                if d["name"] in interface:
-                    if "promise" in d:
-                        resolve, reject = self.unwrap(d["promise"], False)
-                        try:
-                            method = interface[d["name"]]
-                            args = self.unwrap(d["args"], True)
-                            # args.append({'id': self.id})
-                            result = method(*args)
-                            resolve(result)
-                        except Exception as e:
-                            traceback_error = traceback.format_exc()
-                            logger.error(
-                                "error in method %s: %s", d["name"], traceback_error
-                            )
-                            reject(Exception(format_traceback(traceback_error)))
-                    else:
-                        try:
-                            method = interface[d["name"]]
-                            args = self.unwrap(d["args"], True)
-                            # args.append({'id': self.id})
-                            method(*args)
-                        except Exception:
-                            logger.error(
-                                "error in method %s: %s",
-                                d["name"],
-                                traceback.format_exc(),
-                            )
-                else:
-                    raise Exception("method " + d["name"] + " is not found.")
-            elif d["type"] == "callback":
-                if "promise" in d:
-                    resolve, reject = self.unwrap(d["promise"], False)
-                    try:
-                        method = self._store.fetch(d["num"])
-                        if method is None:
-                            raise Exception(
-                                "Callback function can only called once, "
-                                "if you want to call a function for multiple times, "
-                                "please make it as a plugin api function. "
-                                "See https://imjoy.io/docs for more details."
-                            )
-                        args = self.unwrap(d["args"], True)
+                        method = interface[data["name"]]
+                        args = self.unwrap(data["args"], True)
+                        # args.append({'id': self.id})
                         result = method(*args)
+                        if result is not None and inspect.isawaitable(result):
+                            result = await result
                         resolve(result)
                     except Exception as e:
                         traceback_error = traceback.format_exc()
                         logger.error(
-                            "error in method %s: %s", d["num"], traceback_error
+                            "error in method %s: %s", data["name"], traceback_error
                         )
                         reject(Exception(format_traceback(traceback_error)))
                 else:
                     try:
-                        method = self._store.fetch(d["num"])
-                        if method is None:
-                            raise Exception(
-                                "Callback function can only called once, "
-                                "if you want to call a function for multiple times, "
-                                "please make it as a plugin api function. "
-                                "See https://imjoy.io/docs for more details."
-                            )
-                        args = self.unwrap(d["args"], True)
-                        method(*args)
+                        method = interface[data["name"]]
+                        args = self.unwrap(data["args"], True)
+                        # args.append({'id': self.id})
+                        result = method(*args)
+                        if result is not None and inspect.isawaitable(result):
+                            await result
                     except Exception:
                         logger.error(
-                            "error in method %s: %s", d["num"], traceback.format_exc()
+                            "error in method %s: %s",
+                            data["name"],
+                            traceback.format_exc(),
                         )
-            time.sleep(0.05)
+            else:
+                raise Exception("method " + data["name"] + " is not found.")
+        elif data["type"] == "callback":
+            if "promise" in data:
+                resolve, reject = self.unwrap(data["promise"], False)
+                try:
+                    method = self._store.fetch(data["num"])
+                    if method is None:
+                        raise Exception(
+                            "Callback function can only called once, "
+                            "if you want to call a function for multiple times, "
+                            "please make it as a plugin api function. "
+                            "See https://imjoy.io/docs for more details."
+                        )
+                    args = self.unwrap(data["args"], True)
+                    result = method(*args)
+                    if result is not None and inspect.isawaitable(result):
+                        result = await result
+                    resolve(result)
+                except Exception as e:
+                    traceback_error = traceback.format_exc()
+                    logger.error("error in method %s: %s", data["num"], traceback_error)
+                    reject(Exception(format_traceback(traceback_error)))
+            else:
+                try:
+                    method = self._store.fetch(data["num"])
+                    if method is None:
+                        raise Exception(
+                            "Callback function can only called once, "
+                            "if you want to call a function for multiple times, "
+                            "please make it as a plugin api function. "
+                            "See https://imjoy.io/docs for more details."
+                        )
+                    args = self.unwrap(data["args"], True)
+                    result = method(*args)
+                    if result is not None and inspect.isawaitable(result):
+                        await result
+                except Exception:
+                    logger.error(
+                        "error in method %s: %s", data["num"], traceback.format_exc()
+                    )
 
     def wrap(self, args):
         """Wrap arguments."""
         wrapped = self._encode(args)
         result = {"args": wrapped}
         return result
-    
+
     def _encode(self, a_object):
         """Encode object."""
         if a_object is None:

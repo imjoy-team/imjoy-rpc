@@ -1,6 +1,7 @@
 from ipykernel.comm import Comm
 
-class JupyterCommTransport():
+
+class JupyterConnection:
     def __init__(self):
         self._comms = {}
         self.channel_prefix = ""
@@ -14,7 +15,7 @@ class JupyterCommTransport():
                 target_name=self.channel_prefix + channel, data={"channel": channel}
             )
         comm = self._comms[channel]
-        
+
         def msg_cb(msg):
             message_callback(msg["content"]["data"])
 
@@ -22,6 +23,7 @@ class JupyterCommTransport():
 
         def remove_channel():
             del self._comms[channel]
+
         comm.on_close(remove_channel)
 
     def emit(self, channel, msg):
