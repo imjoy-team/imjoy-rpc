@@ -1,6 +1,5 @@
 const path = require('path')
 const CopyPlugin = require('copy-webpack-plugin');
-const HtmlWebpackPlugin = require('html-webpack-plugin')
 // const WriteFilePlugin = require('write-file-webpack-plugin');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
   .BundleAnalyzerPlugin
@@ -30,6 +29,9 @@ const config =  (env, argv) => ({
     }
   },
   plugins: [
+    new CopyPlugin([
+      { from: path.resolve(__dirname, 'src', 'jupyter-custom.js'), to: path.resolve(__dirname, 'dist', 'jupyter-custom.js')}
+    ]),
     new BundleAnalyzerPlugin({
       analyzerMode: 'static',
       openAnalyzer: false,

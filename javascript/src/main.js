@@ -7,7 +7,7 @@
  * this happens, the plugin initialized right inside the frame (in the
  * same thread)
  */
-import PluginWorker from 'worker-loader!./pluginWebWorker.js';
+import PluginWorker from "worker-loader!./pluginWebWorker.js";
 import setupIframe from "./pluginIframe.js";
 import setupWebPython from "./pluginWebPython.js";
 import { setupServiceWorker, cacheRequirements } from "./utils.js";

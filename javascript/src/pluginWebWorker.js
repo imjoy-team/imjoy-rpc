@@ -13,7 +13,7 @@ import { setupCore } from "./pluginCore.js";
     !self ||
     !(self instanceof WorkerGlobalScope)
   ) {
-    throw new Error("This script can only loaded in a webworker")
+    throw new Error("This script can only loaded in a webworker");
   }
   /**
    * Loads and executes the JavaScript file with the given url

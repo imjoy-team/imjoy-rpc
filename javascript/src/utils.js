@@ -75,7 +75,8 @@ export function setupServiceWorker() {
  * all) during a single plugin lifecycle - connect, disconnect and
  * connection failure
  */
-export const Whenable = function() {
+export const Whenable = function(multi_emit) {
+  this._multi_emit = multi_emit;
   this._emitted = false;
   this._handlers = [];
 };
@@ -87,7 +88,13 @@ export const Whenable = function() {
  * instead of being stored)
  */
 Whenable.prototype.emit = function(e) {
-  if (!this._emitted) {
+  if (this._multi_emit) {
+    this._emitted = true;
+    this._e = e;
+    for (let handler of this._handlers) {
+      setTimeout(handler.bind(null, e), 0);
+    }
+  } else if (!this._emitted) {
     this._emitted = true;
     this._e = e;
     var handler;

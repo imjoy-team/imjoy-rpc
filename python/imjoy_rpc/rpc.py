@@ -170,7 +170,7 @@ class RPC():
                 # wrap keywords to a dictionary and pass to the first argument
                 if not arguments and kwargs:
                     arguments = [kwargs]
-                self.emit({"type": "log", "log": str(arguments)})
+                self.emit({"type": "log", "message": str(arguments)})
                 def pfunc(resolve, reject):
                     resolve.__jailed_pairs__ = reject
                     reject.__jailed_pairs__ = resolve
@@ -253,7 +253,7 @@ class RPC():
             self._processMessage(data)
         except Exception:
             traceback_error = traceback.format_exc()
-            self.emit({"type": "error", "error": traceback_error})
+            self.emit({"type": "error", "message": traceback_error})
 
     def _processMessage(self, data):
         if data["type"] == "import":
@@ -277,8 +277,8 @@ class RPC():
     
     async def task_worker(self):
         async_q = self.janus_queue.async_q
+        print('worker started.')
         while True:
-            print('.')
             if self.abort is not None and self.abort.is_set():
                 break
             d = await async_q.get()
