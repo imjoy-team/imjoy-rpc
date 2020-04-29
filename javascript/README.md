@@ -63,3 +63,6 @@ imjoyRPC.setupRPC(config).then((api)=>{
   A callback function for caching requirements in the service worker
 
   Default: `null`
+
+
+### Implement your own connection

@@ -13,7 +13,7 @@ import setupWebPython from "./pluginWebPython.js";
 import { setupServiceWorker, cacheRequirements } from "./utils.js";
 
 export { RPC } from "./rpc.js";
-export { Connection } from "./connection.js";
+export { BasicConnection } from "./connection.js";
 export { Whenable } from "./utils.js";
 
 function inIframe() {
