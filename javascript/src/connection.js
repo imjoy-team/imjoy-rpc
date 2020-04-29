@@ -235,26 +235,6 @@ export function Connection(id, type, config) {
 }
 
 /**
- * @returns {Boolean} true if a connection obtained a dedicated
- * thread (subprocess in Node.js or a subworker in browser) and
- * therefore will not hang up on the infinite loop in the
- * untrusted code
- */
-Connection.prototype.hasDedicatedThread = function() {
-  return this._platformConnection.platformSpec.dedicatedThread;
-};
-
-/**
- * @returns {Boolean} true if a connection obtained a dedicated
- * thread (subprocess in Node.js or a subworker in browser) and
- * therefore will not hang up on the infinite loop in the
- * untrusted code
- */
-Connection.prototype.checkAllowExecution = function() {
-  return this._platformConnection.platformSpec.allowExecution;
-};
-
-/**
  * Tells the plugin to load a script with the given path, and to
  * execute it. Callbacks executed upon the corresponding responce
  * message from the plugin site
@@ -267,21 +247,6 @@ Connection.prototype.importScript = function(path, sCb, fCb) {
   var f = function() {};
   this._importCallbacks[path] = { sCb: sCb || f, fCb: fCb || f };
   this._platformConnection.send({ type: "import", url: path });
-};
-
-/**
- * Tells the plugin to load a script with the given path, and to
- * execute it in the JAILED environment. Callbacks executed upon
- * the corresponding responce message from the plugin site
- *
- * @param {String} path of a script to load
- * @param {Function} sCb to call upon success
- * @param {Function} fCb to call upon failure
- */
-Connection.prototype.importJailedScript = function(path, sCb, fCb) {
-  var f = function() {};
-  this._importCallbacks[path] = { sCb: sCb || f, fCb: fCb || f };
-  this._platformConnection.send({ type: "importJailed", url: path });
 };
 
 /**

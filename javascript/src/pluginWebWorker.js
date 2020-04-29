@@ -163,7 +163,6 @@ import { setupCore } from "./pluginCore.js";
     const m = e.data;
     switch (m && m.type) {
       case "import":
-      case "importJailed": // already jailed in the iframe
         importScript(m.url);
         break;
       case "execute":

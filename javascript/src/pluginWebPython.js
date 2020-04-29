@@ -304,7 +304,6 @@ export default function setupWebPython(config) {
       const m = e.data;
       switch (m && m.type) {
         case "import":
-        case "importJailed": // already jailed in the iframe
           if (config.allow_execution) {
             importScript(m.url);
           } else {

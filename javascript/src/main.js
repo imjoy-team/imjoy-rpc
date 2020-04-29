@@ -170,7 +170,6 @@ class CustomRPC {
         var m = e.data;
         switch (m && m.type) {
           case "import":
-          case "importJailed": // already jailed in the iframe
             this.import(m.url);
             break;
           case "execute":
