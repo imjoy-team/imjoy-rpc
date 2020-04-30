@@ -1,8 +1,8 @@
 {
   "name": "imjoy-rpc",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Remote procedure calls for ImJoy.",
-  "module": "src/main.js",
+  "module": "index.js",
   "scripts": {
     "build": "rm -rf dist && npm run build-umd && npm run build-module",
     "build-umd": "webpack --config webpack.config.js --mode development --filename imjoy-rpc.js && webpack --config webpack.config.js --mode production --devtool source-map --filename imjoy-rpc.min.js",
