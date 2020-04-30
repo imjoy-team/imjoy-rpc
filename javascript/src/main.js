@@ -112,10 +112,11 @@ export async function setupBaseFrame(config) {
 
 export function setupRPC(config) {
   config = config || {};
+  const plugin_type =
+    config.plugin_type || getParamValue("_plugin_type") || "window";
+  config.plugin_type = plugin_type;
   return new Promise((resolve, reject) => {
     if (inIframe()) {
-      const plugin_type =
-        config.plugin_type || getParamValue("_plugin_type") || "window";
       if (plugin_type === "web-worker") {
         try {
           setupWebWorker(config);
