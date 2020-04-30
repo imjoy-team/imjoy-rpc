@@ -16,6 +16,9 @@ export class BasicConnection {
       if (this._frame.contentWindow && e.source === this._frame.contentWindow) {
         const m = e.data;
         switch (m && m.type) {
+          case "spec":
+            this.platformSpec = m.spec;
+            break;
           case "initialized":
             this.platformSpec = m.spec;
             this._init.emit(this.platformSpec);

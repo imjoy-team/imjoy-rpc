@@ -123,12 +123,24 @@ import { setupCore } from "./pluginCore.js";
     onDisconnect: function() {}
   };
 
+  const spec = {
+    dedicatedThread: true,
+    allowExecution: true,
+    language: "javascript"
+  };
+
   /**
    * Event lisener for the plugin message
    */
   self.addEventListener("message", function(e) {
     const m = e.data;
     switch (m && m.type) {
+      case "getSpec":
+        self.postMessage({
+          type: "spec",
+          spec: spec
+        });
+        break;
       case "execute":
         execute(m.code);
         if (m.code.type === "requirements") {
@@ -151,10 +163,6 @@ import { setupCore } from "./pluginCore.js";
   });
   self.postMessage({
     type: "initialized",
-    spec: {
-      dedicatedThread: true,
-      allowExecution: true,
-      language: "javascript"
-    }
+    spec: spec
   });
 })();

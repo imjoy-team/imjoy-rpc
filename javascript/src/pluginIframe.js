@@ -206,11 +206,27 @@ export default function setupIframe(config) {
     _messageHandler: function() {},
     onDisconnect: function() {}
   };
+
+  const spec = {
+    dedicatedThread: false,
+    allowExecution: config.allow_execution,
+    language: "python"
+  };
+
   // event listener for the plugin message
   window.addEventListener("message", function(e) {
     if (targetOrigin === "*" || e.origin === targetOrigin) {
       const m = e.data;
       switch (m && m.type) {
+        case "getSpec":
+          parent.postMessage(
+            {
+              type: "spec",
+              spec: spec
+            },
+            targetOrigin
+          );
+          break;
         case "execute":
           if (config.allow_execution) {
             execute(m.code);
@@ -241,11 +257,7 @@ export default function setupIframe(config) {
   parent.postMessage(
     {
       type: "initialized",
-      spec: {
-        dedicatedThread: false,
-        allowExecution: config.allow_execution,
-        language: "javascript"
-      }
+      spec: spec
     },
     targetOrigin
   );

@@ -43,6 +43,11 @@ class RPC:
         self.work_dir = os.getcwd()
         self.id = id
         self.abort = threading.Event()
+        self.spec = {
+            "dedicatedThread": True,
+            "allowExecution": True,
+            "language": "python",
+        }
         # self.janus_queue = janus.Queue()
         # self.queue = self.janus_queue.sync_q
         self.loop = asyncio.get_event_loop()
@@ -59,11 +64,7 @@ class RPC:
         self.emit(
             {
                 "type": "initialized",
-                "spec": {
-                    "dedicatedThread": True,
-                    "allowExecution": True,
-                    "language": "python",
-                },
+                "spec": self.spec,
             }
         )
 
@@ -261,6 +262,13 @@ class RPC:
         elif data["type"] == "interfaceSetAsRemote":
             # self.emit({'type':'getInterface'})
             self._remote_set = True
+        elif data["type"] == "getSpec":
+            self.emit(
+                {
+                    "type": "spec",
+                    "spec": self.spec,
+                }
+            )
         elif data["type"] == "execute":
             if not self._executed:
                 try:
