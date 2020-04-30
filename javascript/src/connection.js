@@ -6,6 +6,7 @@ export class BasicConnection {
     this._fail = new Whenable(true);
     this._disconnected = false;
     this.platformSpec = {};
+    this._getSpecSCb = function() {};
     this._executeSCb = function() {};
     this._executeFCb = function() {};
     this._messageHandler = function() {};
@@ -18,6 +19,7 @@ export class BasicConnection {
         switch (m && m.type) {
           case "spec":
             this.platformSpec = m.spec;
+            this._getSpecSCb(m.spec);
             break;
           case "initialized":
             this.platformSpec = m.spec;
@@ -32,6 +34,17 @@ export class BasicConnection {
           default:
             this._messageHandler(m);
         }
+      }
+    });
+  }
+
+  getSpec() {
+    return new Promise((resolve, reject) => {
+      this._getSpecSCb = resolve;
+      try {
+        this.send({ type: "getSpec" });
+      } catch (e) {
+        reject(e);
       }
     });
   }
