@@ -120,7 +120,7 @@ class RPC:
                     data2 = {}
                     for k in data:
                         if callable(data[k]):
-                            data2[k] = "**@@FUNCTION@@**:" + k
+                            data2[k] = "rpc_method::" + k
                         else:
                             data2[k] = data[k]
                     names.append({"name": name, "data": data2})
@@ -210,7 +210,7 @@ class RPC:
                         data2 = dotdict()
                         for key in data:
                             if key in data:
-                                if data[key] == "**@@FUNCTION@@**:" + key:
+                                if data[key] == "rpc_method::" + key:
                                     data2[key] = self._gen_remote_method(
                                         name + "." + key
                                     )

@@ -235,7 +235,7 @@ export default function setupIframe(config) {
   });
 
   setupCore(conn, {
-    remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
+    remote_function_mapping: ["close", "resize", "on", "off", "emit", "refresh"]
   });
 
   parent.postMessage(

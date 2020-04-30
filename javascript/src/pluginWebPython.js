@@ -308,8 +308,12 @@ export default function setupWebPython(config) {
     languagePluginLoader.then(() => {
       // pyodide is now ready to use...
       console.log(pyodide.runPython("import sys\nsys.version"));
+
       setupCore(conn, {
-        remote_interfaces: ["close", "resize", "on", "off", "emit", "refresh"]
+        remote_function_mapping:
+          config.plugin_type === "web-python-window"
+            ? ["close", "resize", "on", "off", "emit", "refresh"]
+            : null
       });
       parent.postMessage(
         {

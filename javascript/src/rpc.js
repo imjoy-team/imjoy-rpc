@@ -56,12 +56,12 @@ export class RPC {
     this.config = config || {};
     this._interface = {
       // this initial setup will make sure we wait until the api is exported.
-      setup: () => {
-        return new Promise((resolve, reject) => {
-          this._interfaceSetAsRemoteHandler = resolve;
-          this._disconnectHandler = reject;
-        });
-      }
+      // setup: () => {
+      //   return new Promise((resolve, reject) => {
+      //     this._interfaceSetAsRemoteHandler = resolve;
+      //     this._disconnectHandler = reject;
+      //   });
+      // }
     };
     this._plugin_interfaces = {};
     this._remote = null;
@@ -137,11 +137,17 @@ export class RPC {
    * @param {Object} _interface to set
    */
   setInterface(_interface) {
-    if (this.config.remote_interfaces) {
-      for (let func_name of this.config.remote_interfaces) {
-        _interface[func_name] = (...args) => {
-          this._remote[func_name](...args);
-        };
+    if (this.config.remote_function_mapping) {
+      for (let func_name of this.config.remote_function_mapping) {
+        if (_interface.constructor === Object) {
+          _interface[func_name] = (...args) => {
+            this._remote[func_name](...args);
+          };
+        } else if (_interface.constructor.constructor === Function) {
+          _interface.constructor.prototype[func_name] = (...args) => {
+            this._remote[func_name](...args);
+          };
+        }
       }
     }
     this._interface = _interface;
@@ -154,8 +160,11 @@ export class RPC {
    */
   _sendInterface() {
     var names = [];
-    for (var name in this._interface) {
-      if (this._interface.hasOwnProperty(name)) {
+    if (!this._interface) {
+      throw new Error("interface is not set.");
+    }
+    if (this._interface.constructor === Object) {
+      for (var name of Object.keys(this._interface)) {
         if (name.startsWith("_")) continue;
         if (typeof this._interface[name] === "function") {
           names.push({ name: name, data: null, type: "function" });
@@ -163,13 +172,11 @@ export class RPC {
           var data = this._interface[name];
           if (data !== null && typeof data === "object") {
             var data2 = {};
-            for (var k in data) {
-              if (data.hasOwnProperty(k)) {
-                if (typeof data[k] === "function") {
-                  data2[k] = "**@@FUNCTION@@**:" + k;
-                } else {
-                  data2[k] = data[k];
-                }
+            for (var k of Object.keys(data)) {
+              if (typeof data[k] === "function") {
+                data2[k] = "rpc_method::" + k;
+              } else {
+                data2[k] = data[k];
               }
             }
             names.push({ name: name, data: data2, type: "object" });
@@ -179,16 +186,24 @@ export class RPC {
         }
       }
     }
-    // add prototypes
-    var functions = Object.getOwnPropertyNames(
-      Object.getPrototypeOf(this._interface)
-    );
-    for (var i = 0; i < functions.length; i++) {
-      var name_ = functions[i];
-      if (name_.startsWith("_")) continue;
-      if (typeof this._interface[name_] === "function") {
-        names.push({ name: name_, data: null });
+    // a class
+    else if (this._interface.constructor === Function) {
+      throw new Error("Please instantiate the class before exportting it.");
+    }
+    // instance of a class
+    else if (this._interface.constructor.constructor === Function) {
+      var functions = Object.getOwnPropertyNames(
+        Object.getPrototypeOf(this._interface)
+      ).concat(Object.keys(this._interface));
+      for (var i = 0; i < functions.length; i++) {
+        var name_ = functions[i];
+        if (name_.startsWith("_") || name_ === "constructor") continue;
+        if (typeof this._interface[name_] === "function") {
+          names.push({ name: name_, data: null });
+        }
       }
+    } else {
+      throw Error("Unsupported interface type");
     }
     this._connection.send({ type: "setInterface", api: names });
   }
@@ -336,7 +351,7 @@ export class RPC {
    * @param {Array} names list of function names
    */
   _setRemote(api) {
-    this._remote = { ndarray: this._ndarray };
+    this._remote = {};
     var i, name, data, type;
     for (i = 0; i < api.length; i++) {
       name = api[i].name;
@@ -349,7 +364,7 @@ export class RPC {
           var data2 = {};
           for (var key in data) {
             if (data.hasOwnProperty(key)) {
-              if (data[key] === "**@@FUNCTION@@**:" + key) {
+              if (data[key] === "rpc_method::" + key) {
                 data2[key] = this._genRemoteMethod(name + "." + key);
               } else {
                 data2[key] = data[key];
