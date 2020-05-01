@@ -13,7 +13,7 @@ import inspect
 from .utils import dotdict, ReferenceStore, format_traceback
 from .utils3 import FuturePromise
 
-API_VERSION= "0.2.0"
+API_VERSION = "0.2.0"
 
 local_context = Local()
 local_manager = LocalManager([local_context])
@@ -34,13 +34,14 @@ local_context.api = dotdict(export=initial_export)
 
 
 class RPC:
-    def __init__(self, 
-            channel="imjoy_rpc",
-            name="imjoy_rpc_python", 
-            description="[TODO]",
-            token=None,
-            allow_execution=True
-        ):
+    def __init__(
+        self,
+        channel="imjoy_rpc",
+        name="imjoy_rpc_python",
+        description="[TODO]",
+        token=None,
+        allow_execution=True,
+    ):
         self.manager_api = {}
         self.channel = channel
         self.services = {}
@@ -51,7 +52,7 @@ class RPC:
         self.work_dir = os.getcwd()
 
         self.name = name
-        self.id = self.name + '-' + str(uuid.uuid4())
+        self.id = self.name + "-" + str(uuid.uuid4())
         self.token = token or str(uuid.uuid4())
         self.description = description
         self.abort = threading.Event()
@@ -81,10 +82,7 @@ class RPC:
 
     def init(self):
         self.emit(
-            {
-                "type": "initialized",
-                "config": self.config,
-            }
+            {"type": "initialized", "config": self.config,}
         )
 
     def start(self):
@@ -282,10 +280,7 @@ class RPC:
             self._remote_set = True
         elif data["type"] == "getConfig":
             self.emit(
-                {
-                    "type": "config",
-                    "config": self.config,
-                }
+                {"type": "config", "config": self.config,}
             )
         elif data["type"] == "execute":
             if self.allow_execution:
@@ -304,7 +299,9 @@ class RPC:
                     logger.error("error during execution: %s", traceback_error)
                     self.emit({"type": "executeFailure", "error": traceback_error})
             else:
-                self.emit({"type": "executeFailure", "error": "execution is not allowed"})
+                self.emit(
+                    {"type": "executeFailure", "error": "execution is not allowed"}
+                )
                 logger.warn("execution is blocked due to allow_execution=False")
 
         elif data["type"] == "method":
