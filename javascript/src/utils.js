@@ -1,3 +1,79 @@
+import Ajv from "ajv";
+const ajv = new Ajv();
+
+export function randId() {
+  return Math.random()
+    .toString(36)
+    .substr(2, 10);
+}
+
+export const dtypeToTypedArray = {
+  int8: "Int8Array",
+  int16: "Int16Array",
+  int32: "Int32Array",
+  uint8: "Uint8Array",
+  uint16: "Uint16Array",
+  uint32: "Uint32Array",
+  float32: "Float32Array",
+  float64: "Float64Array",
+  array: "Array"
+};
+export const typedArrayToDtype = {
+  Int8Array: "int8",
+  Int16Array: "int16",
+  Int32Array: "int32",
+  Uint8Array: "uint8",
+  Uint16Array: "uint16",
+  Uint32Array: "uint32",
+  Float32Array: "float32",
+  Float64Array: "float64",
+  Array: "array"
+};
+
+export const CONFIG_SCHEMA = ajv.compile({
+  properties: {
+    allow_execution: { type: "boolean" },
+    api_version: { type: "string" },
+    cover: { type: ["string", "array"] },
+    dedicated_thread: { type: "boolean" },
+    description: { type: "string", maxLength: 256 },
+    flags: { type: "array" },
+    icon: { type: "string" },
+    id: { type: "string" },
+    inputs: { type: ["object", "array"] },
+    labels: { type: "array" },
+    lang: { type: "string" },
+    name: { type: "string" },
+    outputs: { type: ["object", "array"] },
+    tags: { type: "array" },
+    token: { type: "string" },
+    ui: { type: "string" },
+    version: { type: "string" }
+  },
+  required: ["api_version", "allow_execution", "token", "id"]
+});
+
+export function compareVersions(v1, comparator, v2) {
+  comparator = comparator == "=" ? "==" : comparator;
+  if (
+    ["==", "===", "<", "<=", ">", ">=", "!=", "!=="].indexOf(comparator) == -1
+  ) {
+    throw new Error("Invalid comparator. " + comparator);
+  }
+  var v1parts = v1.split("."),
+    v2parts = v2.split(".");
+  var maxLen = Math.max(v1parts.length, v2parts.length);
+  var part1, part2;
+  var cmp = 0;
+  for (var i = 0; i < maxLen && !cmp; i++) {
+    part1 = parseInt(v1parts[i], 10) || 0;
+    part2 = parseInt(v2parts[i], 10) || 0;
+    if (part1 < part2) cmp = 1;
+    if (part1 > part2) cmp = -1;
+  }
+  return eval("0" + comparator + cmp);
+}
+
 function cacheUrlInServiceWorker(url) {
   return new Promise(function(resolve, reject) {
     const message = {
@@ -43,7 +119,7 @@ export async function cacheRequirements(requirements) {
   }
 }
 
-export function setupServiceWorker() {
+export function setupServiceWorker(cacheCallback) {
   // register service worker for offline access
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function() {
@@ -60,6 +136,19 @@ export function setupServiceWorker() {
           console.log("ServiceWorker registration failed: ", err);
         }
       );
+      targetOrigin = targetOrigin || "*";
+      cacheCallback = cacheCallback || cacheRequirements;
+      if (cacheCallback && typeof cacheCallback !== "function") {
+        throw new Error("config.cache_requirements must be a function");
+      }
+      window.addEventListener("message", function(e) {
+        if (targetOrigin === "*" || e.origin === targetOrigin) {
+          const m = e.data;
+          if (m.type === "cacheRequirements") {
+            cacheCallback(m.requirements);
+          }
+        }
+      });
     });
   }
 }

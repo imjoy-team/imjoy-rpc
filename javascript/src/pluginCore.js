@@ -5,17 +5,17 @@
  */
 import { RPC } from "./rpc.js";
 
-export function setupCore(connection, config) {
+export function connectRPC(connection, config) {
   const application = {};
   config = config || {};
 
-  const site = new RPC(connection, config);
-  site.onGetInterface(function() {
+  const rpc = new RPC(connection, config);
+  rpc.onGetInterface(function() {
     launchConnected();
   });
 
-  site.onRemoteUpdate(function() {
-    application.remote = site.getRemote();
+  rpc.onRemoteUpdate(function() {
+    application.remote = rpc.getRemote();
     if (!application.remote) return;
     const api = application.remote || {};
     if (api.export) {
@@ -99,7 +99,7 @@ export function setupCore(connection, config) {
    * @param {Object} _interface to set
    */
   application.setInterface = function(_interface) {
-    site.setInterface(_interface);
+    rpc.setInterface(_interface);
   };
 
   /**
@@ -107,6 +107,6 @@ export function setupCore(connection, config) {
    * notification message) and destroys itself
    */
   application.disconnect = function(_interface) {
-    site.disconnect();
+    rpc.disconnect();
   };
 }

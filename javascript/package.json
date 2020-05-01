@@ -1,6 +1,6 @@
 {
   "name": "imjoy-rpc",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Remote procedure calls for ImJoy.",
   "module": "index.js",
   "scripts": {
@@ -77,5 +77,11 @@
     "webpack-merge": "^4.1.1",
     "worker-loader": "^2.0.0",
     "write-file-webpack-plugin": "^4.5.1"
+  },
+  "eslintConfig": {
+  "globals": {
+    "document": true,
+    "window": true
+    }
   }
 }

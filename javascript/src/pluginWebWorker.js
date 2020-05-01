@@ -4,7 +4,9 @@
  * Initializes the web environment version of the platform-dependent
  * connection object for the plugin site
  */
-import { setupCore } from "./pluginCore.js";
+import { connectRPC } from "./pluginCore.js";
+import { API_VERSION } from "./rpc.js";
+import { randId } from "./utils.js";
 
 (function() {
   // make sure this runs inside a webworker
@@ -123,10 +125,12 @@ import { setupCore } from "./pluginCore.js";
     onDisconnect: function() {}
   };
 
-  const spec = {
-    dedicatedThread: true,
-    allowExecution: true,
-    language: "javascript"
+  const config = {
+    type: "web-worker",
+    dedicated_thread: true,
+    allow_execution: true,
+    lang: "javascript",
+    api_version: API_VERSION
   };
 
   /**
@@ -135,10 +139,10 @@ import { setupCore } from "./pluginCore.js";
   self.addEventListener("message", function(e) {
     const m = e.data;
     switch (m && m.type) {
-      case "getSpec":
+      case "getConfig":
         self.postMessage({
-          type: "spec",
-          spec: spec
+          type: "config",
+          config: config
         });
         break;
       case "execute":
@@ -154,8 +158,8 @@ import { setupCore } from "./pluginCore.js";
         }
         break;
       // for webworker only
-      case "setupCore":
-        setupCore(conn, m.config);
+      case "connectRPC":
+        connectRPC(conn, m.config);
         break;
       default:
         conn._messageHandler(m);
@@ -163,6 +167,6 @@ import { setupCore } from "./pluginCore.js";
   });
   self.postMessage({
     type: "initialized",
-    spec: spec
+    config: config
   });
 })();

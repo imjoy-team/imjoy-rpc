@@ -30,7 +30,7 @@ const config =  (env, argv) => ({
   },
   plugins: [
     new CopyPlugin([
-      { from: path.resolve(__dirname, 'src', 'jupyter-custom.js'), to: path.resolve(__dirname, 'dist', 'jupyter-custom.js')}
+      { from: path.resolve(__dirname, 'src', 'jupyter-connection.js'), to: path.resolve(__dirname, 'dist', 'jupyter-connection.js')}
     ]),
     new BundleAnalyzerPlugin({
       analyzerMode: 'static',

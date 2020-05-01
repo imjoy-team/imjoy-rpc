@@ -6,49 +6,12 @@
  * connection object for the plugin site
  */
 
-import { setupCore } from "./pluginCore.js";
-
-function loadScript(path, sCb, fCb) {
-  let currentErrorHandler;
-  var script = document.createElement("script");
-  script.src = path;
-
-  var clear = function() {
-    script.onload = null;
-    script.onerror = null;
-    script.onreadystatechange = null;
-    script.parentNode.removeChild(script);
-    currentErrorHandler = function() {};
-  };
-
-  var success = function() {
-    clear();
-    sCb();
-  };
-
-  var failure = function() {
-    clear();
-    fCb();
-  };
-
-  currentErrorHandler = failure;
-
-  script.onerror = failure;
-  script.onload = success;
-  script.onreadystatechange = function() {
-    var state = script.readyState;
-    if (state === "loaded" || state === "complete") {
-      success();
-    }
-  };
-
-  document.head.appendChild(script);
-}
+import { connectRPC } from "./pluginCore.js";
+import { API_VERSION } from "./rpc.js";
+import { randId } from "./utils.js";
 
 export default function setupWebPython(config) {
   config = config || {};
-  /*global api pyodide languagePluginLoader*/
-
   // Create a new, plain <span> element
   function _htmlToElement(html) {
     var template = document.createElement("template");
@@ -99,8 +62,8 @@ export default function setupWebPython(config) {
   var execute_python_code = function(code) {
     try {
       if (!_export_plugin_api) {
-        _export_plugin_api = api.export;
-        api.export = function(p) {
+        _export_plugin_api = window.api.export;
+        window.api.export = function(p) {
           if (typeof p === "object") {
             const _api = {};
             for (let k in p) {
@@ -111,8 +74,8 @@ export default function setupWebPython(config) {
             _export_plugin_api(_api);
           } else if (typeof p === "function") {
             const _api = {};
-            const getattr = pyodide.pyimport("getattr");
-            const hasattr = pyodide.pyimport("hasattr");
+            const getattr = window.pyodide.pyimport("getattr");
+            const hasattr = window.pyodide.pyimport("hasattr");
             for (let k of Object.getOwnPropertyNames(p)) {
               if (!k.startsWith("_") && hasattr(p, k)) {
                 const func = getattr(p, k);
@@ -127,8 +90,8 @@ export default function setupWebPython(config) {
           }
         };
       }
-      pyodide.runPython(startup_script);
-      pyodide.runPython(code.content);
+      window.pyodide.runPython(startup_script);
+      window.pyodide.runPython(code.content);
     } catch (e) {
       throw e;
     }
@@ -186,7 +149,7 @@ export default function setupWebPython(config) {
                 python_packages.push(code.requirements[i]);
               }
             }
-            await pyodide.loadPackage(python_packages);
+            await window.pyodide.loadPackage(python_packages);
           } else {
             throw "unsupported requirements definition";
           }
@@ -261,22 +224,20 @@ export default function setupWebPython(config) {
     onDisconnect: function() {}
   };
 
-  const spec = {
-    dedicatedThread: false,
-    allowExecution: config.allow_execution,
-    language: "python"
-  };
+  config.dedicated_thread = false;
+  config.lang = "python";
+  config.api_version = API_VERSION;
 
   // event listener for the plugin message
   window.addEventListener("message", function(e) {
     if (targetOrigin === "*" || e.origin === targetOrigin) {
       const m = e.data;
       switch (m && m.type) {
-        case "getSpec":
+        case "getConfig":
           parent.postMessage(
             {
-              type: "spec",
-              spec: spec
+              type: "config",
+              config: config
             },
             targetOrigin
           );
@@ -287,9 +248,6 @@ export default function setupWebPython(config) {
             if (m.code.type === "requirements") {
               if (!Array.isArray(m.code.requirements)) {
                 m.code.requirements = [m.code.requirements];
-              }
-              if (config.cache_requirements) {
-                config.cache_requirements(m.code.requirements);
               }
             }
           } else {
@@ -319,20 +277,20 @@ export default function setupWebPython(config) {
       }
     };
 
-    languagePluginLoader.then(() => {
+    window.languagePluginLoader.then(() => {
       // pyodide is now ready to use...
-      console.log(pyodide.runPython("import sys\nsys.version"));
+      console.log(window.pyodide.runPython("import sys\nsys.version"));
 
-      setupCore(conn, {
+      connectRPC(conn, {
         remote_function_mapping:
-          config.plugin_type === "web-python-window"
+          config.type === "web-python-window"
             ? ["close", "resize", "on", "off", "emit", "refresh"]
             : null
       });
       parent.postMessage(
         {
           type: "initialized",
-          spec: spec
+          config: config
         },
         targetOrigin
       );

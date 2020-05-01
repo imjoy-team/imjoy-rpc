@@ -10,11 +10,11 @@
 import PluginWorker from "worker-loader!./pluginWebWorker.js";
 import setupIframe from "./pluginIframe.js";
 import setupWebPython from "./pluginWebPython.js";
-import { setupServiceWorker, cacheRequirements } from "./utils.js";
+import { setupServiceWorker, cacheRequirements, randId } from "./utils.js";
 
 export { RPC } from "./rpc.js";
 export { BasicConnection } from "./connection.js";
-export { Whenable } from "./utils.js";
+export { Whenable, randId } from "./utils.js";
 
 function inIframe() {
   try {
@@ -58,21 +58,25 @@ function setupWebWorker(config) {
     let transferables = undefined;
     const m = e.data;
     if (m.type === "initialized") {
-      // remove functions
-      const filteredConfig = Object.keys(config).reduce((p, c) => {
-        if (typeof config[c] !== "function") p[c] = config[c];
-        return p;
-      }, {});
       // send config to the worker
-      worker.postMessage({ type: "setupCore", config: filteredConfig });
+      worker.postMessage({ type: "connectRPC", config: config });
       clearTimeout(fallbackTimeout);
+      // complete the missing fields
+      m.config = Object.assign(m.config, {
+        name: config.name,
+        id: config.id,
+        description: config.description
+      });
     } else if (m.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
       window.dispatchEvent(
         new CustomEvent("imjoy_remote_api_ready", { detail: null })
       );
-    } else if (m.type === "cacheRequirements" && config.cache_requirements) {
-      config.cache_requirements(m.requirements);
+    } else if (
+      m.type === "cacheRequirements" &&
+      typeof cache_requirements === "function"
+    ) {
+      cache_requirements(m.requirements);
     } else if (m.type === "disconnect") {
       worker.terminate();
     } else {
@@ -100,8 +104,10 @@ export async function setupBaseFrame(config) {
   config.allow_execution = config.allow_execution || true;
   config.enable_service_worker = config.enable_service_worker || true;
   if (config.enable_service_worker) {
-    setupServiceWorker();
-    config.cache_requirements = config.cache_requirements || cacheRequirements;
+    setupServiceWorker(config.cache_requirements);
+  }
+  if (config.cache_requirements) {
+    delete config.cache_requirements;
   }
   // expose the api object to window globally.
   // note: the returned value will be null for webworker
@@ -112,9 +118,16 @@ export async function setupBaseFrame(config) {
 
 export function setupRPC(config) {
   config = config || {};
-  const plugin_type =
-    config.plugin_type || getParamValue("_plugin_type") || "window";
-  config.plugin_type = plugin_type;
+  const plugin_type = config.type || getParamValue("_plugin_type") || "window";
+  config.type = plugin_type;
+  config.id = config.id || randId();
+  config.allow_execution = config.allow_execution || false;
+  config.token = config.token = randId();
+  // remove functions
+  config = Object.keys(config).reduce((p, c) => {
+    if (typeof config[c] !== "function") p[c] = config[c];
+    return p;
+  }, {});
   return new Promise((resolve, reject) => {
     if (inIframe()) {
       if (plugin_type === "web-worker") {

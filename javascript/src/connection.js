@@ -1,12 +1,13 @@
-import { Whenable } from "./utils.js";
+import { Whenable, compareVersions, CONFIG_SCHEMA } from "./utils.js";
+import { API_VERSION } from "./rpc.js";
 
 export class BasicConnection {
   constructor(sourceIframe) {
     this._init = new Whenable(true);
     this._fail = new Whenable(true);
     this._disconnected = false;
-    this.platformSpec = {};
-    this._getSpecSCb = function() {};
+    this.pluginConfig = {};
+    this._getConfigSCb = function() {};
     this._executeSCb = function() {};
     this._executeFCb = function() {};
     this._messageHandler = function() {};
@@ -17,13 +18,15 @@ export class BasicConnection {
       if (this._frame.contentWindow && e.source === this._frame.contentWindow) {
         const m = e.data;
         switch (m && m.type) {
-          case "spec":
-            this.platformSpec = m.spec;
-            this._getSpecSCb(m.spec);
+          case "config":
+            this.pluginConfig = m.config;
+            this._checkConfig(this.pluginConfig);
+            this._getConfigSCb(m.config);
             break;
           case "initialized":
-            this.platformSpec = m.spec;
-            this._init.emit(this.platformSpec);
+            this.pluginConfig = m.config;
+            this._checkConfig(this.pluginConfig);
+            this._init.emit(this.pluginConfig);
             break;
           case "executeSuccess":
             this._executeSCb();
@@ -38,11 +41,29 @@ export class BasicConnection {
     });
   }
 
-  getSpec() {
+  _checkConfig(pluginConfig) {
+    pluginConfig = pluginConfig || {};
+    if (!CONFIG_SCHEMA(pluginConfig)) {
+      const error = CONFIG_SCHEMA.errors;
+      console.error("Invalid config: " + pluginConfig.name || "unkown", error);
+      throw error;
+    }
+    if (compareVersions(pluginConfig.api_version, "<", API_VERSION)) {
+      console.warn(
+        `The imjoy-rpc version of the peer (${pluginConfig.api_version}) is older than the one used by the imjoy-core.`
+      );
+    } else if (compareVersions(pluginConfig.api_version, ">", API_VERSION)) {
+      throw new Error(
+        `The imjoy-rpc version of the peer (${pluginConfig.api_version}) is newer than the one used by imjoy-core.`
+      );
+    }
+  }
+
+  getConfig() {
     return new Promise((resolve, reject) => {
-      this._getSpecSCb = resolve;
+      this._getConfigSCb = resolve;
       try {
-        this.send({ type: "getSpec" });
+        this.send({ type: "getConfig" });
       } catch (e) {
         reject(e);
       }
@@ -53,7 +74,7 @@ export class BasicConnection {
     return new Promise((resolve, reject) => {
       this._executeSCb = resolve;
       this._executeFCb = reject;
-      if (this.platformSpec.allowExecution) {
+      if (this.pluginConfig.allow_execution) {
         this.send({ type: "execute", code: code });
       } else {
         reject("Connection does not allow execution");

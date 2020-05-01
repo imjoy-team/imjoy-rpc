@@ -5,44 +5,9 @@
  * Initializes the web environment version of the platform-dependent
  * connection object for the plugin site
  */
-import { setupCore } from "./pluginCore.js";
-
-function loadScript(path, sCb, fCb) {
-  let currentErrorHandler;
-  var script = document.createElement("script");
-  script.src = path;
-
-  var clear = function() {
-    script.onload = null;
-    script.onerror = null;
-    script.onreadystatechange = null;
-    script.parentNode.removeChild(script);
-    currentErrorHandler = function() {};
-  };
-
-  var success = function() {
-    clear();
-    sCb();
-  };
-
-  var failure = function() {
-    clear();
-    fCb();
-  };
-
-  currentErrorHandler = failure;
-
-  script.onerror = failure;
-  script.onload = success;
-  script.onreadystatechange = function() {
-    var state = script.readyState;
-    if (state === "loaded" || state === "complete") {
-      success();
-    }
-  };
-
-  document.head.appendChild(script);
-}
+import { connectRPC } from "./pluginCore.js";
+import { API_VERSION } from "./rpc.js";
+import { randId } from "./utils.js";
 
 export default function setupIframe(config) {
   config = config || {};
@@ -207,22 +172,20 @@ export default function setupIframe(config) {
     onDisconnect: function() {}
   };
 
-  const spec = {
-    dedicatedThread: false,
-    allowExecution: config.allow_execution,
-    language: "python"
-  };
+  config.dedicated_thread = false;
+  config.lang = "javascript";
+  config.api_version = API_VERSION;
 
   // event listener for the plugin message
   window.addEventListener("message", function(e) {
     if (targetOrigin === "*" || e.origin === targetOrigin) {
       const m = e.data;
       switch (m && m.type) {
-        case "getSpec":
+        case "getConfig":
           parent.postMessage(
             {
-              type: "spec",
-              spec: spec
+              type: "config",
+              config: config
             },
             targetOrigin
           );
@@ -233,9 +196,6 @@ export default function setupIframe(config) {
             if (m.code.type === "requirements") {
               if (!Array.isArray(m.code.requirements)) {
                 m.code.requirements = [m.code.requirements];
-              }
-              if (config.cache_requirements) {
-                config.cache_requirements(m.code.requirements);
               }
             }
           } else {
@@ -250,14 +210,14 @@ export default function setupIframe(config) {
     }
   });
 
-  setupCore(conn, {
+  connectRPC(conn, {
     remote_function_mapping: ["close", "resize", "on", "off", "emit", "refresh"]
   });
 
   parent.postMessage(
     {
       type: "initialized",
-      spec: spec
+      config: config
     },
     targetOrigin
   );

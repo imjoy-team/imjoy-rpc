@@ -5,12 +5,15 @@ import traceback
 import logging
 import janus
 import time
+import uuid
 import threading
 from werkzeug.local import Local, LocalProxy, LocalManager
 from .connection import JupyterConnection
 import inspect
 from .utils import dotdict, ReferenceStore, format_traceback
 from .utils3 import FuturePromise
+
+API_VERSION= "0.2.0"
 
 local_context = Local()
 local_manager = LocalManager([local_context])
@@ -31,7 +34,13 @@ local_context.api = dotdict(export=initial_export)
 
 
 class RPC:
-    def __init__(self, channel="imjoy_rpc", id=None):
+    def __init__(self, 
+            channel="imjoy_rpc",
+            name="imjoy_rpc_python", 
+            description="[TODO]",
+            token=None,
+            allow_execution=True
+        ):
         self.manager_api = {}
         self.channel = channel
         self.services = {}
@@ -39,14 +48,24 @@ class RPC:
         self._plugin_interfaces = {}
         self._remote_set = False
         self._store = ReferenceStore()
-        self._executed = False
         self.work_dir = os.getcwd()
-        self.id = id
+
+        self.name = name
+        self.id = self.name + '-' + str(uuid.uuid4())
+        self.token = token or str(uuid.uuid4())
+        self.description = description
         self.abort = threading.Event()
-        self.spec = {
-            "dedicatedThread": True,
-            "allowExecution": True,
-            "language": "python",
+        self.allow_execution = allow_execution
+        self.config = {
+            "allow_execution": self.allow_execution,
+            "api_version": API_VERSION,
+            "dedicated_thread": True,
+            "description": self.description,
+            "id": self.id,
+            "lang": "python",
+            "name": self.name,
+            "token": self.token,
+            "type": "native-python",
         }
         # self.janus_queue = janus.Queue()
         # self.queue = self.janus_queue.sync_q
@@ -64,7 +83,7 @@ class RPC:
         self.emit(
             {
                 "type": "initialized",
-                "spec": self.spec,
+                "config": self.config,
             }
         )
 
@@ -260,23 +279,21 @@ class RPC:
             self.set_remote(data["api"])
             self.emit({"type": "interfaceSetAsRemote"})
         elif data["type"] == "interfaceSetAsRemote":
-            # self.emit({'type':'getInterface'})
             self._remote_set = True
-        elif data["type"] == "getSpec":
+        elif data["type"] == "getConfig":
             self.emit(
                 {
-                    "type": "spec",
-                    "spec": self.spec,
+                    "type": "config",
+                    "config": self.config,
                 }
             )
         elif data["type"] == "execute":
-            if not self._executed:
+            if self.allow_execution:
                 try:
                     t = data["code"]["type"]
                     if t == "script":
                         content = data["code"]["content"]
                         exec(content, self._local)
-                        self._executed = True
                     elif t == "requirements":
                         pass
                     else:
@@ -287,8 +304,9 @@ class RPC:
                     logger.error("error during execution: %s", traceback_error)
                     self.emit({"type": "executeFailure", "error": traceback_error})
             else:
-                logger.debug("Skip execution")
-                self.emit({"type": "executeSuccess"})
+                self.emit({"type": "executeFailure", "error": "execution is not allowed"})
+                logger.warn("execution is blocked due to allow_execution=False")
+
         elif data["type"] == "method":
             interface = self.interface
             if "pid" in data and data["pid"] is not None:

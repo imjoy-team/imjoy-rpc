@@ -2,41 +2,19 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-// var _dtype2typedarray = {
-//   int8: 'Int8Array',
-//   int16: 'Int16Array',
-//   int32: 'Int32Array',
-//   uint8: 'Uint8Array',
-//   uint16: 'Uint16Array',
-//   uint32: 'Uint32Array',
-//   float32: 'Float32Array',
-//   float64: 'Float64Array',
-//   array: 'Array'
-// }
-const _typedarray2dtype = {
-  Int8Array: "int8",
-  Int16Array: "int16",
-  Int32Array: "int32",
-  Uint8Array: "uint8",
-  Uint16Array: "uint16",
-  Uint32Array: "uint32",
-  Float32Array: "float32",
-  Float64Array: "float64",
-  Array: "array"
-};
-const ARRAY_CHUNK = 1000000;
+import { randId, typedArrayToDtype } from "./utils.js";
+
+export const API_VERSION = "0.2.0";
+
 const ArrayBufferView = Object.getPrototypeOf(
   Object.getPrototypeOf(new Uint8Array())
 ).constructor;
-const _appendBuffer = function(buffer1, buffer2) {
+
+function _appendBuffer(buffer1, buffer2) {
   const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
   tmp.set(new Uint8Array(buffer1), 0);
   tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
   return tmp.buffer;
-};
-
-function randId() {
-  return Date.now().toString(16) + Math.random().toString(16) + "0".repeat(16);
 }
 
 function getKeyByValue(object, value) {
@@ -329,7 +307,7 @@ export class RPC {
   }
 
   _ndarray(typedArray, shape, dtype) {
-    var _dtype = _typedarray2dtype[typedArray.constructor.name];
+    var _dtype = typedArrayToDtype[typedArray.constructor.name];
     if (dtype && dtype !== _dtype) {
       throw "dtype doesn't match the type of the array: " +
         _dtype +
@@ -608,31 +586,13 @@ export class RPC {
           v instanceof tf.Tensor
         ) {
           const v_buffer = v.dataSync();
-          let v_bytes = v_buffer;
-          if (v_buffer.length > ARRAY_CHUNK) {
-            v_bytes = [];
-            const rounds = Math.ceil(v_buffer.length / ARRAY_CHUNK);
-            for (var j = 0; j < rounds; j++) {
-              v_bytes[j] = v_buffer.slice(
-                j * ARRAY_CHUNK,
-                (j + 1) * ARRAY_CHUNK
-              );
-              if (v._transfer || _transfer) {
-                transferables.push(v_bytes[j]);
-              }
-            }
-            if (v._transfer) {
-              delete v._transfer;
-            }
-          } else {
-            if (v._transfer || _transfer) {
-              transferables.push(v_bytes.buffer);
-              delete v._transfer;
-            }
+          if (v._transfer || _transfer) {
+            transferables.push(v_buffer.buffer);
+            delete v._transfer;
           }
           bObject[k] = {
             __jailed_type__: "ndarray",
-            __value__: v_bytes,
+            __value__: v_buffer,
             __shape__: v.shape,
             __dtype__: v.dtype
           };
@@ -642,7 +602,7 @@ export class RPC {
           nj.NdArray &&
           v instanceof nj.NdArray
         ) {
-          var dtype = _typedarray2dtype[v.selection.data.constructor.name];
+          var dtype = typedArrayToDtype[v.selection.data.constructor.name];
           if (v._transfer || _transfer) {
             transferables.push(v.selection.data.buffer);
             delete v._transfer;
