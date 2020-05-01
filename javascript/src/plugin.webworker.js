@@ -6,7 +6,6 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
-import { randId } from "./utils.js";
 
 (function() {
   // make sure this runs inside a webworker

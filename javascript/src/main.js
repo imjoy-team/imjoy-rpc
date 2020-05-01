@@ -7,7 +7,7 @@
  * this happens, the plugin initialized right inside the frame (in the
  * same thread)
  */
-import PluginWorker from "worker-loader!./pluginWebWorker.js";
+import PluginWorker from "./plugin.webworker.js";
 import setupIframe from "./pluginIframe.js";
 import setupWebPython from "./pluginWebPython.js";
 import { setupServiceWorker, cacheRequirements, randId } from "./utils.js";
@@ -62,11 +62,7 @@ function setupWebWorker(config) {
       worker.postMessage({ type: "connectRPC", config: config });
       clearTimeout(fallbackTimeout);
       // complete the missing fields
-      m.config = Object.assign(m.config, {
-        name: config.name,
-        id: config.id,
-        description: config.description
-      });
+      m.config = Object.assign({}, config, m.config);
     } else if (m.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
       window.dispatchEvent(
@@ -104,7 +100,7 @@ export async function setupBaseFrame(config) {
   config.allow_execution = config.allow_execution || true;
   config.enable_service_worker = config.enable_service_worker || true;
   if (config.enable_service_worker) {
-    setupServiceWorker(config.cache_requirements);
+    setupServiceWorker(config.target_origin, config.cache_requirements);
   }
   if (config.cache_requirements) {
     delete config.cache_requirements;

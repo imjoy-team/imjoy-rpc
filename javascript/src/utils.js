@@ -119,7 +119,7 @@ export async function cacheRequirements(requirements) {
   }
 }
 
-export function setupServiceWorker(cacheCallback) {
+export function setupServiceWorker(targetOrigin, cacheCallback) {
   // register service worker for offline access
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function() {

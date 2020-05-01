@@ -41,14 +41,14 @@ const config =  (env, argv) => ({
   module: {
     rules: [
       {
-        test: /WebWorker\.js$/,
+        test: /\.webworker\.js$/,
         use: [
           { loader: 'worker-loader',  options: { inline: true, name: (argv.filename).split('.').slice(0, -1).join('-')+'-webworker.js', fallback: false}},
         ],
       },
       {
         test: /\.js$/,
-        exclude: /node_modules/,
+        exclude: [/node_modules/,/\.webworker\.js$/],
         use: [{
             loader: 'babel-loader',
             options: {

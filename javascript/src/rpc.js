@@ -32,20 +32,12 @@ export class RPC {
   constructor(connection, config) {
     this._connection = connection;
     this.config = config || {};
-    this._interface = {
-      // this initial setup will make sure we wait until the api is exported.
-      // setup: () => {
-      //   return new Promise((resolve, reject) => {
-      //     this._interfaceSetAsRemoteHandler = resolve;
-      //     this._disconnectHandler = reject;
-      //   });
-      // }
-    };
+    this._interface = {};
     this._plugin_interfaces = {};
     this._remote = null;
     this._remoteUpdateHandler = function() {};
     this._getInterfaceHandler = function() {};
-    this._interfaceSetAsRemoteHandler = function() {};
+    this._interfaceSetAsRemoteHandler = null;
     this._disconnectHandler = function() {};
     this._store = new ReferenceStore();
     this._method_refs = new ReferenceStore();
@@ -73,9 +65,6 @@ export class RPC {
    *
    * @param {Function} handler
    */
-  onInterfaceSetAsRemote(handler) {
-    this._interfaceSetAsRemoteHandler = handler;
-  }
 
   onRemoteReady(handler) {
     this._method_refs.onReady(handler);
@@ -129,61 +118,63 @@ export class RPC {
       }
     }
     this._interface = _interface;
-    this._sendInterface();
   }
 
   /**
    * Sends the actual interface to the remote site upon it was
    * updated or by a special request of the remote site
    */
-  _sendInterface() {
-    var names = [];
-    if (!this._interface) {
-      throw new Error("interface is not set.");
-    }
-    if (this._interface.constructor === Object) {
-      for (var name of Object.keys(this._interface)) {
-        if (name.startsWith("_")) continue;
-        if (typeof this._interface[name] === "function") {
-          names.push({ name: name, data: null, type: "function" });
-        } else {
-          var data = this._interface[name];
-          if (data !== null && typeof data === "object") {
-            var data2 = {};
-            for (var k of Object.keys(data)) {
-              if (typeof data[k] === "function") {
-                data2[k] = "rpc_method::" + k;
-              } else {
-                data2[k] = data[k];
+  sendInterface() {
+    return new Promise(resolve => {
+      var names = [];
+      if (!this._interface) {
+        throw new Error("interface is not set.");
+      }
+      if (this._interface.constructor === Object) {
+        for (var name of Object.keys(this._interface)) {
+          if (name.startsWith("_")) continue;
+          if (typeof this._interface[name] === "function") {
+            names.push({ name: name, data: null, type: "function" });
+          } else {
+            var data = this._interface[name];
+            if (data !== null && typeof data === "object") {
+              var data2 = {};
+              for (var k of Object.keys(data)) {
+                if (typeof data[k] === "function") {
+                  data2[k] = "rpc_method::" + k;
+                } else {
+                  data2[k] = data[k];
+                }
               }
+              names.push({ name: name, data: data2, type: "object" });
+            } else if (Object(data) !== data) {
+              names.push({ name: name, data: data, type: "data" });
             }
-            names.push({ name: name, data: data2, type: "object" });
-          } else if (Object(data) !== data) {
-            names.push({ name: name, data: data, type: "data" });
           }
         }
       }
-    }
-    // a class
-    else if (this._interface.constructor === Function) {
-      throw new Error("Please instantiate the class before exportting it.");
-    }
-    // instance of a class
-    else if (this._interface.constructor.constructor === Function) {
-      var functions = Object.getOwnPropertyNames(
-        Object.getPrototypeOf(this._interface)
-      ).concat(Object.keys(this._interface));
-      for (var i = 0; i < functions.length; i++) {
-        var name_ = functions[i];
-        if (name_.startsWith("_") || name_ === "constructor") continue;
-        if (typeof this._interface[name_] === "function") {
-          names.push({ name: name_, data: null });
-        }
+      // a class
+      else if (this._interface.constructor === Function) {
+        throw new Error("Please instantiate the class before exportting it.");
       }
-    } else {
-      throw Error("Unsupported interface type");
-    }
-    this._connection.send({ type: "setInterface", api: names });
+      // instance of a class
+      else if (this._interface.constructor.constructor === Function) {
+        var functions = Object.getOwnPropertyNames(
+          Object.getPrototypeOf(this._interface)
+        ).concat(Object.keys(this._interface));
+        for (var i = 0; i < functions.length; i++) {
+          var name_ = functions[i];
+          if (name_.startsWith("_") || name_ === "constructor") continue;
+          if (typeof this._interface[name_] === "function") {
+            names.push({ name: name_, data: null });
+          }
+        }
+      } else {
+        throw Error("Unsupported interface type");
+      }
+      this._interfaceSetAsRemoteHandler = resolve;
+      this._connection.send({ type: "setInterface", api: names });
+    });
   }
 
   /**
@@ -285,11 +276,14 @@ export class RPC {
         this._setRemote(data.api);
         break;
       case "getInterface":
-        this._sendInterface();
+        this.sendInterface();
         this._getInterfaceHandler();
         break;
       case "interfaceSetAsRemote":
-        this._interfaceSetAsRemoteHandler();
+        if (typeof this._interfaceSetAsRemoteHandler === "function") {
+          this._interfaceSetAsRemoteHandler();
+          this._interfaceSetAsRemoteHandler === null;
+        }
         break;
       case "disconnect":
         this._disconnectHandler();
