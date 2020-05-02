@@ -39,7 +39,6 @@ class JupyterConnection:
         if channel in self._comms:
             comm = self._comms[channel]
             msg, buffer_paths, buffers = remove_buffers(msg)
-            print(msg, buffer_paths, buffers)
             if len(buffers) > 0:
                 msg["__buffer_paths__"] = buffer_paths
                 comm.send(msg, buffers=buffers)
@@ -79,7 +78,6 @@ def _separate_buffers(substate, path, buffer_paths, buffers):
     if isinstance(substate, (list, tuple)):
         is_cloned = False
         for i, v in enumerate(substate):
-            print(i, type(v))
             if isinstance(v, _binary_types):
                 if not is_cloned:
                     substate = list(substate)  # shallow clone list/tuple
