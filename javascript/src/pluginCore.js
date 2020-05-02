@@ -45,11 +45,6 @@ export function connectRPC(connection, config) {
     }
   });
 
-  /**
-   * Simplified clone of Whenable instance (the object can not be
-   * placed into a shared script, because the main library needs it
-   * before the additional scripts may load)
-   */
   var connected = false;
   var connectedHandlers = [];
 

@@ -13,7 +13,6 @@ import setupWebPython from "./pluginWebPython.js";
 import { setupServiceWorker, randId } from "./utils.js";
 
 export { RPC, API_VERSION } from "./rpc.js";
-export { Whenable, randId } from "./utils.js";
 export { version as VERSION } from "../package.json";
 
 function inIframe() {
