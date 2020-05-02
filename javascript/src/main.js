@@ -10,11 +10,11 @@
 import PluginWorker from "./plugin.webworker.js";
 import setupIframe from "./pluginIframe.js";
 import setupWebPython from "./pluginWebPython.js";
-import { setupServiceWorker, cacheRequirements, randId } from "./utils.js";
+import { setupServiceWorker, randId } from "./utils.js";
 
-export { RPC } from "./rpc.js";
-export { BasicConnection } from "./connection.js";
+export { RPC, API_VERSION } from "./rpc.js";
 export { Whenable, randId } from "./utils.js";
+export { version as VERSION } from "../package.json";
 
 function inIframe() {
   try {
