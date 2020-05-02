@@ -232,3 +232,15 @@ Whenable.prototype._checkHandler = function(handler) {
 
   return handler;
 };
+
+//#Source https://bit.ly/2neWfJ2
+export function urlJoin(...args) {
+  return args
+    .join("/")
+    .replace(/[\/]+/g, "/")
+    .replace(/^(.+):\//, "$1://")
+    .replace(/^file:/, "file:/")
+    .replace(/\/(\?|&|#[^!])/g, "$1")
+    .replace(/\?/g, "&")
+    .replace("&", "?");
+}

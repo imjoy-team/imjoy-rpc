@@ -7,78 +7,70 @@ import janus
 import time
 import uuid
 import threading
-from werkzeug.local import Local, LocalProxy, LocalManager
-from .connection import JupyterConnection
+from werkzeug.local import Local
+
 import inspect
 from .utils import dotdict, ReferenceStore, format_traceback
 from .utils3 import FuturePromise
 
 API_VERSION = "0.2.0"
 
-local_context = Local()
-local_manager = LocalManager([local_context])
-api = LocalProxy(local_context, "api")
-
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
 logger.setLevel(logging.INFO)
 
-
-def initial_export(interface):
-    rpc = RPC()
-    rpc.set_interface(interface)
-    rpc.init()
-
-
-local_context.api = dotdict(export=initial_export)
-
+try:
+    import numpy as np
+    NUMPY = np
+except:
+    NUMPY = False
+    logger.warn('failed to import numpy, ndarray encoding/decoding will not work')
 
 class RPC:
     def __init__(
-        self,
-        channel="imjoy_rpc",
-        name="imjoy_rpc_python",
-        description="[TODO]",
-        token=None,
-        allow_execution=True,
+        self, transport, local_context=None, config=None,
     ):
         self.manager_api = {}
-        self.channel = channel
         self.services = {}
-        self.local = dotdict()
         self._plugin_interfaces = {}
         self._remote_set = False
         self._store = ReferenceStore()
         self.work_dir = os.getcwd()
-
-        self.name = name
-        self.id = self.name + "-" + str(uuid.uuid4())
-        self.token = token or str(uuid.uuid4())
-        self.description = description
         self.abort = threading.Event()
-        self.allow_execution = allow_execution
+
+        if config is None:
+            config = dotdict()
+        else:
+            config = dotdict(config)
+        self.id = config.id or str(uuid.uuid4())
+        self.token = config.token or str(uuid.uuid4())
+        self.allow_execution = config.allow_execution or False
         self.config = {
             "allow_execution": self.allow_execution,
             "api_version": API_VERSION,
             "dedicated_thread": True,
-            "description": self.description,
+            "description": config.description or "[TODO]",
             "id": self.id,
             "lang": "python",
-            "name": self.name,
+            "name": config.name or "imjoy_rpc_python",
             "token": self.token,
             "type": "native-python",
+            "work_dir": self.work_dir,
         }
-        # self.janus_queue = janus.Queue()
-        # self.queue = self.janus_queue.sync_q
-        self.loop = asyncio.get_event_loop()
 
-        self.transport = JupyterConnection()
-        self.transport.connect()
+        self.loop = config.loop or asyncio.get_event_loop()
+        
+        if local_context is None:
+            local_context = Local()
+            local_context.api = dotdict()
+        self.local_context = local_context
+        self.export = self.local_context.api.export
 
-        def process_message(msg):
-            self.loop.create_task(self.processMessage(msg))
-
-        self.transport.on(self.channel, process_message)
+        if transport is not None:
+            def process_message(msg):
+                self.loop.create_task(self.processMessage(msg))
+            self.transport = transport
+            self.transport.on(process_message)
 
     def init(self):
         self.emit(
@@ -89,7 +81,7 @@ class RPC:
         self.run_forever()
 
     def emit(self, msg):
-        self.transport.emit(self.channel, msg)
+        self.transport.emit(msg)
 
     def register(self, plugin_path):
         service = Service(plugin_path)
@@ -253,8 +245,8 @@ class RPC:
         _remote["utils"] = dotdict()
         _remote["WORK_DIR"] = self.work_dir
 
-        self.local["api"] = _remote
-        local_context.api = _remote
+        self.local_context.api = _remote
+        self.local_context.api.export = self.export
 
     async def processMessage(self, data):
         try:
@@ -465,17 +457,10 @@ class RPC:
             #   v instanceof ImageData
             # ) {
             # }
-            elif "np" in self.local and isinstance(
-                val, (self.local["np"].ndarray, self.local["np"].generic)
+            elif NUMPY and isinstance(
+                val, (NUMPY.ndarray, NUMPY.generic)
             ):
-                v_byte = val.tobytes()
-                if len(v_byte) > ARRAY_CHUNK:
-                    v_len = int(math.ceil(1.0 * len(v_byte) / ARRAY_CHUNK))
-                    v_bytes = []
-                    for i in range(v_len):
-                        v_bytes.append(v_byte[i * ARRAY_CHUNK : (i + 1) * ARRAY_CHUNK])
-                else:
-                    v_bytes = v_byte
+                v_bytes = val.tobytes()
                 v_obj = {
                     "__jailed_type__": "ndarray",
                     "__value__": v_bytes,
@@ -528,7 +513,7 @@ class RPC:
             elif a_object["__jailed_type__"] == "ndarray":
                 # create build array/tensor if used in the plugin
                 try:
-                    np = self.local["np"]  # pylint: disable=invalid-name
+                    np = self.local_context.np  # pylint: disable=invalid-name
                     if isinstance(a_object["__value__"], bytes):
                         a_object["__value__"] = a_object["__value__"]
                     elif isinstance(a_object["__value__"], (list, tuple)):
@@ -541,9 +526,14 @@ class RPC:
                             type(a_object["__value__"]),
                             a_object["__value__"],
                         )
-                    b_object = np.frombuffer(
-                        a_object["__value__"], dtype=a_object["__dtype__"]
-                    ).reshape(tuple(a_object["__shape__"]))
+                    if NUMPY:
+                        b_object = NUMPY.frombuffer(
+                            a_object["__value__"], dtype=a_object["__dtype__"]
+                        ).reshape(tuple(a_object["__shape__"]))
+                    else:
+                        b_object = a_object
+                        logger.warn('numpy is not available, failed to decode ndarray')
+
                 except Exception as exc:
                     logger.debug("Error in converting: %s", exc)
                     b_object = a_object
