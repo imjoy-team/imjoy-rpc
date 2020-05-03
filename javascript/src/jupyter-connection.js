@@ -1,3 +1,16 @@
+(function($) {
+  $.getStylesheet = function(href) {
+    var $d = $.Deferred();
+    var $link = $("<link/>", {
+      rel: "stylesheet",
+      type: "text/css",
+      href: href
+    }).appendTo("head");
+    $d.resolve($link);
+    return $d.promise();
+  };
+})(jQuery);
+
 function setupMessageForwarding(config) {
   this.config = config || {};
   this.targetOrigin = this.config.target_origin || "*";
@@ -64,7 +77,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
   if (Jupyter.notebook_list) {
     // if inside an iframe, load imjoy-rpc
     if (window.self !== window.top) {
-      imjoyLoader.loadImJoyRPC().then(imjoyRPC => {
+      loadImJoyRPC().then(imjoyRPC => {
         imjoyRPC.setupRPC().then(api => {
           function setup() {
             Jupyter._target = "self";
@@ -81,24 +94,22 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
         });
       });
     } else {
-      imjoyLoader
-        .loadImJoyCore({
-          debug: true,
-          version: "latest"
-        })
-        .then(imjoyCore => {
-          const imjoy = new imjoyCore.ImJoy({
-            imjoy_api: {}
-            //imjoy config
-          });
-          imjoy
-            .start({
-              workspace: "default"
-            })
-            .then(() => {
-              console.log("ImJoy Core started successfully!");
-            });
+      loadImJoyCore({
+        debug: true,
+        version: "latest"
+      }).then(imjoyCore => {
+        const imjoy = new imjoyCore.ImJoy({
+          imjoy_api: {}
+          //imjoy config
         });
+        imjoy
+          .start({
+            workspace: "default"
+          })
+          .then(() => {
+            console.log("ImJoy Core started successfully!");
+          });
+      });
     }
   }
 });

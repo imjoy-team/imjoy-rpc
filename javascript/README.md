@@ -64,5 +64,8 @@ imjoyRPC.setupRPC(config).then((api)=>{
 
   Default: `null`
 
+ * forwarding_functions
+  A list of function names which will be exported automatically and forwarded to the remote api.
+  Default: `["close", "on", "off", "emit"]` for all plugins, window plugins will include additional ones: `["resize", "show", "hide", "refresh"]`
 
 ### Implement your own connection

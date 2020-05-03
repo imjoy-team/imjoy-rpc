@@ -96,6 +96,7 @@ function setupWebWorker(config) {
 
 export async function setupBaseFrame(config) {
   config = config || {};
+  config.type = config.type || getParamValue("_plugin_type") || "window";
   config.allow_execution = config.allow_execution || true;
   config.enable_service_worker = config.enable_service_worker || true;
   if (config.enable_service_worker) {
@@ -104,17 +105,27 @@ export async function setupBaseFrame(config) {
   if (config.cache_requirements) {
     delete config.cache_requirements;
   }
+  config.forwarding_functions = config.forwarding_functions;
+  if (config.forwarding_functions === undefined) {
+    config.forwarding_functions = ["close", "on", "off", "emit"];
+    if (["window", "web-python-window"].includes(config.type)) {
+      config.forwarding_functions = config.forwarding_functions.concat([
+        "resize",
+        "show",
+        "hide",
+        "refresh"
+      ]);
+    }
+  }
   // expose the api object to window globally.
   // note: the returned value will be null for webworker
   window.api = await imjoyRPC.setupRPC(config);
-
   return window.api;
 }
 
 export function setupRPC(config) {
   config = config || {};
-  const plugin_type = config.type || getParamValue("_plugin_type") || "window";
-  config.type = plugin_type;
+  config.type = config.type || "window";
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
   config.token = config.token = randId();
@@ -125,7 +136,7 @@ export function setupRPC(config) {
   }, {});
   return new Promise((resolve, reject) => {
     if (inIframe()) {
-      if (plugin_type === "web-worker") {
+      if (config.type === "web-worker") {
         try {
           setupWebWorker(config);
         } catch (e) {
@@ -133,15 +144,15 @@ export function setupRPC(config) {
           setupIframe(config);
         }
       } else if (
-        plugin_type === "web-python" ||
-        plugin_type === "web-python-window"
+        config.type === "web-python" ||
+        config.type === "web-python-window"
       ) {
         setupWebPython(config);
-      } else if (plugin_type === "iframe" || plugin_type === "window") {
+      } else if (config.type === "iframe" || config.type === "window") {
         setupIframe(config);
       } else {
-        console.error("Unsupported plugin type: " + plugin_type);
-        reject("Unsupported plugin type: " + plugin_type);
+        console.error("Unsupported plugin type: " + config.type);
+        reject("Unsupported plugin type: " + config.type);
       }
       try {
         window.addEventListener("imjoy_remote_api_ready", e => {
