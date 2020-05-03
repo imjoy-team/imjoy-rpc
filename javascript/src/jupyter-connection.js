@@ -1,3 +1,16 @@
+(function($) {
+  $.getStylesheet = function (href) {
+    var $d = $.Deferred();
+    var $link = $('<link/>', {
+       rel: 'stylesheet',
+       type: 'text/css',
+       href: href
+    }).appendTo('head');
+    $d.resolve($link);
+    return $d.promise();
+  };
+})(jQuery);
+
 function setupMessageForwarding(config) {
   this.config = config || {};
   this.targetOrigin = this.config.target_origin || "*";
@@ -36,7 +49,7 @@ function setupMessageForwarding(config) {
     );
 }
 
-const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.js";
+const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.min.js";
 $.getScript(IMJOY_LOADER_URL).done(function() {
   //notebook view
   if (Jupyter.notebook) {
@@ -55,7 +68,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
         console.log("ImJoy RPC reconnected.");
       });
     } else {
-      loadImJoyCore().then(imjoyCore => {
+      imjoyLoader.loadImJoyCore().then(imjoyCore => {
         alert("imjoy core loaded");
       });
     }
