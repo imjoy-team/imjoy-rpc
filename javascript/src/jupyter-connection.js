@@ -36,7 +36,7 @@ function setupMessageForwarding(config) {
     );
 }
 
-const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.min.js";
+const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.js";
 $.getScript(IMJOY_LOADER_URL).done(function() {
   //notebook view
   if (Jupyter.notebook) {
@@ -55,7 +55,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
         console.log("ImJoy RPC reconnected.");
       });
     } else {
-      imjoyLoader.loadImJoyCore().then(imjoyCore => {
+      loadImJoyCore().then(imjoyCore => {
         alert("imjoy core loaded");
       });
     }
@@ -64,7 +64,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
   if (Jupyter.notebook_list) {
     // if inside an iframe, load imjoy-rpc
     if (window.self !== window.top) {
-      imjoyLoader.loadImJoyRPC().then(imjoyRPC => {
+      loadImJoyRPC().then(imjoyRPC => {
         imjoyRPC.setupRPC().then(api => {
           function setup() {
             Jupyter._target = "self";
@@ -81,24 +81,22 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
         });
       });
     } else {
-      imjoyLoader
-        .loadImJoyCore({
-          debug: true,
-          version: "latest"
-        })
-        .then(imjoyCore => {
-          const imjoy = new imjoyCore.ImJoy({
-            imjoy_api: {}
-            //imjoy config
-          });
-          imjoy
-            .start({
-              workspace: "default"
-            })
-            .then(() => {
-              console.log("ImJoy Core started successfully!");
-            });
+      loadImJoyCore({
+        debug: true,
+        version: "latest"
+      }).then(imjoyCore => {
+        const imjoy = new imjoyCore.ImJoy({
+          imjoy_api: {}
+          //imjoy config
         });
+        imjoy
+          .start({
+            workspace: "default"
+          })
+          .then(() => {
+            console.log("ImJoy Core started successfully!");
+          });
+      });
     }
   }
 });
