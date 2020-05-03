@@ -49,7 +49,7 @@ function setupMessageForwarding(config) {
     );
 }
 
-const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.min.js";
+const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.js";
 $.getScript(IMJOY_LOADER_URL).done(function() {
   //notebook view
   if (Jupyter.notebook) {
