@@ -211,7 +211,7 @@ export default function setupIframe(config) {
   });
 
   connectRPC(conn, {
-    remote_function_mapping: ["close", "resize", "on", "off", "emit", "refresh"]
+    forwarding_functions: config.forwarding_functions
   });
 
   parent.postMessage(

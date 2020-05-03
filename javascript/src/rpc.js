@@ -104,16 +104,22 @@ export class RPC {
    * @param {Object} _interface to set
    */
   setInterface(_interface) {
-    if (this.config.remote_function_mapping) {
-      for (let func_name of this.config.remote_function_mapping) {
-        if (_interface.constructor === Object) {
-          _interface[func_name] = (...args) => {
-            this._remote[func_name](...args);
-          };
-        } else if (_interface.constructor.constructor === Function) {
-          _interface.constructor.prototype[func_name] = (...args) => {
-            this._remote[func_name](...args);
-          };
+    if (this.config.forwarding_functions) {
+      for (let func_name of this.config.forwarding_functions) {
+        if (this._remote[func_name]) {
+          if (_interface.constructor === Object) {
+            if (!_interface[func_name]) {
+              _interface[func_name] = (...args) => {
+                this._remote[func_name](...args);
+              };
+            }
+          } else if (_interface.constructor.constructor === Function) {
+            if (!_interface.constructor.prototype[func_name]) {
+              _interface.constructor.prototype[func_name] = (...args) => {
+                this._remote[func_name](...args);
+              };
+            }
+          }
         }
       }
     }
