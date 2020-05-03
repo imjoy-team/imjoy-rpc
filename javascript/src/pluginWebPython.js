@@ -282,10 +282,7 @@ export default function setupWebPython(config) {
       console.log(window.pyodide.runPython("import sys\nsys.version"));
 
       connectRPC(conn, {
-        remote_function_mapping:
-          config.type === "web-python-window"
-            ? ["close", "resize", "on", "off", "emit", "refresh"]
-            : null
+        forwarding_functions: config.forwarding_functions
       });
       parent.postMessage(
         {
