@@ -1,4 +1,4 @@
-function setupRPC(config) {
+function setupMessageForwarding(config) {
   this.config = config || {};
   this.targetOrigin = this.config.target_origin || "*";
   this.comm = null;
@@ -17,7 +17,6 @@ function setupRPC(config) {
     Jupyter.notebook.kernel.comm_manager.register_target(
       "imjoy_rpc",
       (comm, open_msg) => {
-        const config = open_msg.content.data;
         this.comm = comm;
         comm.on_msg(msg => {
           const data = msg.content.data;
@@ -37,47 +36,70 @@ function setupRPC(config) {
     );
 }
 
-$.getScript("http://127.0.0.1:8080/imjoy-loader.js").done(function() {
+const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.min.js";
+$.getScript(IMJOY_LOADER_URL).done(function() {
   //notebook view
   if (Jupyter.notebook) {
     // check if it's inside an iframe
     if (window.self !== window.top) {
-      setupRPC({ register_comm: true, listen_events: true });
+      setupMessageForwarding({
+        register_comm: true,
+        listen_events: true
+      });
       console.log("ImJoy RPC started.");
       Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
-        setupRPC({ register_comm: true, listen_events: false });
+        setupMessageForwarding({
+          register_comm: true,
+          listen_events: false
+        });
         console.log("ImJoy RPC reconnected.");
       });
     } else {
-      loadImJoyCore().then(imjoyCore => {
+      imjoyLoader.loadImJoyCore().then(imjoyCore => {
         alert("imjoy core loaded");
       });
     }
   }
   // tree view
   if (Jupyter.notebook_list) {
-    loadImJoyAuto({ debug: true, version: "0.1.4" }).then(imjoyAuto => {
-      if (imjoyAuto.mode === "core") {
-        const imjoy = new imjoyCore.ImJoy({
-          imjoy_api: {}
-          //imjoy config
+    // if inside an iframe, load imjoy-rpc
+    if (window.self !== window.top) {
+      imjoyLoader.loadImJoyRPC().then(imjoyRPC => {
+        imjoyRPC.setupRPC().then(api => {
+          function setup() {
+            Jupyter._target = "self";
+            api.alert("ImJoy plugin initialized.");
+          }
+
+          function getSelections() {
+            return Jupyter.notebook_list.selected;
+          }
+          api.export({
+            setup,
+            getSelections
+          });
         });
-        imjoy.start({ workspace: "default" }).then(() => {
-          console.log("ImJoy Core started successfully!");
+      });
+    } else {
+      imjoyLoader
+        .loadImJoyCore({
+          debug: true,
+          version: "latest"
+        })
+        .then(imjoyCore => {
+          const imjoy = new imjoyCore.ImJoy({
+            imjoy_api: {}
+            //imjoy config
+          });
+          imjoy
+            .start({
+              workspace: "default"
+            })
+            .then(() => {
+              console.log("ImJoy Core started successfully!");
+            });
         });
-      }
-      if (imjoyAuto.mode === "plugin") {
-        const api = imjoyAuto.api;
-        function setup() {
-          Jupyter._target = "self";
-          api.alert("ImJoy plugin initialized.");
-        }
-        function getSelections() {
-          return Jupyter.notebook_list.selected;
-        }
-        api.export({ setup, getSelections });
-      }
-    });
+    }
   }
 });
 
@@ -89,10 +111,11 @@ function isObject(value) {
   return value && typeof value === "object" && value.constructor === Object;
 }
 
-// pub_buffers and remove_buffers are taken from https://github.com/jupyter-widgets/ipywidgets/blob/master/packages/base/src/utils.ts
+// pub_buffers and remove_buffers are taken from
+// https://github.com/jupyter-widgets/ipywidgets/blob/master/packages/base/src/utils.ts
 // Author: IPython Development Team
 // License: BSD
-export function put_buffers(state, buffer_paths, buffers) {
+function put_buffers(state, buffer_paths, buffers) {
   buffers = buffers.map(b => {
     if (b instanceof DataView) {
       return b;
@@ -169,7 +192,9 @@ function remove_buffers(state) {
           if (value) {
             if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
               if (!is_cloned) {
-                obj = { ...obj };
+                obj = {
+                  ...obj
+                };
                 is_cloned = true;
               }
               buffers.push(ArrayBuffer.isView(value) ? value.buffer : value);
@@ -180,7 +205,9 @@ function remove_buffers(state) {
               // only assigned when the value changes, we may serialize objects that don't support assignment
               if (new_value !== value) {
                 if (!is_cloned) {
-                  obj = { ...obj };
+                  obj = {
+                    ...obj
+                  };
                   is_cloned = true;
                 }
                 obj[key] = new_value;
@@ -193,5 +220,9 @@ function remove_buffers(state) {
     return obj;
   }
   const new_state = remove(state, []);
-  return { state: new_state, buffers: buffers, buffer_paths: buffer_paths };
+  return {
+    state: new_state,
+    buffers: buffers,
+    buffer_paths: buffer_paths
+  };
 }
