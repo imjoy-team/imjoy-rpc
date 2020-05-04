@@ -20,10 +20,12 @@ logger.setLevel(logging.INFO)
 
 try:
     import numpy as np
+
     NUMPY = np
 except:
     NUMPY = False
-    logger.warn('failed to import numpy, ndarray encoding/decoding will not work')
+    logger.warn("failed to import numpy, ndarray encoding/decoding will not work")
+
 
 class RPC:
     def __init__(
@@ -58,7 +60,7 @@ class RPC:
         }
 
         self.loop = config.loop or asyncio.get_event_loop()
-        
+
         if local_context is None:
             local_context = Local()
             local_context.api = dotdict()
@@ -66,8 +68,10 @@ class RPC:
         self.export = self.local_context.api.export
 
         if transport is not None:
+
             def process_message(msg):
                 self.loop.create_task(self.processMessage(msg))
+
             self.transport = transport
             self.transport.on(process_message)
 
@@ -456,9 +460,7 @@ class RPC:
             #   v instanceof ImageData
             # ) {
             # }
-            elif NUMPY and isinstance(
-                val, (NUMPY.ndarray, NUMPY.generic)
-            ):
+            elif NUMPY and isinstance(val, (NUMPY.ndarray, NUMPY.generic)):
                 v_bytes = val.tobytes()
                 v_obj = {
                     "__jailed_type__": "ndarray",
@@ -531,7 +533,7 @@ class RPC:
                         ).reshape(tuple(a_object["__shape__"]))
                     else:
                         b_object = a_object
-                        logger.warn('numpy is not available, failed to decode ndarray')
+                        logger.warn("numpy is not available, failed to decode ndarray")
 
                 except Exception as exc:
                     logger.debug("Error in converting: %s", exc)
