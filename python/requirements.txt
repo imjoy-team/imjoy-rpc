@@ -1,5 +1,2 @@
-psutil
-pyyaml
-janus
 werkzeug
 numpy

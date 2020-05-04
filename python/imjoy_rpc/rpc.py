@@ -1,17 +1,16 @@
+import asyncio
+import inspect
+import logging
 import os
 import sys
-import asyncio
-import traceback
-import logging
-import janus
-import time
-import uuid
 import threading
+import time
+import traceback
+import uuid
+
 from werkzeug.local import Local
 
-import inspect
-from .utils import dotdict, ReferenceStore, format_traceback
-from .utils3 import FuturePromise
+from .utils import dotdict, format_traceback, ReferenceStore, FuturePromise
 
 API_VERSION = "0.2.0"
 

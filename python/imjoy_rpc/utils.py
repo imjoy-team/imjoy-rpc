@@ -1,10 +1,10 @@
 """Provide utils for Python 2 plugins."""
+from importlib import import_module
+import asyncio
 import copy
 import threading
 import time
 import uuid
-from importlib import import_module
-
 
 class Registry(dict):
     """Registry of items."""
@@ -105,6 +105,15 @@ def format_traceback(traceback_string):
     )
     return formatted_error_string
 
+def make_coro(func):
+    """Wrap a normal function with a coroutine."""
+
+    async def wrapper(*args, **kwargs):
+        """Run the normal function."""
+        return func(*args, **kwargs)
+
+    return wrapper
+
 
 class ReferenceStore:
     """Represent a reference store."""
@@ -202,3 +211,30 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
         """
         self._catch_handler = handler
         return self
+
+
+class FuturePromise(Promise, asyncio.Future):
+    """Represent a promise as a future."""
+
+    def __init__(self, pfunc, loop):
+        """Set up promise."""
+        self.loop = loop
+        Promise.__init__(self, pfunc)
+        asyncio.Future.__init__(self)
+
+    def resolve(self, result):
+        """Resolve promise."""
+        if self._resolve_handler or self._finally_handler:
+            super().resolve(result)
+        else:
+            self.set_result(result)
+
+    def reject(self, error):
+        """Reject promise."""
+        if self._catch_handler or self._finally_handler:
+            super().reject(error)
+        else:
+            if error:
+                self.set_exception(Exception(str(error)))
+            else:
+                self.set_exception(Exception())
