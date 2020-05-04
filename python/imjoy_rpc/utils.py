@@ -1,76 +1,7 @@
-"""Provide utils for Python 2 plugins."""
+"""Provide utility functions for RPC"""
+import asyncio
 import copy
-import threading
-import time
 import uuid
-from importlib import import_module
-
-
-class Registry(dict):
-    """Registry of items."""
-
-    # https://github.com/home-assistant/home-assistant/blob/
-    # 2a9fd9ae269e8929084e53ab12901e96aec93e7d/homeassistant/util/decorator.py
-    def register(self, name):
-        """Return decorator to register item with a specific name."""
-
-        def decorator(func):
-            """Register decorated function."""
-            self[name] = func
-            return func
-
-        return decorator
-
-
-def get_psutil():
-    """Try to import and return psutil."""
-    try:
-        return import_module("psutil")
-    except ImportError:
-        print(
-            "WARNING: a library called 'psutil' can not be imported, "
-            "this may cause problem when killing processes."
-        )
-        return None
-
-
-def debounce(secs):
-    """Decorate to ensure function can only be called once every `s` seconds."""
-
-    def decorate(func):
-        store = {"t": None}
-
-        def wrapped(*args, **kwargs):
-            if store["t"] is None or time.time() - store["t"] >= secs:
-                result = func(*args, **kwargs)
-                store["t"] = time.time()
-                return result
-            return None
-
-        return wrapped
-
-    return decorate
-
-
-def set_interval(interval):
-    """Set interval."""
-
-    def decorator(function):
-        def wrapper(*args, **kwargs):
-            stopped = threading.Event()
-
-            def loop():  # executed in another thread
-                while not stopped.wait(interval):  # until stopped
-                    function(*args, **kwargs)
-
-            thread = threading.Thread(target=loop)
-            thread.daemon = True  # stop if the program exits
-            thread.start()
-            return stopped
-
-        return wrapper
-
-    return decorator
 
 
 class dotdict(dict):  # pylint: disable=invalid-name
@@ -83,14 +14,6 @@ class dotdict(dict):  # pylint: disable=invalid-name
     def __deepcopy__(self, memo=None):
         """Make a deep copy."""
         return dotdict(copy.deepcopy(dict(self), memo=memo))
-
-
-def get_key_by_value(dict_, value):
-    """Return key by value."""
-    for key, val in dict_.items():
-        if value == val:
-            return key
-    return None
 
 
 def format_traceback(traceback_string):
@@ -202,3 +125,30 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
         """
         self._catch_handler = handler
         return self
+
+
+class FuturePromise(Promise, asyncio.Future):
+    """Represent a promise as a future."""
+
+    def __init__(self, pfunc, loop):
+        """Set up promise."""
+        self.loop = loop
+        Promise.__init__(self, pfunc)
+        asyncio.Future.__init__(self)
+
+    def resolve(self, result):
+        """Resolve promise."""
+        if self._resolve_handler or self._finally_handler:
+            super().resolve(result)
+        else:
+            self.set_result(result)
+
+    def reject(self, error):
+        """Reject promise."""
+        if self._catch_handler or self._finally_handler:
+            super().reject(error)
+        else:
+            if error:
+                self.set_exception(Exception(str(error)))
+            else:
+                self.set_exception(Exception())

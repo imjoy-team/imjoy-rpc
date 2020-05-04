@@ -1,16 +1,15 @@
 import asyncio
-from imjoy_rpc.rpc import RPC
+from imjoy_rpc import api
 
 
 class ImJoyPlugin:
-    def __init__(self, api):
-        self._api = api
+    async def setup(self):
+        await api.log("plugin initialized")
 
-    def setup(self):
-        self._api.alert("hello")
-        self._api.showDialog(type="external", src="https://imjoy.io")
+    async def run(self, ctx):
+        await api.alert("hello")
+        await api.showDialog(type="external", src="https://imjoy.io")
 
 
 if __name__ == "__main__":
-    rpc = RPC(ImJoyPlugin)
-    rpc.start()
+    api.export(ImJoyPlugin())
