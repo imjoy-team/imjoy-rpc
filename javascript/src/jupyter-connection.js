@@ -91,7 +91,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
       });
     } else {
       imjoyLoader.loadImJoyCore().then(imjoyCore => {
-        alert("imjoy core loaded");
+        api.log("imjoy core loaded");
       });
     }
   }
@@ -103,7 +103,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
         imjoyRPC.setupRPC().then(api => {
           function setup() {
             Jupyter._target = "self";
-            api.alert("ImJoy plugin initialized.");
+            api.log("ImJoy plugin initialized.");
           }
 
           function getSelections() {
