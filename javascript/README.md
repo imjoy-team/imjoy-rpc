@@ -19,7 +19,7 @@ npm install imjoy-rpc
 ```js
 import * as imjoyRPC from "imjoy-rpc";
 
-imjoyRPC.setupRPC().then(api => {
+imjoyRPC.setupRPC({name: 'My Awesome App'}).then(api => {
 
 })
 
@@ -39,13 +39,28 @@ To bootstrap an iframe:
 
 Setup ImJoy RPC manually:
 ```js
-imjoyRPC.setupRPC(config).then((api)=>{
+imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
     // use the api object to interact with imjoy-core
 })
 ```
 
 ### Configuration for `setupRPC`
- * allow_execution
+ * name 
+  Name of your app
+
+  **Required**
+
+ * description
+  Short description of your app
+
+  Default: `[TODO: add description for YOUR APP]`
+
+ * version
+  Version of your app
+
+  Default: `"0.1.0"`
+
+ * allow_execution 
   Allow code execution
 
   Default: `false`
