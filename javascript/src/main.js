@@ -125,7 +125,7 @@ export async function setupBaseFrame(config) {
 
 export function setupRPC(config) {
   config = config || {};
-  config.type = config.type || "window";
+  config.type = config.type || "rpc-window";
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
   config.token = config.token = randId();
