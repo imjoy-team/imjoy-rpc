@@ -96,6 +96,7 @@ function setupWebWorker(config) {
 
 export async function setupBaseFrame(config) {
   config = config || {};
+  config.name = config.name || "Generic RPC App";
   config.type = config.type || getParamValue("_plugin_type") || "window";
   config.allow_execution = config.allow_execution || true;
   config.enable_service_worker = config.enable_service_worker || true;
@@ -125,10 +126,14 @@ export async function setupBaseFrame(config) {
 
 export function setupRPC(config) {
   config = config || {};
+  if (!config.name) throw new Error("Please specify a name for your app.");
+  config.version = config.version || "0.1.0";
+  config.description =
+    config.description || `[TODO: add description for ${config.name} ]`;
   config.type = config.type || "rpc-window";
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
-  config.token = config.token = randId();
+  config.token = config.token || randId();
   // remove functions
   config = Object.keys(config).reduce((p, c) => {
     if (typeof config[c] !== "function") p[c] = config[c];
