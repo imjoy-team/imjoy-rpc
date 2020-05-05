@@ -96,6 +96,7 @@ function setupWebWorker(config) {
 
 export async function setupBaseFrame(config) {
   config = config || {};
+  config.name = config.name || "Generic RPC App";
   config.type = config.type || getParamValue("_plugin_type") || "window";
   config.allow_execution = config.allow_execution || true;
   config.enable_service_worker = config.enable_service_worker || true;

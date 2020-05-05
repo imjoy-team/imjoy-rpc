@@ -100,7 +100,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
     // if inside an iframe, load imjoy-rpc
     if (window.self !== window.top) {
       loadImJoyRPC().then(imjoyRPC => {
-        imjoyRPC.setupRPC().then(api => {
+        imjoyRPC.setupRPC({ name: "Jupyter Content" }).then(api => {
           function setup() {
             Jupyter._target = "self";
             api.log("ImJoy plugin initialized.");
