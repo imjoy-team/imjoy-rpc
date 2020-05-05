@@ -108,7 +108,7 @@ export async function setupBaseFrame(config) {
   config.forwarding_functions = config.forwarding_functions;
   if (config.forwarding_functions === undefined) {
     config.forwarding_functions = ["close", "on", "off", "emit"];
-    if (["window", "web-python-window"].includes(config.type)) {
+    if (["rpc-window", "window", "web-python-window"].includes(config.type)) {
       config.forwarding_functions = config.forwarding_functions.concat([
         "resize",
         "show",
@@ -125,7 +125,7 @@ export async function setupBaseFrame(config) {
 
 export function setupRPC(config) {
   config = config || {};
-  config.type = config.type || "window";
+  config.type = config.type || "rpc-window";
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
   config.token = config.token = randId();

@@ -11,6 +11,12 @@
   };
 })(jQuery);
 
+function randId() {
+  return Math.random()
+    .toString(36)
+    .substr(2, 10);
+}
+
 function setupMessageForwarding(config) {
   this.config = config || {};
   this.targetOrigin = this.config.target_origin || "*";
@@ -47,6 +53,22 @@ function setupMessageForwarding(config) {
         });
       }
     );
+
+  const pluginConfig = {
+    allow_execution: true,
+    api_version: "0.2.0",
+    dedicated_thread: true,
+    description: "Jupyter notebook",
+    id: "jupyter_" + randId(),
+    lang: "python",
+    name: "Jupyter Notebook",
+    token: randId() + randId(),
+    type: "rpc-window"
+  };
+  parent.postMessage(
+    { type: "initialized", config: pluginConfig },
+    this.targetOrigin
+  );
 }
 
 const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.js";
@@ -69,7 +91,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
       });
     } else {
       imjoyLoader.loadImJoyCore().then(imjoyCore => {
-        alert("imjoy core loaded");
+        api.log("imjoy core loaded");
       });
     }
   }
@@ -81,7 +103,7 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
         imjoyRPC.setupRPC().then(api => {
           function setup() {
             Jupyter._target = "self";
-            api.alert("ImJoy plugin initialized.");
+            api.log("ImJoy plugin initialized.");
           }
 
           function getSelections() {
