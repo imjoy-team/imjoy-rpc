@@ -148,7 +148,9 @@ export function setupRPC(config) {
         config.type === "web-python-window"
       ) {
         setupWebPython(config);
-      } else if (config.type === "iframe" || config.type === "window") {
+      } else if (
+        ["rpc-window", "rpc-worker", "iframe", "window"].includes(config.type)
+      ) {
         setupIframe(config);
       } else {
         console.error("Unsupported plugin type: " + config.type);
