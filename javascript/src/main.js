@@ -108,7 +108,7 @@ export async function setupBaseFrame(config) {
   config.forwarding_functions = config.forwarding_functions;
   if (config.forwarding_functions === undefined) {
     config.forwarding_functions = ["close", "on", "off", "emit"];
-    if (["window", "web-python-window"].includes(config.type)) {
+    if (["rpc-window", "window", "web-python-window"].includes(config.type)) {
       config.forwarding_functions = config.forwarding_functions.concat([
         "resize",
         "show",

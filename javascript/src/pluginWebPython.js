@@ -8,7 +8,6 @@
 
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
-import { randId } from "./utils.js";
 
 export default function setupWebPython(config) {
   config = config || {};
