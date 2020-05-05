@@ -29,6 +29,14 @@ def format_traceback(traceback_string):
     return formatted_error_string
 
 
+def get_key_by_value(dict_, value):
+    """Return key by value."""
+    for key, val in dict_.items():
+        if value == val:
+            return key
+    return None
+
+
 class ReferenceStore:
     """Represent a reference store."""
 

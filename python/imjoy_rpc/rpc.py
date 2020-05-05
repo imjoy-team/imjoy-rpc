@@ -319,6 +319,7 @@ class RPC:
                         logger.error(
                             "error in method %s: %s", data["name"], traceback_error
                         )
+                        self.emit({"type": "error", "message": traceback_error})
                         reject(Exception(format_traceback(traceback_error)))
                 else:
                     try:
@@ -329,13 +330,18 @@ class RPC:
                         if result is not None and inspect.isawaitable(result):
                             await result
                     except Exception:
+                        traceback_error = traceback.format_exc()
+                        self.emit({"type": "error", "message": traceback_error})
                         logger.error(
-                            "error in method %s: %s",
-                            data["name"],
-                            traceback.format_exc(),
+                            "error in method %s: %s", data["name"], traceback_error,
                         )
             else:
-                raise Exception("method " + data["name"] + " is not found.")
+                traceback_error = "method " + data["name"] + " is not found."
+                self.emit({"type": "error", "message": traceback_error})
+                logger.error(
+                    "error in method %s: %s", data["name"], traceback_error,
+                )
+
         elif data["type"] == "callback":
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
@@ -357,9 +363,11 @@ class RPC:
                     traceback_error = traceback.format_exc()
                     logger.error("error in method %s: %s", data["num"], traceback_error)
                     reject(Exception(format_traceback(traceback_error)))
+                    self.emit({"type": "error", "message": traceback_error})
             else:
                 try:
                     method = self._store.fetch(data["num"])
+                    self.emit({"type": "log", "message": "running callback"})
                     if method is None:
                         raise Exception(
                             "Callback function can only called once, "
@@ -372,9 +380,9 @@ class RPC:
                     if result is not None and inspect.isawaitable(result):
                         await result
                 except Exception:
-                    logger.error(
-                        "error in method %s: %s", data["num"], traceback.format_exc()
-                    )
+                    traceback_error = traceback.format_exc()
+                    logger.error("error in method %s: %s", data["num"], traceback_error)
+                    self.emit({"type": "error", "message": traceback_error})
 
     def wrap(self, args):
         """Wrap arguments."""
