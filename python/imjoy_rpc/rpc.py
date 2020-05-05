@@ -55,7 +55,7 @@ class RPC:
             "lang": "python",
             "name": config.name or "imjoy_rpc_python",
             "token": self.token,
-            "type": "native-python",
+            "type": "rpc-worker",
             "work_dir": self.work_dir,
         }
 
