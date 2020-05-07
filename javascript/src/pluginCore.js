@@ -6,7 +6,6 @@
 import { RPC } from "./rpc.js";
 
 export function connectRPC(connection, config) {
-  const application = {};
   config = config || {};
 
   const rpc = new RPC(connection, config);
@@ -15,21 +14,31 @@ export function connectRPC(connection, config) {
   });
 
   rpc.onRemoteUpdate(function() {
-    application.remote = rpc.getRemote();
-    if (!application.remote) return;
-    const api = application.remote || {};
+    const api = rpc.getRemote() || {};
     if (api.export) {
-      console.error("WARNING: overwriting function 'export'.");
+      throw new Error("`export` is a reserved function name");
     }
     if (api.onload) {
-      console.error("WARNING: overwriting function 'onload'.");
+      throw new Error("`onload` is a reserved function name");
     }
     if (api.dispose) {
-      console.error("WARNING: overwriting function 'dispose'.");
+      throw new Error("`dispose` is a reserved function name");
     }
-    api.export = application.setInterface;
-    api.onLoad = application.whenConnected;
-    api.dispose = application.disconnect;
+    api.export = function(_interface) {
+      rpc.setInterface(_interface);
+    };
+    api.onLoad = function(handler) {
+      handler = checkHandler(handler);
+      if (connected) {
+        handler();
+      } else {
+        connectedHandlers.push(handler);
+      }
+    };
+    api.dispose = function(_interface) {
+      rpc.disconnect();
+    };
+
     if (
       typeof WorkerGlobalScope !== "undefined" &&
       self instanceof WorkerGlobalScope
@@ -45,63 +54,29 @@ export function connectRPC(connection, config) {
     }
   });
 
-  var connected = false;
-  var connectedHandlers = [];
+  let connected = false;
+  const connectedHandlers = [];
 
-  var launchConnected = function() {
+  const launchConnected = function() {
     if (!connected) {
       connected = true;
 
-      var handler;
+      let handler;
       while ((handler = connectedHandlers.pop())) {
         handler();
       }
     }
   };
 
-  var checkHandler = function(handler) {
-    var type = typeof handler;
+  const checkHandler = function(handler) {
+    const type = typeof handler;
     if (type !== "function") {
-      var msg =
+      const msg =
         "A function may only be subsribed to the event, " +
         type +
         " was provided instead";
       throw new Error(msg);
     }
-
     return handler;
-  };
-
-  /**
-   * Sets a function executed after the connection to the
-   * application is estaplished, and the initial interface-exchange
-   * messaging is completed
-   *
-   * @param {Function} handler to be called upon initialization
-   */
-  application.whenConnected = function(handler) {
-    handler = checkHandler(handler);
-    if (connected) {
-      handler();
-    } else {
-      connectedHandlers.push(handler);
-    }
-  };
-
-  /**
-   * Sets the plugin interface available to the application
-   *
-   * @param {Object} _interface to set
-   */
-  application.setInterface = function(_interface) {
-    rpc.setInterface(_interface);
-  };
-
-  /**
-   * Disconnects the plugin from the application (sending
-   * notification message) and destroys itself
-   */
-  application.disconnect = function(_interface) {
-    rpc.disconnect();
   };
 }
