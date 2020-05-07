@@ -53,10 +53,11 @@ class RPC:
             "description": config.description or "[TODO]",
             "id": self.id,
             "lang": "python",
-            "name": config.name or "imjoy_rpc_python",
+            "name": config.name or "ImJoy RPC Python",
             "token": self.token,
             "type": "rpc-worker",
             "work_dir": self.work_dir,
+            "version": config.version or "0.1.0",
         }
 
         self.loop = config.loop or asyncio.get_event_loop()
