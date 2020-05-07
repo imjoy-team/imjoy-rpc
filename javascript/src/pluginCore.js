@@ -79,4 +79,6 @@ export function connectRPC(connection, config) {
     }
     return handler;
   };
+
+  return rpc;
 }

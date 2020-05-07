@@ -57,6 +57,9 @@ function cacheUrlInServiceWorker(url) {
 }
 
 export async function cacheRequirements(requirements) {
+  if (!Array.isArray(requirements)) {
+    requirementsm.code.requirements = [requirements];
+  }
   if (requirements && requirements.length > 0) {
     for (let req of requirements) {
       //remove prefix
