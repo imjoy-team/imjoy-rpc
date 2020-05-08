@@ -160,3 +160,42 @@ class FuturePromise(Promise, asyncio.Future):
                 self.set_exception(Exception(str(error)))
             else:
                 self.set_exception(Exception())
+
+
+class EventManager:
+    def __init__(self, debug):
+        self._debug = debug
+
+    def on(self, event, handler):
+        if event not in self._event_handlers:
+            self._event_handlers[event] = []
+        self._event_handlers[event].append(handler)
+
+    def once(self, event, handler):
+        handler.___event_run_once = True
+        self.on(event, handler)
+
+    def off(self, event=None, handler=None):
+        if event is None and handler is None:
+            self._event_handlers = {}
+        elif event is not None and handler is None:
+            if event in self._event_handlers:
+                self._event_handlers[event] = []
+        else:
+            if event in self._event_handlers:
+                self._event_handlers[event].remove(handler)
+
+    def _fire(self, event, data):
+        if self._event_handlers[event]:
+            for cb in self._event_handlers[event]:
+                try:
+                    cb(data)
+                except Exception as e:
+                    traceback_error = traceback.format_exc()
+                    self.emit({"type": "error", "message": traceback_error})
+                finally:
+                    if handler.___event_run_once:
+                        self._event_handlers[event].remove(handler)
+        else:
+            if self._debug:
+                print("Unhandled event", event, data)

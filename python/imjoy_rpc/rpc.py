@@ -27,10 +27,11 @@ except:
     logger.warn("failed to import numpy, ndarray encoding/decoding will not work")
 
 
-class RPC:
+class RPC(EventManager):
     def __init__(
         self, connection, local_context=None, config=None,
     ):
+
         self.manager_api = {}
         self.services = {}
         self._plugin_interfaces = {}
@@ -38,11 +39,15 @@ class RPC:
         self._store = ReferenceStore()
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
+        self.interface = None
 
         if config is None:
             config = dotdict()
         else:
             config = dotdict(config)
+
+        super().__init__(config.debug)
+
         self.id = config.id or str(uuid.uuid4())
         self.allow_execution = config.allow_execution or False
         self.config = {
@@ -81,7 +86,7 @@ class RPC:
     def register(self, plugin_path):
         service = Service(plugin_path)
 
-    def on_close(self, conn):
+    def disconnect(self, conn):
         local_manager.cleanup()
 
     def default_exit(self):
@@ -113,8 +118,12 @@ class RPC:
             api["exit"] = self.default_exit
         self.interface = api
 
+        self._fire("interfaceAvailable")
+
     def send_interface(self):
         """Send interface."""
+        if self.interface is None:
+            raise Exception("interface is not set.")
         names = []
         for name in self.interface:
             if callable(self.interface[name]):
@@ -131,6 +140,7 @@ class RPC:
                     names.append({"name": name, "data": data2})
                 elif isinstance(data, (str, int, float, bool)):
                     names.append({"name": name, "data": data})
+
         self._connection.emit({"type": "setInterface", "api": names})
 
     def _gen_remote_method(self, name, plugin_id=None):
@@ -261,6 +271,7 @@ class RPC:
         self.loop.create_task(_wait())
 
     def _setup_handlers(self, connection):
+        connection.on("disconnected", self.disconnect)
         connection.on("execute", self._handle_execute)
         connection.on("method", self._handle_method)
         connection.on("callback", self._handle_callback)
@@ -268,7 +279,7 @@ class RPC:
             "disconnected",
             "getInterface",
             "setInterface",
-            "interfaceSetAsRemote"
+            "interfaceSetAsRemote",
         ]:
             connection.on(event, self._default_hanlder)
 
@@ -281,7 +292,10 @@ class RPC:
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Error when exiting: %s", exc)
         elif data["type"] == "getInterface":
-            self.send_interface()
+            if self.interface is not None:
+                self.send_interface()
+            else:
+                self.once("interfaceAvailable", self.sendInterface)
         elif data["type"] == "setInterface":
             self.set_remote(data["api"])
             self._connection.emit({"type": "interfaceSetAsRemote"})

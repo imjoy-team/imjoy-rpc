@@ -33,7 +33,7 @@ export class RPC extends EventManager {
     super(config && config.debug);
     this._connection = connection;
     this.config = config || {};
-    this._interface = {};
+    this._interface = null;
     this._plugin_interfaces = {};
     this._remote = null;
     this._store = new ReferenceStore();
@@ -93,6 +93,7 @@ export class RPC extends EventManager {
       }
     }
     this._interface = _interface;
+    this._fire("interfaceAvailable");
   }
 
   /**
@@ -265,8 +266,9 @@ export class RPC extends EventManager {
     });
 
     this._connection.on("getInterface", () => {
-      this.sendInterface();
       this._fire("getInterface");
+      if (this._interface) this.sendInterface();
+      else this.once("interfaceAvailable", this.sendInterface);
     });
     this._connection.on("interfaceSetAsRemote", () => {
       this._fire("interfaceSetAsRemote");
