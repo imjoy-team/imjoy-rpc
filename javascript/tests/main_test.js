@@ -75,6 +75,10 @@ describe("test", async () => {
         console.log("status: plugin is ready");
       });
 
+      core.on("remoteIdle", () => {
+        console.log("status: plugin is now idle");
+      });
+
       core.on("remoteBusy", () => {
         console.log("status: plugin is busy");
       });
@@ -89,7 +93,7 @@ describe("test", async () => {
         if (pluginConfig.allow_execution) {
           console.log("execute code");
         }
-        core.on("remoteUpdated", async () => {
+        core.on("remoteReady", async () => {
           const api = core.getRemote();
           console.log("plugin api", api);
           await api.imshow("this is an image.");

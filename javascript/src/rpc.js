@@ -39,7 +39,7 @@ export class RPC extends EventManager {
     this._store = new ReferenceStore();
     this._method_refs = new ReferenceStore();
     this._method_refs.onReady(() => {
-      this._fire("remoteReady");
+      this._fire("remoteIdle");
     });
     this._method_refs.onBusy(() => {
       this._fire("remoteBusy");
@@ -340,7 +340,7 @@ export class RPC extends EventManager {
       }
     }
 
-    this._fire("remoteUpdated");
+    this._fire("remoteReady");
     this._reportRemoteSet();
   }
 

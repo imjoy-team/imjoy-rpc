@@ -13,7 +13,7 @@ export function connectRPC(connection, config) {
     launchConnected();
   });
 
-  rpc.on("remoteUpdated", function() {
+  rpc.on("remoteReady", function() {
     const api = rpc.getRemote() || {};
     if (api.export) {
       throw new Error("`export` is a reserved function name");
