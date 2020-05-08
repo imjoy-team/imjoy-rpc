@@ -8,7 +8,6 @@ class JupyterConnection(EventManager):
     def __init__(self, config):
         self.config = config or {}
         super().__init__(config.get("debug"))
-        self.channel_prefix = ""
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
         self.comm = None
@@ -16,8 +15,7 @@ class JupyterConnection(EventManager):
     def connect(self):
         if self.channel not in _comms:
             _comms[self.channel] = Comm(
-                target_name=self.channel_prefix + self.channel,
-                data={"channel": self.channel},
+                target_name=self.channel, data={"channel": self.channel},
             )
         comm = _comms[self.channel]
 
