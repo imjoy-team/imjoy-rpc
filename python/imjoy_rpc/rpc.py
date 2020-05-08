@@ -315,16 +315,16 @@ class RPC(EventManager):
                     pass
                 else:
                     raise Exception("unsupported type")
-                self._connection.emit({"type": "executeSuccess"})
+                self._connection.emit({"type": "executed", "success": True})
             except Exception as e:
                 traceback_error = traceback.format_exc()
                 logger.error("error during execution: %s", traceback_error)
                 self._connection.emit(
-                    {"type": "executeFailure", "error": traceback_error}
+                    {"type": "executed", "success": False "error": traceback_error}
                 )
         else:
             self._connection.emit(
-                {"type": "executeFailure", "error": "execution is not allowed"}
+                {"type": "executed", "success": False, "error": "execution is not allowed"}
             )
             logger.warn("execution is blocked due to allow_execution=False")
 

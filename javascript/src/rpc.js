@@ -158,16 +158,25 @@ export class RPC extends EventManager {
    */
   // var callback_reg = new RegExp("onupdate|run$")
   _setupMessageHanlders() {
+    this._connection.on("authenticate", credential => {
+      // TODO: check credential
+      this._connection.emit({
+        type: "authenticated",
+        success: true,
+        token: "123"
+      });
+    });
     this._connection.on("execute", data => {
       this._connection
         .execute(data.code)
         .then(() => {
-          this._connection.emit({ type: "executeSuccess" });
+          this._connection.emit({ type: "executed", success: true });
         })
         .catch(e => {
           console.error(e);
           this._connection.emit({
-            type: "executeFailure",
+            type: "executed",
+            success: false,
             error: e.stack || String(e)
           });
         });
@@ -264,7 +273,6 @@ export class RPC extends EventManager {
     this._connection.on("setInterface", data => {
       this._setRemoteInterface(data.api);
     });
-
     this._connection.on("getInterface", () => {
       this._fire("getInterface");
       if (this._interface) this.sendInterface();
@@ -278,6 +286,17 @@ export class RPC extends EventManager {
       this._connection.disconnect();
       this._fire("disconnected");
     });
+  }
+
+  async authenticate(credential) {
+    this.once("authenticated", result => {
+      if (result.success) {
+        resolve(result);
+      } else {
+        reject(result.error);
+      }
+    });
+    this._connection.emit({ type: "authenticate", credential });
   }
 
   /**

@@ -6,8 +6,7 @@ describe("test", async () => {
   it("pass test", done => {
     const coreConnection = {
       connect() {
-        coreConnection.on("executeSuccess", () => {});
-        coreConnection.on("executeFailure", () => {});
+        coreConnection.on("executed", () => {});
       },
       disconnect: function() {},
       emit: function(data) {
