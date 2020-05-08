@@ -29,7 +29,7 @@ except:
 
 class RPC:
     def __init__(
-        self, transport, local_context=None, config=None,
+        self, connection, local_context=None, config=None,
     ):
         self.manager_api = {}
         self.services = {}
@@ -44,7 +44,6 @@ class RPC:
         else:
             config = dotdict(config)
         self.id = config.id or str(uuid.uuid4())
-        self.token = config.token or str(uuid.uuid4())
         self.allow_execution = config.allow_execution or False
         self.config = {
             "allow_execution": self.allow_execution,
@@ -54,7 +53,6 @@ class RPC:
             "id": self.id,
             "lang": "python",
             "name": config.name or "ImJoy RPC Python",
-            "token": self.token,
             "type": "rpc-worker",
             "work_dir": self.work_dir,
             "version": config.version or "0.1.0",
@@ -68,24 +66,17 @@ class RPC:
         self.local_context = local_context
         self.export = self.local_context.api.export
 
-        if transport is not None:
-
-            def process_message(msg):
-                self.loop.create_task(self.processMessage(msg))
-
-            self.transport = transport
-            self.transport.on(process_message)
+        if connection is not None:
+            self._connection = connection
+            self._setup_handlers(connection)
 
     def init(self):
-        self.emit(
+        self._connection.emit(
             {"type": "initialized", "config": self.config,}
         )
 
     def start(self):
         self.run_forever()
-
-    def emit(self, msg):
-        self.transport.emit(msg)
 
     def register(self, plugin_path):
         service = Service(plugin_path)
@@ -140,7 +131,7 @@ class RPC:
                     names.append({"name": name, "data": data2})
                 elif isinstance(data, (str, int, float, bool)):
                     names.append({"name": name, "data": data})
-        self.emit({"type": "setInterface", "api": names})
+        self._connection.emit({"type": "setInterface", "api": names})
 
     def _gen_remote_method(self, name, plugin_id=None):
         """Return remote method."""
@@ -161,7 +152,7 @@ class RPC:
                     "args": self.wrap(arguments),
                     "promise": self.wrap([resolve, reject]),
                 }
-                self.emit(call_func)
+                self._connection.emit(call_func)
 
             return FuturePromise(pfunc, self.loop)
 
@@ -176,12 +167,12 @@ class RPC:
                 # wrap keywords to a dictionary and pass to the first argument
                 if not arguments and kwargs:
                     arguments = [kwargs]
-                self.emit({"type": "log", "message": str(arguments)})
+                self._connection.emit({"type": "log", "message": str(arguments)})
 
                 def pfunc(resolve, reject):
                     resolve.__jailed_pairs__ = reject
                     reject.__jailed_pairs__ = resolve
-                    self.emit(
+                    self._connection.emit(
                         {
                             "type": "callback",
                             "id": id_,
@@ -200,7 +191,7 @@ class RPC:
                 # wrap keywords to a dictionary and pass to the first argument
                 if not arguments and kwargs:
                     arguments = [kwargs]
-                self.emit(
+                self._connection.emit(
                     {
                         "type": "callback",
                         "id": id_,
@@ -252,15 +243,37 @@ class RPC:
         self.local_context.api = _remote
         self.local_context.api.export = self.export
 
-    async def processMessage(self, data):
-        try:
-            await self._processMessage(data)
-        except Exception:
-            traceback_error = traceback.format_exc()
-            self.emit({"type": "error", "message": traceback_error})
+    def _create_waiting_task(self, result, resolve=None, reject=None):
+        async def _wait():
+            try:
+                result = await result
+                if resolve is not None:
+                    resolve(result)
+                elif result is not None:
+                    logger.debug("returned value %s", result)
+            except Exception as ex:
+                traceback_error = traceback.format_exc()
+                logger.error("error in method %s", traceback_error)
+                self._connection.emit({"type": "error", "message": traceback_error})
+                if reject is not None:
+                    reject(Exception(format_traceback(traceback_error)))
 
-    async def _processMessage(self, data):
-        if data["type"] == "disconnect":
+        self.loop.create_task(_wait())
+
+    def _setup_handlers(self, connection):
+        connection.on("execute", self._handle_execute)
+        connection.on("method", self._handle_method)
+        connection.on("callback", self._handle_callback)
+        for event in [
+            "disconnected",
+            "getInterface",
+            "setInterface",
+            "interfaceSetAsRemote"
+        ]:
+            connection.on(event, self._default_hanlder)
+
+    def _default_hanlder(self, data):
+        if data["type"] == "disconnected":
             conn.abort.set()
             try:
                 if "exit" in conn.interface and callable(conn.interface["exit"]):
@@ -271,119 +284,121 @@ class RPC:
             self.send_interface()
         elif data["type"] == "setInterface":
             self.set_remote(data["api"])
-            self.emit({"type": "interfaceSetAsRemote"})
+            self._connection.emit({"type": "interfaceSetAsRemote"})
         elif data["type"] == "interfaceSetAsRemote":
             self._remote_set = True
-        elif data["type"] == "getConfig":
-            self.emit(
-                {"type": "config", "config": self.config,}
-            )
-        elif data["type"] == "execute":
-            if self.allow_execution:
-                try:
-                    t = data["code"]["type"]
-                    if t == "script":
-                        content = data["code"]["content"]
-                        exec(content, self._local)
-                    elif t == "requirements":
-                        pass
-                    else:
-                        raise Exception("unsupported type")
-                    self.emit({"type": "executeSuccess"})
-                except Exception as e:
-                    traceback_error = traceback.format_exc()
-                    logger.error("error during execution: %s", traceback_error)
-                    self.emit({"type": "executeFailure", "error": traceback_error})
-            else:
-                self.emit(
-                    {"type": "executeFailure", "error": "execution is not allowed"}
-                )
-                logger.warn("execution is blocked due to allow_execution=False")
+        else:
+            logger.debug("Unhanled event: %s", data["type"])
 
-        elif data["type"] == "method":
-            interface = self.interface
-            if "pid" in data and data["pid"] is not None:
-                interface = self._plugin_interfaces[data["pid"]]
-            if data["name"] in interface:
-                if "promise" in data:
-                    resolve, reject = self.unwrap(data["promise"], False)
-                    try:
-                        method = interface[data["name"]]
-                        args = self.unwrap(data["args"], True)
-                        # args.append({'id': self.id})
-                        result = method(*args)
-                        if result is not None and inspect.isawaitable(result):
-                            result = await result
-                        resolve(result)
-                    except Exception as e:
-                        traceback_error = traceback.format_exc()
-                        logger.error(
-                            "error in method %s: %s", data["name"], traceback_error
-                        )
-                        self.emit({"type": "error", "message": traceback_error})
-                        reject(Exception(format_traceback(traceback_error)))
+    def _handle_execute(self, data):
+        if self.allow_execution:
+            try:
+                t = data["code"]["type"]
+                if t == "script":
+                    content = data["code"]["content"]
+                    exec(content, self._local)
+                elif t == "requirements":
+                    pass
                 else:
-                    try:
-                        method = interface[data["name"]]
-                        args = self.unwrap(data["args"], True)
-                        # args.append({'id': self.id})
-                        result = method(*args)
-                        if result is not None and inspect.isawaitable(result):
-                            await result
-                    except Exception:
-                        traceback_error = traceback.format_exc()
-                        self.emit({"type": "error", "message": traceback_error})
-                        logger.error(
-                            "error in method %s: %s", data["name"], traceback_error,
-                        )
-            else:
-                traceback_error = "method " + data["name"] + " is not found."
-                self.emit({"type": "error", "message": traceback_error})
-                logger.error(
-                    "error in method %s: %s", data["name"], traceback_error,
+                    raise Exception("unsupported type")
+                self._connection.emit({"type": "executeSuccess"})
+            except Exception as e:
+                traceback_error = traceback.format_exc()
+                logger.error("error during execution: %s", traceback_error)
+                self._connection.emit(
+                    {"type": "executeFailure", "error": traceback_error}
                 )
+        else:
+            self._connection.emit(
+                {"type": "executeFailure", "error": "execution is not allowed"}
+            )
+            logger.warn("execution is blocked due to allow_execution=False")
 
-        elif data["type"] == "callback":
+    async def _handle_method(self, data):
+        interface = self.interface
+        if "pid" in data and data["pid"] is not None:
+            interface = self._plugin_interfaces[data["pid"]]
+        if data["name"] in interface:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
                 try:
-                    method = self._store.fetch(data["num"])
-                    if method is None:
-                        raise Exception(
-                            "Callback function can only called once, "
-                            "if you want to call a function for multiple times, "
-                            "please make it as a plugin api function. "
-                            "See https://imjoy.io/docs for more details."
-                        )
+                    method = interface[data["name"]]
                     args = self.unwrap(data["args"], True)
+                    # args.append({'id': self.id})
                     result = method(*args)
                     if result is not None and inspect.isawaitable(result):
-                        result = await result
-                    resolve(result)
+                        self._create_waiting_task(result, resolve, reject)
+                    else:
+                        resolve(result)
                 except Exception as e:
                     traceback_error = traceback.format_exc()
-                    logger.error("error in method %s: %s", data["num"], traceback_error)
+                    logger.error(
+                        "error in method %s: %s", data["name"], traceback_error
+                    )
+                    self._connection.emit({"type": "error", "message": traceback_error})
                     reject(Exception(format_traceback(traceback_error)))
-                    self.emit({"type": "error", "message": traceback_error})
             else:
                 try:
-                    method = self._store.fetch(data["num"])
-                    self.emit({"type": "log", "message": "running callback"})
-                    if method is None:
-                        raise Exception(
-                            "Callback function can only called once, "
-                            "if you want to call a function for multiple times, "
-                            "please make it as a plugin api function. "
-                            "See https://imjoy.io/docs for more details."
-                        )
+                    method = interface[data["name"]]
                     args = self.unwrap(data["args"], True)
+                    # args.append({'id': self.id})
                     result = method(*args)
                     if result is not None and inspect.isawaitable(result):
-                        await result
+                        self._create_waiting_task(result)
                 except Exception:
                     traceback_error = traceback.format_exc()
-                    logger.error("error in method %s: %s", data["num"], traceback_error)
-                    self.emit({"type": "error", "message": traceback_error})
+                    self._connection.emit({"type": "error", "message": traceback_error})
+                    logger.error(
+                        "error in method %s: %s", data["name"], traceback_error,
+                    )
+        else:
+            traceback_error = "method " + data["name"] + " is not found."
+            self._connection.emit({"type": "error", "message": traceback_error})
+            logger.error(
+                "error in method %s: %s", data["name"], traceback_error,
+            )
+
+    def _handle_callback(self, data):
+        if "promise" in data:
+            resolve, reject = self.unwrap(data["promise"], False)
+            try:
+                method = self._store.fetch(data["num"])
+                if method is None:
+                    raise Exception(
+                        "Callback function can only called once, "
+                        "if you want to call a function for multiple times, "
+                        "please make it as a plugin api function. "
+                        "See https://imjoy.io/docs for more details."
+                    )
+                args = self.unwrap(data["args"], True)
+                result = method(*args)
+                if result is not None and inspect.isawaitable(result):
+                    self._create_waiting_task(result, resolve, reject)
+                resolve(result)
+            except Exception as e:
+                traceback_error = traceback.format_exc()
+                logger.error("error in method %s: %s", data["num"], traceback_error)
+                reject(Exception(format_traceback(traceback_error)))
+                self._connection.emit({"type": "error", "message": traceback_error})
+        else:
+            try:
+                method = self._store.fetch(data["num"])
+                self._connection.emit({"type": "log", "message": "running callback"})
+                if method is None:
+                    raise Exception(
+                        "Callback function can only called once, "
+                        "if you want to call a function for multiple times, "
+                        "please make it as a plugin api function. "
+                        "See https://imjoy.io/docs for more details."
+                    )
+                args = self.unwrap(data["args"], True)
+                result = method(*args)
+                if result is not None and inspect.isawaitable(result):
+                    self._create_waiting_task(result)
+            except Exception:
+                traceback_error = traceback.format_exc()
+                logger.error("error in method %s: %s", data["num"], traceback_error)
+                self._connection.emit({"type": "error", "message": traceback_error})
 
     def wrap(self, args):
         """Wrap arguments."""

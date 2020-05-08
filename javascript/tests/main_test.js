@@ -6,14 +6,11 @@ describe("test", async () => {
   it("pass test", done => {
     const coreConnection = {
       connect() {
-        coreConnection.on("config", m => {
-          console.log("config:", m.config);
-        });
         coreConnection.on("executeSuccess", () => {});
         coreConnection.on("executeFailure", () => {});
       },
       disconnect: function() {},
-      emit: function(data, transferables) {
+      emit: function(data) {
         // connect to the plugin
         pluginConnection.receiveMsg(data);
       },
@@ -46,15 +43,15 @@ describe("test", async () => {
             );
           }
         });
-        pluginConnection.on("getConfig", () => {
+        pluginConnection.on("initialize", () => {
           pluginConnection.emit({
-            type: "config",
+            type: "initialized",
             config: config
           });
         });
       },
       disconnect: function() {},
-      emit: function(data, transferables) {
+      emit: function(data) {
         // connect to the core
         coreConnection.receiveMsg(data);
       },
@@ -72,15 +69,15 @@ describe("test", async () => {
     coreConnection.on("initialized", pluginConfig => {
       console.log("plugin initialized:", pluginConfig);
       const core = new RPC(coreConnection);
-      core.onDisconnect(details => {
+      core.on("disconnected", details => {
         console.log("status: plugin is disconnected", details);
       });
 
-      core.onRemoteReady(() => {
+      core.on("remoteReady", () => {
         console.log("status: plugin is ready");
       });
 
-      core.onRemoteBusy(() => {
+      core.on("remoteBusy", () => {
         console.log("status: plugin is busy");
       });
 
@@ -94,7 +91,7 @@ describe("test", async () => {
         if (pluginConfig.allow_execution) {
           console.log("execute code");
         }
-        core.onRemoteUpdate(async () => {
+        core.on("remoteUpdated", async () => {
           const api = core.getRemote();
           console.log("plugin api", api);
           await api.imshow("this is an image.");
@@ -103,17 +100,14 @@ describe("test", async () => {
         core.requestRemote();
       });
     });
-
+    coreConnection.emit({ type: "initialize" });
     const plugin = connectRPC(pluginConnection, config);
     plugin.setInterface({
       imshow: img => {
         console.log("show image:", img);
       }
     });
-    pluginConnection.emit({
-      type: "initialized",
-      config: config
-    });
+    pluginConnection.connect();
     expect(true).to.be.true;
   });
 });

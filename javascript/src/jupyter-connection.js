@@ -63,7 +63,6 @@ function setupMessageForwarding(config) {
     id: "jupyter_" + randId(),
     lang: "python",
     name: "Jupyter Notebook",
-    token: randId() + randId(),
     type: "rpc-window"
   };
   parent.postMessage(

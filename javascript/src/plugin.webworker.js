@@ -5,7 +5,8 @@
  * connection object for the plugin site
  */
 import { connectRPC } from "./pluginCore.js";
-import { API_VERSION, BaseConnection } from "./rpc.js";
+import { API_VERSION } from "./rpc.js";
+import { EventManager } from "./utils.js";
 
 (function() {
   // make sure this runs inside a webworker
@@ -22,9 +23,10 @@ import { API_VERSION, BaseConnection } from "./rpc.js";
    * Global will be then cleared to prevent exposure into the
    * Worker, so we put this local connection object into a closure
    */
-  class Connection extends BaseConnection {
+  class Connection extends EventManager {
     constructor(config) {
-      super(config);
+      super(config && config.debug);
+      this.config = config || {};
     }
     connect() {
       self.addEventListener("message", e => {
@@ -42,12 +44,16 @@ import { API_VERSION, BaseConnection } from "./rpc.js";
       });
     }
     disconnect() {
+      this._fire("beforeDisconnect");
       self.close();
-      // TODO: call before close?
       this._fire("disconnected");
     }
-    emit(data, transferables) {
-      data.__transferables__ = transferables;
+    emit(data) {
+      let transferables = undefined;
+      if (data.__transferables__) {
+        transferables = data.__transferables__;
+        delete data.__transferables__;
+      }
       self.postMessage(data, transferables);
     }
     async execute(code) {

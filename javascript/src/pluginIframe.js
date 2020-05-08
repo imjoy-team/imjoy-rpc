@@ -6,8 +6,8 @@
  * connection object for the plugin site
  */
 import { connectRPC } from "./pluginCore.js";
-import { API_VERSION, BaseConnection } from "./rpc.js";
-
+import { API_VERSION } from "./rpc.js";
+import { EventManager } from "./utils.js";
 // Create a new, plain <span> element
 function _htmlToElement(html) {
   var template = document.createElement("template");
@@ -45,28 +45,40 @@ async function importScripts() {
   }
 }
 
-export class Connection extends BaseConnection {
+export class Connection extends EventManager {
   constructor(config) {
-    super(config);
+    super(config && config.debug);
+    this.config = config || {};
   }
   connect() {
     this.config.target_origin = this.config.target_origin || "*";
-    // event listener for the plugin message
-    window.addEventListener("message", e => {
-      if (
-        this.config.target_origin === "*" ||
-        e.origin === this.config.target_origin
-      ) {
-        this._fire(e.data.type, e.data);
-      }
-    });
+    // this will call handleEvent function
+    window.addEventListener("message", this);
     this.emit({
       type: "initialized",
       config: this.config
     });
+    this._fire("connected");
   }
-  disconnect() {}
-  emit(data, transferables) {
+  handleEvent(e) {
+    if (
+      (e.type === "message" && this.config.target_origin === "*") ||
+      e.origin === this.config.target_origin
+    ) {
+      this._fire(e.data.type, e.data);
+    }
+  }
+  disconnect() {
+    this._fire("beforeDisconnect");
+    window.removeEventListener("message", this);
+    this._fire("disconnected");
+  }
+  emit(data) {
+    let transferables;
+    if (data.__transferables__) {
+      transferables = data.__transferables__;
+      delete data.__transferables__;
+    }
     parent.postMessage(data, this.config.target_origin, transferables);
   }
   async execute(code) {

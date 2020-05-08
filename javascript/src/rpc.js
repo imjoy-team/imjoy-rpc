@@ -2,7 +2,7 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype } from "./utils.js";
+import { randId, typedArrayToDtype, EventManager } from "./utils.js";
 
 export const API_VERSION = "0.2.0";
 
@@ -28,30 +28,23 @@ function getKeyByValue(object, value) {
  * and receive messages from the opposite site (basically it
  * should only provide send() and onMessage() methods)
  */
-export class RPC {
+export class RPC extends EventManager {
   constructor(connection, config) {
+    super(config && config.debug);
     this._connection = connection;
     this.config = config || {};
     this._interface = {};
     this._plugin_interfaces = {};
     this._remote = null;
-    this._remoteUpdateHandler = function() {};
-    this._getInterfaceHandler = function() {};
-    this._interfaceSetAsRemoteHandler = null;
-    this._disconnectHandler = function() {};
     this._store = new ReferenceStore();
     this._method_refs = new ReferenceStore();
+    this._method_refs.onReady(() => {
+      this._fire("remoteReady");
+    });
+    this._method_refs.onBusy(() => {
+      this._fire("remoteBusy");
+    });
     this._setupMessageHanlders();
-  }
-
-  /**
-   * Set a handler to be called when the remote site updates its
-   * interface
-   *
-   * @param {Function} handler
-   */
-  onRemoteUpdate(handler) {
-    this._remoteUpdateHandler = handler;
   }
 
   /**
@@ -62,28 +55,8 @@ export class RPC {
    * @param {Function} handler
    */
 
-  onRemoteReady(handler) {
-    this._method_refs.onReady(handler);
-  }
-
-  onRemoteBusy(handler) {
-    this._method_refs.onBusy(handler);
-  }
-
   getRemoteCallStack() {
     return this._method_refs.getStack();
-  }
-  /**
-   * Set a handler to be called when the remote site requests to
-   * (re)send the interface. Used to detect an initialzation
-   * completion without sending additional request, since in fact
-   * 'getInterface' request is only sent by application at the last
-   * step of the plugin initialization
-   *
-   * @param {Function} handler
-   */
-  onGetInterface(handler) {
-    this._getInterfaceHandler = handler;
   }
 
   /**
@@ -174,7 +147,7 @@ export class RPC {
       } else {
         throw Error("Unsupported interface type");
       }
-      this._interfaceSetAsRemoteHandler = resolve;
+      this.once("interfaceSetAsRemote", resolve);
       this._connection.emit({ type: "setInterface", api: names });
     });
   }
@@ -184,10 +157,6 @@ export class RPC {
    */
   // var callback_reg = new RegExp("onupdate|run$")
   _setupMessageHanlders() {
-    this._connection.on("getConifg", () => {
-      this._connection.emit({ type: "config", config: this.config });
-    });
-
     this._connection.on("execute", data => {
       this._connection
         .execute(data.code)
@@ -292,22 +261,20 @@ export class RPC {
       }
     });
     this._connection.on("setInterface", data => {
-      this._setRemote(data.api);
+      this._setRemoteInterface(data.api);
     });
 
-    this._connection.on("getInterface", data => {
+    this._connection.on("getInterface", () => {
       this.sendInterface();
-      this._getInterfaceHandler();
+      this._fire("getInterface");
     });
     this._connection.on("interfaceSetAsRemote", () => {
-      if (typeof this._interfaceSetAsRemoteHandler === "function") {
-        this._interfaceSetAsRemoteHandler();
-        this._interfaceSetAsRemoteHandler === null;
-      }
+      this._fire("interfaceSetAsRemote");
     });
     this._connection.on("disconnect", () => {
-      this._disconnectHandler();
+      this._fire("beforeDisconnect");
       this._connection.disconnect();
+      this._fire("disconnected");
     });
   }
 
@@ -341,7 +308,7 @@ export class RPC {
    *
    * @param {Array} names list of function names
    */
-  _setRemote(api) {
+  _setRemoteInterface(api) {
     this._remote = {};
     var i, name, data, type;
     for (i = 0; i < api.length; i++) {
@@ -371,7 +338,7 @@ export class RPC {
       }
     }
 
-    this._remoteUpdateHandler();
+    this._fire("remoteUpdated");
     this._reportRemoteSet();
   }
 
@@ -884,16 +851,6 @@ export class RPC {
       this._connection.disconnect();
     }, 2000);
   }
-
-  /**
-   * Set a handler to be called when received a disconnect message
-   * from the remote site
-   *
-   * @param {Function} handler
-   */
-  onDisconnect(handler) {
-    this._disconnectHandler = handler;
-  }
 }
 
 /**
@@ -1029,55 +986,5 @@ class ReferenceStore {
       this.fetch(_id);
     }
     return obj;
-  }
-
-  /**
-   * Retrieves previously stored object
-   *
-   * @param {Number} id of an object to retrieve
-   */
-  // retrieve(id) {
-  //     var obj = this._store[id];
-  //     return obj;
-  // }
-}
-
-export class BaseConnection {
-  constructor(config) {
-    this._event_handlers = {};
-    this.config = config || {};
-  }
-  connect() {
-    throw new Error("Not Implemented");
-  }
-  disconnect() {
-    throw new Error("Not Implemented");
-  }
-  emit() {
-    throw new Error("Not Implemented");
-  }
-  execute() {
-    throw new Error("Not Implemented");
-  }
-  on(event, handler) {
-    if (!this._event_handlers[event]) {
-      this._event_handlers[event] = [];
-    }
-    this._event_handlers[event].push(handler);
-  }
-  _fire(event, data) {
-    if (this._event_handlers[event]) {
-      for (let cb of this._event_handlers[event]) {
-        try {
-          cb(data);
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    } else {
-      if (this.config && this.config.debug) {
-        console.warn("unhandled event", event, data);
-      }
-    }
   }
 }

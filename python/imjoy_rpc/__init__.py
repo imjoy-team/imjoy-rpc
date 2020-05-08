@@ -9,9 +9,9 @@ api = LocalProxy(_local_context, "api")
 
 
 def initial_export(interface, config=None):
-    transport = JupyterConnection()
-    transport.connect()
-    rpc = RPC(transport, local_context=_local_context, config=config)
+    connection = JupyterConnection(config)
+    connection.connect()
+    rpc = RPC(connection, local_context=_local_context, config=config)
     rpc.set_interface(interface)
     rpc.init()
 

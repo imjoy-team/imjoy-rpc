@@ -1,22 +1,23 @@
 from ipykernel.comm import Comm
 
+_comms = {}
+
 
 class JupyterConnection:
-    def __init__(self, default_channel="imjoy_rpc"):
-        self._comms = {}
+    def __init__(self, config):
+        self.config = config or {}
         self.channel_prefix = ""
-        self.default_channel = default_channel
+        self.channel = self.config.get("channel") or "imjoy_rpc"
+        self._event_handlers = {}
+        self.comm = None
 
     def connect(self):
-        pass
-
-    def on(self, message_callback, channel=None):
-        channel = channel or self.default_channel
-        if channel not in self._comms:
-            self._comms[channel] = Comm(
-                target_name=self.channel_prefix + channel, data={"channel": channel}
+        if self.channel not in _comms:
+            _comms[self.channel] = Comm(
+                target_name=self.channel_prefix + self.channel,
+                data={"channel": self.channel},
             )
-        comm = self._comms[channel]
+        comm = _comms[self.channel]
 
         def msg_cb(msg):
             data = msg["content"]["data"]
@@ -24,20 +25,42 @@ class JupyterConnection:
                 buffer_paths = data["__buffer_paths__"]
                 del data["__buffer_paths__"]
                 put_buffers(data, buffer_paths, msg["buffers"])
-            message_callback(data)
+            self._fire(data.type, data)
 
         comm.on_msg(msg_cb)
 
         def remove_channel():
-            del self._comms[channel]
+            del _comms[self.channel]
+            self.comm = None
 
         comm.on_close(remove_channel)
+        self.comm = comm
 
-    def emit(self, msg, channel=None):
-        """Emit a message to the socketio server."""
-        channel = channel or self.default_channel
-        if channel in self._comms:
-            comm = self._comms[channel]
+    def disconnect(self):
+        pass
+
+    def on(self, event, handler):
+        if event not in self._event_handlers:
+            self._event_handlers[event] = []
+        self._event_handlers[event].append(handler)
+
+    def once(self, event, handler):
+        handler.___event_run_once = True
+        self.on(event, handler)
+
+    def off(self, event=None, handler=None):
+        if event is None and handler is None:
+            self._event_handlers = {}
+        elif event is not None and handler is None:
+            if event in self._event_handlers:
+                self._event_handlers[event] = []
+        else:
+            if event in self._event_handlers:
+                self._event_handlers[event].remove(handler)
+
+    def emit(self, msg):
+        if self.channel in _comms:
+            comm = _comms[self.channel]
             msg, buffer_paths, buffers = remove_buffers(msg)
             if len(buffers) > 0:
                 msg["__buffer_paths__"] = buffer_paths
@@ -45,10 +68,22 @@ class JupyterConnection:
             else:
                 comm.send(msg)
         else:
-            raise Exception("channel not found: " + channel)
+            raise Exception("channel not found: " + self.channel)
+
+    def _fire(self, event, data):
+        if self._event_handlers[event]:
+            for cb in self._event_handlers[event]:
+                try:
+                    cb(data)
+                except Exception as e:
+                    traceback_error = traceback.format_exc()
+                    self.emit({"type": "error", "message": traceback_error})
+        else:
+            if self.config.debug:
+                print("Unhandled event", event, data)
 
 
-# This file is taken from https://github.com/jupyter-widgets/ipywidgets/blob/master/ipywidgets/widgets/widget.py
+# self file is taken from https://github.com/jupyter-widgets/ipywidgets/blob/master/ipywidgets/widgets/widget.py
 # Author: IPython Development Team
 # License: BSD
 
@@ -57,11 +92,11 @@ _binary_types = (memoryview, bytearray, bytes)
 
 def put_buffers(state, buffer_paths, buffers):
     """The inverse of remove_buffers, except here we modify the existing dict/lists.
-    Modifying should be fine, since this is used when state comes from the wire.
+    Modifying should be fine, since self is used when state comes from the wire.
     """
     for buffer_path, buffer in zip(buffer_paths, buffers):
         # we'd like to set say sync_data['x'][0]['y'] = buffer
-        # where buffer_path in this example would be ['x', 0, 'y']
+        # where buffer_path in self example would be ['x', 0, 'y']
         obj = state
         for key in buffer_path[:-1]:
             obj = obj[key]
@@ -74,7 +109,7 @@ def _separate_buffers(substate, path, buffer_paths, buffers):
     # any part of the dict/list that needs modification will be cloned, so the original stays untouched
     # e.g. {'x': {'ar': ar}, 'y': [ar2, ar3]}, where ar/ar2/ar3 are binary types
     # will result in {'x': {}, 'y': [None, None]}, [ar, ar2, ar3], [['x', 'ar'], ['y', 0], ['y', 1]]
-    # instead of removing elements from the list, this will make replacing the buffers on the js side much easier
+    # instead of removing elements from the list, self will make replacing the buffers on the js side much easier
     if isinstance(substate, (list, tuple)):
         is_cloned = False
         for i, v in enumerate(substate):
