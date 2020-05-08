@@ -56,6 +56,7 @@ export class Connection extends EventManager {
     window.addEventListener("message", this);
     this.emit({
       type: "initialized",
+      success: true,
       config: this.config
     });
     this._fire("connected");

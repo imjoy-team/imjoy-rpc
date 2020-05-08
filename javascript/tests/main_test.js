@@ -44,6 +44,7 @@ describe("test", async () => {
         });
         pluginConnection.emit({
           type: "initialized",
+          success: true,
           config: config
         });
       },
@@ -63,7 +64,14 @@ describe("test", async () => {
       }
     };
 
-    coreConnection.on("initialized", pluginConfig => {
+    coreConnection.on("initialized", data => {
+      console.log("=================>", data);
+      const pluginConfig = data.config;
+
+      if (!data.success) {
+        console.error("Failed to initialize the plugin", pluginConfig.error);
+        return;
+      }
       console.log("plugin initialized:", pluginConfig);
       const core = new RPC(coreConnection);
       core.on("disconnected", details => {

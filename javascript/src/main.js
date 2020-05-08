@@ -57,11 +57,15 @@ function setupWebWorker(config) {
     let transferables = undefined;
     const m = e.data;
     if (m.type === "initialized") {
-      // send config to the worker
-      worker.postMessage({ type: "connectRPC", config: config });
-      clearTimeout(fallbackTimeout);
-      // complete the missing fields
-      m.config = Object.assign({}, config, m.config);
+      if (m.success) {
+        // send config to the worker
+        worker.postMessage({ type: "connectRPC", config: config });
+        clearTimeout(fallbackTimeout);
+        // complete the missing fields
+        m.config = Object.assign({}, config, m.config);
+      } else {
+        throw new Error(m.error);
+      }
     } else if (m.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
       window.dispatchEvent(

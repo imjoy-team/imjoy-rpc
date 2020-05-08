@@ -34,6 +34,7 @@ import { EventManager } from "./utils.js";
       });
       this.emit({
         type: "initialized",
+        success: true,
         config: {
           type: "web-worker",
           dedicated_thread: true,

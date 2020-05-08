@@ -296,7 +296,7 @@ export class RPC extends EventManager {
         reject(result.error);
       }
     });
-    this._connection.emit({ type: "authenticate", credential });
+    this._connection.emit({ type: "authenticate", credential: credential });
   }
 
   /**

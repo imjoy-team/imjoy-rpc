@@ -77,7 +77,7 @@ class RPC(EventManager):
 
     def init(self):
         self._connection.emit(
-            {"type": "initialized", "config": self.config,}
+            {"type": "initialized", "success": True, "config": self.config}
         )
 
     def start(self):
@@ -272,6 +272,7 @@ class RPC(EventManager):
 
     def _setup_handlers(self, connection):
         connection.on("disconnected", self.disconnect)
+        connection.on("authenticate", self._handle_auth)
         connection.on("execute", self._handle_execute)
         connection.on("method", self._handle_method)
         connection.on("callback", self._handle_callback)
@@ -304,6 +305,12 @@ class RPC(EventManager):
         else:
             logger.debug("Unhanled event: %s", data["type"])
 
+    def _handle_auth(self, credential):
+        self._connection.emit(
+            {"type": "authenticated", "success": True, "token": str(uuid.uuid4())}
+        )
+        # self._connection.emit({"type": "authenticated", "success": False, "error": "Unauthorized access"})
+
     def _handle_execute(self, data):
         if self.allow_execution:
             try:
@@ -320,11 +327,15 @@ class RPC(EventManager):
                 traceback_error = traceback.format_exc()
                 logger.error("error during execution: %s", traceback_error)
                 self._connection.emit(
-                    {"type": "executed", "success": False "error": traceback_error}
+                    {"type": "executed", "success": False, "error": traceback_error}
                 )
         else:
             self._connection.emit(
-                {"type": "executed", "success": False, "error": "execution is not allowed"}
+                {
+                    "type": "executed",
+                    "success": False,
+                    "error": "execution is not allowed",
+                }
             )
             logger.warn("execution is blocked due to allow_execution=False")
 
