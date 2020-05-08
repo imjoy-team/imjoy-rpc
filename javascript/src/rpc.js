@@ -41,11 +41,7 @@ export class RPC {
     this._disconnectHandler = function() {};
     this._store = new ReferenceStore();
     this._method_refs = new ReferenceStore();
-    this._connection = connection;
-    let me = this;
-    this._connection.onMessage(function(data) {
-      me._processMessage(data);
-    });
+    this._setupMessageHanlders();
   }
 
   /**
@@ -179,7 +175,7 @@ export class RPC {
         throw Error("Unsupported interface type");
       }
       this._interfaceSetAsRemoteHandler = resolve;
-      this._connection.send({ type: "setInterface", api: names });
+      this._connection.emit({ type: "setInterface", api: names });
     });
   }
 
@@ -187,115 +183,132 @@ export class RPC {
    * Handles a message from the remote site
    */
   // var callback_reg = new RegExp("onupdate|run$")
-  _processMessage(data) {
-    var resolve, reject, method, args, result;
-    switch (data.type) {
-      case "method":
-        var _interface = this._interface;
-        var _method_context = _interface.__this__ || _interface;
-        if (data.pid) {
-          _interface = this._plugin_interfaces[data.pid];
-          if (!_interface) {
-            if (data.promise) {
-              [resolve, reject] = this._unwrap(data.promise, false);
-              reject(
-                `plugin api function is not avaialbe in "${data.pid}", the plugin maybe terminated.`
-              );
-            } else {
-              console.error(
-                `plugin api function is not avaialbe in ${data.pid}, the plugin maybe terminated.`
-              );
-            }
-            return;
-          }
-        }
-        if (data.name.indexOf(".") !== -1) {
-          var names = data.name.split(".");
-          method = _interface[names[0]][names[1]];
-        } else {
-          method = _interface[data.name];
-        }
-        args = this._unwrap(data.args, true);
-        if (data.promise) {
-          [resolve, reject] = this._unwrap(data.promise, false);
-          try {
-            result = method.apply(_method_context, args);
-            if (
-              result instanceof Promise ||
-              (method.constructor &&
-                method.constructor.name === "AsyncFunction")
-            ) {
-              result.then(resolve).catch(reject);
-            } else {
-              resolve(result);
-            }
-          } catch (e) {
-            console.error(e, method);
-            reject(e);
-          }
-        } else {
-          try {
-            method.apply(_method_context, args);
-          } catch (e) {
-            console.error(e, method, args);
-          }
-        }
+  _setupMessageHanlders() {
+    this._connection.on("getConifg", () => {
+      this._connection.emit({ type: "config", config: this.config });
+    });
 
-        break;
-      case "callback":
-        if (data.promise) {
-          [resolve, reject] = this._unwrap(data.promise, false);
-          try {
-            method = this._store.fetch(data.num);
-            args = this._unwrap(data.args, true);
-            if (!method) {
-              throw "Callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
-            }
-            result = method.apply(null, args);
-            if (
-              result instanceof Promise ||
-              (method.constructor &&
-                method.constructor.name === "AsyncFunction")
-            ) {
-              result.then(resolve).catch(reject);
-            } else {
-              resolve(result);
-            }
-          } catch (e) {
-            console.error(e, method);
-            reject(e);
+    this._connection.on("execute", data => {
+      this._connection
+        .execute(data.code)
+        .then(() => {
+          this._connection.emit({ type: "executeSuccess" });
+        })
+        .catch(e => {
+          console.error(e);
+          this._connection.emit({
+            type: "executeFailure",
+            error: e.stack || String(e)
+          });
+        });
+    });
+
+    this._connection.on("method", data => {
+      let resolve, reject, method, args, result;
+      let _interface = this._interface;
+      const _method_context = _interface.__this__ || _interface;
+      if (data.pid) {
+        _interface = this._plugin_interfaces[data.pid];
+        if (!_interface) {
+          if (data.promise) {
+            [resolve, reject] = this._unwrap(data.promise, false);
+            reject(
+              `plugin api function is not avaialbe in "${data.pid}", the plugin maybe terminated.`
+            );
+          } else {
+            console.error(
+              `plugin api function is not avaialbe in ${data.pid}, the plugin maybe terminated.`
+            );
           }
-        } else {
-          try {
-            method = this._store.fetch(data.num);
-            args = this._unwrap(data.args, true);
-            if (!method) {
-              throw "Please notice that callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
-            }
-            method.apply(null, args);
-          } catch (e) {
-            console.error(e, method, args);
+          return;
+        }
+      }
+      if (data.name.indexOf(".") !== -1) {
+        const names = data.name.split(".");
+        method = _interface[names[0]][names[1]];
+      } else {
+        method = _interface[data.name];
+      }
+      args = this._unwrap(data.args, true);
+      if (data.promise) {
+        [resolve, reject] = this._unwrap(data.promise, false);
+        try {
+          result = method.apply(_method_context, args);
+          if (
+            result instanceof Promise ||
+            (method.constructor && method.constructor.name === "AsyncFunction")
+          ) {
+            result.then(resolve).catch(reject);
+          } else {
+            resolve(result);
           }
+        } catch (e) {
+          console.error(e, method);
+          reject(e);
         }
-        break;
-      case "setInterface":
-        this._setRemote(data.api);
-        break;
-      case "getInterface":
-        this.sendInterface();
-        this._getInterfaceHandler();
-        break;
-      case "interfaceSetAsRemote":
-        if (typeof this._interfaceSetAsRemoteHandler === "function") {
-          this._interfaceSetAsRemoteHandler();
-          this._interfaceSetAsRemoteHandler === null;
+      } else {
+        try {
+          method.apply(_method_context, args);
+        } catch (e) {
+          console.error(e, method, args);
         }
-        break;
-      case "disconnect":
-        this._disconnectHandler();
-        this._connection.disconnect();
-        break;
-    }
+      }
+    });
+
+    this._connection.on("callback", data => {
+      let resolve, reject, method, args, result;
+      if (data.promise) {
+        [resolve, reject] = this._unwrap(data.promise, false);
+        try {
+          method = this._store.fetch(data.num);
+          args = this._unwrap(data.args, true);
+          if (!method) {
+            throw "Callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
+          }
+          result = method.apply(null, args);
+          if (
+            result instanceof Promise ||
+            (method.constructor && method.constructor.name === "AsyncFunction")
+          ) {
+            result.then(resolve).catch(reject);
+          } else {
+            resolve(result);
+          }
+        } catch (e) {
+          console.error(e, method);
+          reject(e);
+        }
+      } else {
+        try {
+          method = this._store.fetch(data.num);
+          args = this._unwrap(data.args, true);
+          if (!method) {
+            throw "Please notice that callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
+          }
+          method.apply(null, args);
+        } catch (e) {
+          console.error(e, method, args);
+        }
+      }
+    });
+    this._connection.on("setInterface", data => {
+      this._setRemote(data.api);
+    });
+
+    this._connection.on("getInterface", data => {
+      this.sendInterface();
+      this._getInterfaceHandler();
+    });
+    this._connection.on("interfaceSetAsRemote", () => {
+      if (typeof this._interfaceSetAsRemoteHandler === "function") {
+        this._interfaceSetAsRemoteHandler();
+        this._interfaceSetAsRemoteHandler === null;
+      }
+    });
+    this._connection.on("disconnect", () => {
+      this._disconnectHandler();
+      this._connection.disconnect();
+    });
   }
 
   /**
@@ -303,7 +316,7 @@ export class RPC {
    * current interface
    */
   requestRemote() {
-    this._connection.send({ type: "getInterface" });
+    this._connection.emit({ type: "getInterface" });
   }
 
   _ndarray(typedArray, shape, dtype) {
@@ -399,7 +412,7 @@ export class RPC {
           }
           var transferables = args.args.__transferables__;
           if (transferables) delete args.args.__transferables__;
-          me._connection.send(
+          me._connection.emit(
             {
               type: "method",
               name: name,
@@ -427,7 +440,7 @@ export class RPC {
    * remote site was successfully set by this site as remote
    */
   _reportRemoteSet() {
-    this._connection.send({ type: "interfaceSetAsRemote" });
+    this._connection.emit({ type: "interfaceSetAsRemote" });
   }
 
   /**
@@ -440,7 +453,7 @@ export class RPC {
    * @returns {Array} wrapped arguments
    */
 
-  _encode_interface(aObject, bObject) {
+  _encodeInterface(aObject, bObject) {
     var v, k;
     const encoded_interface = {};
     aObject["__id__"] = aObject["__id__"] || randId();
@@ -465,7 +478,7 @@ export class RPC {
           encoded_interface[k] = v;
         } else if (typeof v === "object") {
           bObject[k] = Array.isArray(v) ? [] : {};
-          this._encode_interface(v, bObject[k]);
+          this._encodeInterface(v, bObject[k]);
         }
       }
     }
@@ -502,7 +515,7 @@ export class RPC {
       !Array.isArray(aObject) &&
       (aObject.__as_interface__ || as_interface)
     ) {
-      this._encode_interface(aObject, bObject);
+      this._encodeInterface(aObject, bObject);
       return bObject;
     }
 
@@ -823,7 +836,7 @@ export class RPC {
           resolve.__jailed_pairs__ = reject;
           reject.__jailed_pairs__ = resolve;
           try {
-            me._connection.send(
+            me._connection.emit(
               {
                 type: "callback",
                 id: id,
@@ -847,7 +860,7 @@ export class RPC {
         var args = me._wrap(Array.prototype.slice.call(arguments));
         var transferables = args.args.__transferables__;
         if (transferables) delete args.args.__transferables__;
-        return me._connection.send(
+        return me._connection.emit(
           {
             type: "callback",
             id: id,
@@ -866,8 +879,10 @@ export class RPC {
    * Sends the notification message and breaks the connection
    */
   disconnect() {
-    this._connection.send({ type: "disconnect" });
-    setTimeout(this._connection.disconnect, 2000);
+    this._connection.emit({ type: "disconnect" });
+    setTimeout(() => {
+      this._connection.disconnect();
+    }, 2000);
   }
 
   /**
@@ -1025,4 +1040,44 @@ class ReferenceStore {
   //     var obj = this._store[id];
   //     return obj;
   // }
+}
+
+export class BaseConnection {
+  constructor(config) {
+    this._event_handlers = {};
+    this.config = config || {};
+  }
+  connect() {
+    throw new Error("Not Implemented");
+  }
+  disconnect() {
+    throw new Error("Not Implemented");
+  }
+  emit() {
+    throw new Error("Not Implemented");
+  }
+  execute() {
+    throw new Error("Not Implemented");
+  }
+  on(event, handler) {
+    if (!this._event_handlers[event]) {
+      this._event_handlers[event] = [];
+    }
+    this._event_handlers[event].push(handler);
+  }
+  _fire(event, data) {
+    if (this._event_handlers[event]) {
+      for (let cb of this._event_handlers[event]) {
+        try {
+          cb(data);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    } else {
+      if (this.config && this.config.debug) {
+        console.warn("unhandled event", event, data);
+      }
+    }
+  }
 }

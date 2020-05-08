@@ -5,36 +5,26 @@ import { connectRPC } from "../src/pluginCore";
 describe("test", async () => {
   it("pass test", done => {
     const coreConnection = {
+      connect() {
+        coreConnection.on("config", m => {
+          console.log("config:", m.config);
+        });
+        coreConnection.on("executeSuccess", () => {});
+        coreConnection.on("executeFailure", () => {});
+      },
       disconnect: function() {},
-      send: function(data, transferables) {
+      emit: function(data, transferables) {
         // connect to the plugin
         pluginConnection.receiveMsg(data);
       },
-      onMessage: function(h) {
-        coreConnection._messageHandler = h;
+      on: function(event, handler) {
+        coreConnection._messageHandler[event] = handler;
       },
-      _messageHandler: function() {},
-      onDisconnect: function() {},
+      _messageHandler: {},
       receiveMsg: function(m) {
-        switch (m && m.type) {
-          case "config":
-            console.log(m.config);
-            break;
-          case "initialized":
-            this._init(m.config);
-            break;
-          case "executeSuccess":
-            this._executeSCb();
-            break;
-          case "executeFailure":
-            this._executeFCb(m.error);
-            break;
-          default:
-            this._messageHandler(m);
+        if (coreConnection._messageHandler[m.type]) {
+          coreConnection._messageHandler[m.type](m);
         }
-      },
-      onInit(h) {
-        this._init = h;
       }
     };
 
@@ -46,40 +36,40 @@ describe("test", async () => {
       console.log("executing code", code);
     };
     const pluginConnection = {
+      connect() {
+        pluginConnection.on("execute", () => {
+          if (config.allow_execution) {
+            execute(m.code);
+          } else {
+            console.warn(
+              "execute script is not allowed (allow_execution=false)"
+            );
+          }
+        });
+        pluginConnection.on("getConfig", () => {
+          pluginConnection.emit({
+            type: "config",
+            config: config
+          });
+        });
+      },
       disconnect: function() {},
-      send: function(data, transferables) {
+      emit: function(data, transferables) {
         // connect to the core
         coreConnection.receiveMsg(data);
       },
-      onMessage: function(h) {
-        pluginConnection._messageHandler = h;
+      on: function(event, handler) {
+        pluginConnection._messageHandler[event] = handler;
       },
-      _messageHandler: function() {},
-      onDisconnect: function() {},
+      _messageHandler: {},
       receiveMsg: function(m) {
-        switch (m && m.type) {
-          case "getConfig":
-            pluginConnection.send({
-              type: "config",
-              config: config
-            });
-            break;
-          case "execute":
-            if (config.allow_execution) {
-              execute(m.code);
-            } else {
-              console.warn(
-                "execute script is not allowed (allow_execution=false)"
-              );
-            }
-            break;
-          default:
-            pluginConnection._messageHandler(m);
+        if (pluginConnection._messageHandler[m.type]) {
+          pluginConnection._messageHandler[m.type](m);
         }
       }
     };
 
-    coreConnection.onInit(pluginConfig => {
+    coreConnection.on("initialized", pluginConfig => {
       console.log("plugin initialized:", pluginConfig);
       const core = new RPC(coreConnection);
       core.onDisconnect(details => {
@@ -120,7 +110,7 @@ describe("test", async () => {
         console.log("show image:", img);
       }
     });
-    pluginConnection.send({
+    pluginConnection.emit({
       type: "initialized",
       config: config
     });

@@ -5,7 +5,7 @@
  * connection object for the plugin site
  */
 import { connectRPC } from "./pluginCore.js";
-import { API_VERSION } from "./rpc.js";
+import { API_VERSION, BaseConnection } from "./rpc.js";
 
 (function() {
   // make sure this runs inside a webworker
@@ -17,14 +17,40 @@ import { API_VERSION } from "./rpc.js";
     throw new Error("This script can only loaded in a webworker");
   }
   /**
-   * Executes the given code in a jailed environment. For web
-   * implementation, we're already jailed in the iframe and the
-   * worker, so simply eval()
-   *
-   * @param {String} code code to execute
+   * Connection object provided to the RPC constructor,
+   * plugin site implementation for the web-based environment.
+   * Global will be then cleared to prevent exposure into the
+   * Worker, so we put this local connection object into a closure
    */
-  var execute = function(code) {
-    try {
+  class Connection extends BaseConnection {
+    constructor(config) {
+      super(config);
+    }
+    connect() {
+      self.addEventListener("message", e => {
+        this._fire(e.data.type, e.data);
+      });
+      this.emit({
+        type: "initialized",
+        config: {
+          type: "web-worker",
+          dedicated_thread: true,
+          allow_execution: true,
+          lang: "javascript",
+          api_version: API_VERSION
+        }
+      });
+    }
+    disconnect() {
+      self.close();
+      // TODO: call before close?
+      this._fire("disconnected");
+    }
+    emit(data, transferables) {
+      data.__transferables__ = transferables;
+      self.postMessage(data, transferables);
+    }
+    async execute(code) {
       if (code.type === "requirements") {
         try {
           if (
@@ -96,73 +122,17 @@ import { API_VERSION } from "./rpc.js";
       } else {
         throw "unsupported code type.";
       }
-      self.postMessage({ type: "executeSuccess" });
-    } catch (e) {
-      console.error("failed to execute scripts: ", code, e);
-      self.postMessage({ type: "executeFailure", error: e.stack || String(e) });
-    }
-  };
-
-  /**
-   * Connection object provided to the RPC constructor,
-   * plugin site implementation for the web-based environment.
-   * Global will be then cleared to prevent exposure into the
-   * Worker, so we put this local connection object into a closure
-   */
-  const conn = {
-    disconnect: function() {
-      self.close();
-    },
-    send: function(data, transferables) {
-      data.__transferables__ = transferables;
-      self.postMessage(data, transferables);
-    },
-    onMessage: function(h) {
-      conn._messageHandler = h;
-    },
-    _messageHandler: function() {},
-    onDisconnect: function() {}
-  };
-
-  const config = {
-    type: "web-worker",
-    dedicated_thread: true,
-    allow_execution: true,
-    lang: "javascript",
-    api_version: API_VERSION
-  };
-
-  /**
-   * Event lisener for the plugin message
-   */
-  self.addEventListener("message", function(e) {
-    const m = e.data;
-    switch (m && m.type) {
-      case "getConfig":
+      if (code.type === "requirements") {
         self.postMessage({
-          type: "config",
-          config: config
+          type: "cacheRequirements",
+          requirements: code.requirements
         });
-        break;
-      case "execute":
-        execute(m.code);
-        if (m.code.type === "requirements") {
-          self.postMessage({
-            type: "cacheRequirements",
-            requirements: m.code.requirements
-          });
-        }
-        break;
-      // for webworker only
-      case "connectRPC":
-        connectRPC(conn, m.config);
-        break;
-      default:
-        conn._messageHandler(m);
+      }
     }
+  }
+  const conn = new Connection();
+  conn.on("connectRPC", data => {
+    connectRPC(conn, data.config);
   });
-  self.postMessage({
-    type: "initialized",
-    config: config
-  });
+  conn.connect();
 })();
