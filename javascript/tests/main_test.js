@@ -65,7 +65,6 @@ describe("test", async () => {
     };
 
     coreConnection.on("initialized", data => {
-      console.log("=================>", data);
       const pluginConfig = data.config;
 
       if (!data.success) {
