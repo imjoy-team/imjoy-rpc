@@ -43,11 +43,9 @@ describe("test", async () => {
             );
           }
         });
-        pluginConnection.on("initialize", () => {
-          pluginConnection.emit({
-            type: "initialized",
-            config: config
-          });
+        pluginConnection.emit({
+          type: "initialized",
+          config: config
         });
       },
       disconnect: function() {},
@@ -100,13 +98,13 @@ describe("test", async () => {
         core.requestRemote();
       });
     });
-    coreConnection.emit({ type: "initialize" });
     const plugin = connectRPC(pluginConnection, config);
     plugin.setInterface({
       imshow: img => {
         console.log("show image:", img);
       }
     });
+
     pluginConnection.connect();
     expect(true).to.be.true;
   });

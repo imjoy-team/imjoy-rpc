@@ -12,7 +12,7 @@ from werkzeug.local import Local
 
 from .utils import dotdict, format_traceback, ReferenceStore, FuturePromise
 
-API_VERSION = "0.2.0"
+API_VERSION = "0.2.1"
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
