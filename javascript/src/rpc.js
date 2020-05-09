@@ -461,8 +461,7 @@ export class RPC extends EventManager {
           bObject[k] = {
             _rtype: "plugin_interface",
             _rid: aObject["_rid"],
-            _rvalue: k,
-            _rindex: null
+            _rvalue: k
           };
           encoded_interface[k] = v;
         } else if (Object(v) !== v) {
@@ -536,8 +535,7 @@ export class RPC extends EventManager {
             bObject[k] = {
               _rtype: "plugin_interface",
               _rid: aObject["_rid"],
-              _rvalue: k,
-              _rindex: null
+              _rvalue: k
             };
             encoded_interface[k] = v;
             continue;

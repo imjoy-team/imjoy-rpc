@@ -461,7 +461,6 @@ class RPC(EventManager):
                         "_rtype": "plugin_interface",
                         "_rid": a_object["_rid"],
                         "_rvalue": key,
-                        "_rindex": None,
                     }
                     encoded_interface[key] = val
             self.plugin_interfaces[a_object["_rid"]] = encoded_interface
