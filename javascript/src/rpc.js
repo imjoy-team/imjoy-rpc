@@ -33,9 +33,8 @@ export class RPC extends EventManager {
     super(config && config.debug);
     this._connection = connection;
     this.config = config || {};
-    this._interface = null;
-    this._plugin_interfaces = {};
-    this._remote = null;
+    this._remote_interfaces = {};
+    this._local_interface = null;
     // make sure there is an execute function
     const name = this.config.name;
     this._connection.execute =
@@ -70,7 +69,7 @@ export class RPC extends EventManager {
    * @returns {Object} set of remote interface methods
    */
   getRemote() {
-    return this._remote;
+    return this._remote_interfaces["_rmain"];
   }
 
   /**
@@ -82,24 +81,25 @@ export class RPC extends EventManager {
   setInterface(_interface) {
     if (this.config.forwarding_functions) {
       for (let func_name of this.config.forwarding_functions) {
-        if (this._remote[func_name]) {
+        const _remote = this._remote_interfaces["_rmain"];
+        if (_remote[func_name]) {
           if (_interface.constructor === Object) {
             if (!_interface[func_name]) {
               _interface[func_name] = (...args) => {
-                this._remote[func_name](...args);
+                _remote[func_name](...args);
               };
             }
           } else if (_interface.constructor.constructor === Function) {
             if (!_interface.constructor.prototype[func_name]) {
               _interface.constructor.prototype[func_name] = (...args) => {
-                this._remote[func_name](...args);
+                _remote[func_name](...args);
               };
             }
           }
         }
       }
     }
-    this._interface = _interface;
+    this._local_interface = _interface;
     this._fire("interfaceAvailable");
   }
 
@@ -110,16 +110,16 @@ export class RPC extends EventManager {
   sendInterface() {
     return new Promise(resolve => {
       var names = [];
-      if (!this._interface) {
+      if (!this._local_interface) {
         throw new Error("interface is not set.");
       }
-      if (this._interface.constructor === Object) {
-        for (var name of Object.keys(this._interface)) {
+      if (this._local_interface.constructor === Object) {
+        for (var name of Object.keys(this._local_interface)) {
           if (name.startsWith("_")) continue;
-          if (typeof this._interface[name] === "function") {
+          if (typeof this._local_interface[name] === "function") {
             names.push({ name: name, data: null, type: "function" });
           } else {
-            var data = this._interface[name];
+            var data = this._local_interface[name];
             if (data !== null && typeof data === "object") {
               var data2 = {};
               for (var k of Object.keys(data)) {
@@ -137,18 +137,18 @@ export class RPC extends EventManager {
         }
       }
       // a class
-      else if (this._interface.constructor === Function) {
+      else if (this._local_interface.constructor === Function) {
         throw new Error("Please instantiate the class before exportting it.");
       }
       // instance of a class
-      else if (this._interface.constructor.constructor === Function) {
+      else if (this._local_interface.constructor.constructor === Function) {
         var functions = Object.getOwnPropertyNames(
-          Object.getPrototypeOf(this._interface)
-        ).concat(Object.keys(this._interface));
+          Object.getPrototypeOf(this._local_interface)
+        ).concat(Object.keys(this._local_interface));
         for (var i = 0; i < functions.length; i++) {
           var name_ = functions[i];
           if (name_.startsWith("_") || name_ === "constructor") continue;
-          if (typeof this._interface[name_] === "function") {
+          if (typeof this._local_interface[name_] === "function") {
             names.push({ name: name_, data: null });
           }
         }
@@ -190,10 +190,10 @@ export class RPC extends EventManager {
 
     this._connection.on("method", data => {
       let resolve, reject, method, args, result;
-      let _interface = this._interface;
+      let _interface = this._local_interface;
       const _method_context = _interface.__this__ || _interface;
       if (data.pid) {
-        _interface = this._plugin_interfaces[data.pid];
+        _interface = this._remote_interfaces[data.pid];
         if (!_interface) {
           if (data.promise) {
             [resolve, reject] = this._unwrap(data.promise, false);
@@ -285,7 +285,7 @@ export class RPC extends EventManager {
     });
     this._connection.on("getInterface", () => {
       this._fire("getInterface");
-      if (this._interface) this.sendInterface();
+      if (this._local_interface) this.sendInterface();
       else this.once("interfaceAvailable", this.sendInterface);
     });
     this._connection.on("interfaceSetAsRemote", () => {
@@ -340,14 +340,14 @@ export class RPC extends EventManager {
    * @param {Array} names list of function names
    */
   _setRemoteInterface(api) {
-    this._remote = {};
+    const _remote = {};
     var i, name, data, type;
     for (i = 0; i < api.length; i++) {
       name = api[i].name;
       data = api[i].data;
       type = api[i].type;
       if (type === "data") {
-        this._remote[name] = data;
+        _remote[name] = data;
       } else if (data) {
         if (typeof data === "object") {
           var data2 = {};
@@ -360,15 +360,16 @@ export class RPC extends EventManager {
               }
             }
           }
-          this._remote[name] = data2;
+          _remote[name] = data2;
         } else {
-          this._remote[name] = data;
+          _remote[name] = data;
         }
       } else {
-        this._remote[name] = this._genRemoteMethod(name);
+        _remote[name] = this._genRemoteMethod(name);
       }
     }
 
+    this._remote_interfaces["_rmain"] = _remote;
     this._fire("remoteReady");
     this._reportRemoteSet();
   }
@@ -479,11 +480,12 @@ export class RPC extends EventManager {
         }
       }
     }
-    this._plugin_interfaces[aObject["_rid"]] = encoded_interface;
+    this._remote_interfaces[aObject["_rid"]] = encoded_interface;
 
-    if (aObject.on) {
+    // remove interface when closed
+    if (aObject.on && typeof aObject.on === "function") {
       aObject.on("close", () => {
-        delete this._plugin_interfaces[aObject["_rid"]];
+        delete this._remote_interfaces[aObject["_rid"]];
       });
     }
   }
@@ -514,15 +516,15 @@ export class RPC extends EventManager {
 
     if (as_interface) {
       aObject["_rid"] = aObject["_rid"] || randId();
-      this._plugin_interfaces[aObject["_rid"]] =
-        this._plugin_interfaces[aObject["_rid"]] || {};
+      this._remote_interfaces[aObject["_rid"]] =
+        this._remote_interfaces[aObject["_rid"]] || {};
     }
     for (k in aObject) {
       if (k === "hasOwnProperty") continue;
       if (isarray || aObject.hasOwnProperty(k)) {
         v = aObject[k];
-        if (typeof this._interface._rpcEncode === "function") {
-          const encoded_obj = this._interface._rpcEncode(v);
+        if (typeof this._local_interface._rpcEncode === "function") {
+          const encoded_obj = this._local_interface._rpcEncode(v);
           if (encoded_obj && encoded_obj.__rpc_dtype__) {
             bObject[k] = {
               _rtype: "custom_encoding",
@@ -537,7 +539,7 @@ export class RPC extends EventManager {
         }
         if (typeof v === "function") {
           if (as_interface) {
-            const encoded_interface = this._plugin_interfaces[aObject["_rid"]];
+            const encoded_interface = this._remote_interfaces[aObject["_rid"]];
             bObject[k] = {
               _rtype: "plugin_interface",
               _rid: aObject["_rid"],
@@ -547,10 +549,10 @@ export class RPC extends EventManager {
             continue;
           }
           let interfaceFuncName = null;
-          for (var name in this._interface) {
-            if (this._interface.hasOwnProperty(name)) {
+          for (var name in this._local_interface) {
+            if (this._local_interface.hasOwnProperty(name)) {
               if (name.startsWith("_")) continue;
-              if (this._interface[name] === v) {
+              if (this._local_interface[name] === v) {
                 interfaceFuncName = name;
                 break;
               }
@@ -558,12 +560,12 @@ export class RPC extends EventManager {
           }
           // search for prototypes
           var functions = Object.getOwnPropertyNames(
-            Object.getPrototypeOf(this._interface)
+            Object.getPrototypeOf(this._local_interface)
           );
           for (var i = 0; i < functions.length; i++) {
             var name_ = functions[i];
             if (name_.startsWith("_")) continue;
-            if (this._interface[name_] === v) {
+            if (this._local_interface[name_] === v) {
               interfaceFuncName = name_;
               break;
             }
@@ -578,8 +580,7 @@ export class RPC extends EventManager {
           } else {
             bObject[k] = {
               _rtype: "interface",
-              _rvalue: interfaceFuncName,
-              _rindex: null
+              _rvalue: interfaceFuncName
             };
           }
         } else if (
@@ -692,8 +693,8 @@ export class RPC extends EventManager {
 
     if (aObject.hasOwnProperty("_rtype") && aObject.hasOwnProperty("_rvalue")) {
       if (aObject._rtype.startsWith("custom_encoding")) {
-        if (typeof this._interface._rpcDecode === "function") {
-          const decodedObj = this._interface._rpcDecode(aObject._rvalue);
+        if (typeof this._local_interface._rpcDecode === "function") {
+          const decodedObj = this._local_interface._rpcDecode(aObject._rvalue);
           bObject = decodedObj;
         } else {
           bObject = aObject;
@@ -706,7 +707,7 @@ export class RPC extends EventManager {
         );
       } else if (aObject._rtype === "interface") {
         bObject =
-          this._remote[aObject._rvalue] ||
+          this._remote_interfaces["_rmain"][aObject._rvalue] ||
           this._genRemoteMethod(aObject._rvalue);
       } else if (aObject._rtype === "plugin_interface") {
         bObject = this._genRemoteMethod(aObject._rvalue, aObject._rid);

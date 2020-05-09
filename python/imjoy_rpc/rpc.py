@@ -34,12 +34,13 @@ class RPC(EventManager):
 
         self.manager_api = {}
         self.services = {}
-        self._plugin_interfaces = {}
+        self._remote_interfaces = {}
+        self._local_interface = None
         self._remote_set = False
         self._store = ReferenceStore()
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
-        self.interface = None
+        
 
         if config is None:
             config = dotdict()
@@ -116,20 +117,20 @@ class RPC(EventManager):
             api["exit"] = exit_wrapper
         else:
             api["exit"] = self.default_exit
-        self.interface = api
+        self._local_interface = api
 
         self._fire("interfaceAvailable")
 
     def send_interface(self):
         """Send interface."""
-        if self.interface is None:
+        if self._local_interface is None:
             raise Exception("interface is not set.")
         names = []
-        for name in self.interface:
-            if callable(self.interface[name]):
+        for name in self._local_interface:
+            if callable(self._local_interface[name]):
                 names.append({"name": name, "data": None})
             else:
-                data = self.interface[name]
+                data = self._local_interface[name]
                 if data is not None and isinstance(data, dict):
                     data2 = {}
                     for k in data:
@@ -250,6 +251,7 @@ class RPC(EventManager):
         _remote["utils"] = dotdict()
         _remote["WORK_DIR"] = self.work_dir
 
+        self._remote_interfaces["_rmain"] = _remote
         self.local_context.api = _remote
         self.local_context.api.export = self.export
 
@@ -293,7 +295,7 @@ class RPC(EventManager):
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Error when exiting: %s", exc)
         elif data["type"] == "getInterface":
-            if self.interface is not None:
+            if self._local_interface is not None:
                 self.send_interface()
             else:
                 self.once("interfaceAvailable", self.sendInterface)
@@ -340,9 +342,9 @@ class RPC(EventManager):
             logger.warn("execution is blocked due to allow_execution=False")
 
     async def _handle_method(self, data):
-        interface = self.interface
+        interface = self._local_interface
         if "pid" in data and data["pid"] is not None:
-            interface = self._plugin_interfaces[data["pid"]]
+            interface = self._remote_interfaces[data["pid"]]
         if data["name"] in interface:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
@@ -431,6 +433,39 @@ class RPC(EventManager):
         result = {"args": wrapped}
         return result
 
+    def _encode_interface(self, a_object, b_object):
+        encoded_interface = {}
+        aObject["_rid"] = aObject["_rid"] or str(uuid.uuid4())
+        isarray = isinstance(a_object, list)
+        keys = range(len(a_object)) if isarray else a_object.keys()
+        for key in keys:
+            val = a_object[key]
+            if key.startswith("_"):
+                continue
+            if callable(val):
+                b_object[key] = {
+                    "_rtype": "plugin_interface",
+                    "_rid": a_object["_rid"],
+                    "_rvalue": key,
+                }
+                encoded_interface[key] = val
+            elif type(val) in (int, float, bool, str):
+                b_object[k] = {"_rtype": "argument", "_rvalue": val}
+                encoded_interface[k] = val
+            elif isinstance(val, (dict, list)):
+                b_object[k] = [] if isinstance(val, list) else {}
+                self._encode_interface(val, b_object[k])
+
+        self._remote_interfaces[a_object["_rid"]] = encoded_interface
+
+        # remove interface when closed
+        if "on" in a_object and callable(a_object["on"]):
+
+            def remove_interface():
+                del self._remote_interfaces[a_object["_rid"]]
+
+            a_object["on"]("close", remove_interface)
+
     def _encode(self, a_object):
         """Encode object."""
         if a_object is None:
@@ -454,17 +489,8 @@ class RPC(EventManager):
             and "_rtype" in a_object
             and a_object["_rtype"] == "plugin_api"
         ):
-            encoded_interface = {}
-            for key, val in a_object.items():
-                if callable(val):
-                    b_object[key] = {
-                        "_rtype": "plugin_interface",
-                        "_rid": a_object["_rid"],
-                        "_rvalue": key,
-                    }
-                    encoded_interface[key] = val
-            self.plugin_interfaces[a_object["_rid"]] = encoded_interface
-            return b_object
+            self._encode_interface(aObject, bObject)
+            return bObject
 
         keys = range(len(a_object)) if isarray else a_object.keys()
         for key in keys:
@@ -475,8 +501,8 @@ class RPC(EventManager):
                 basestring = str
             if callable(val):
                 interface_func_name = None
-                for name in self.interface:
-                    if self.interface[name] == val:
+                for name in self._local_interface:
+                    if self._local_interface[name] == val:
                         interface_func_name = name
                         break
                 if interface_func_name is None:

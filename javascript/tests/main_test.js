@@ -219,9 +219,9 @@ describe("RPC", async () => {
     );
     expect(await api.testGetPlugin(9, 8)).to.equal(72);
     expect(await api.testGetPlugin(3, 6)).to.equal(18);
-    expect(Object.keys(core._plugin_interfaces).length).to.equal(1);
+    expect(Object.keys(core._remote_interfaces).length).to.equal(2);
     await api.closePlugin22();
-    expect(Object.keys(core._plugin_interfaces).length).to.equal(0);
+    expect(Object.keys(core._remote_interfaces).length).to.equal(1);
   });
 
   it("should block execution if allow_execution=false", async () => {
