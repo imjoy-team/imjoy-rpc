@@ -222,14 +222,14 @@ export class RPC extends EventManager {
             resolve(result);
           }
         } catch (e) {
-          console.error(e, method);
+          console.error(this.config.name, e, method);
           reject(e);
         }
       } else {
         try {
           method.apply(_method_context, args);
         } catch (e) {
-          console.error(e, method, args);
+          console.error(this.config.name, e, method, args);
         }
       }
     });
@@ -242,7 +242,9 @@ export class RPC extends EventManager {
           method = this._store.fetch(data.num);
           args = this._unwrap(data.args, true);
           if (!method) {
-            throw "Callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
+            throw new Error(
+              "Callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details."
+            );
           }
           result = method.apply(null, args);
           if (
@@ -254,7 +256,7 @@ export class RPC extends EventManager {
             resolve(result);
           }
         } catch (e) {
-          console.error(e, method);
+          console.error(this.config.name, e, method);
           reject(e);
         }
       } else {
@@ -262,11 +264,13 @@ export class RPC extends EventManager {
           method = this._store.fetch(data.num);
           args = this._unwrap(data.args, true);
           if (!method) {
-            throw "Please notice that callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
+            throw new Error(
+              "Please notice that callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details."
+            );
           }
           method.apply(null, args);
         } catch (e) {
-          console.error(e, method, args);
+          console.error(this.config.name, e, method, args);
         }
       }
     });

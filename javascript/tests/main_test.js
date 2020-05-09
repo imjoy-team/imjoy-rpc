@@ -2,8 +2,16 @@ import { expect } from "chai";
 import { RPC } from "../src/rpc.js";
 import { connectRPC } from "../src/pluginCore";
 
-describe("test", async () => {
-  it("pass test", done => {
+const core_interface = {
+  alert: msg => {
+    console.log("alert:", msg);
+  },
+  log: msg => {
+    console.log("log:", msg);
+  }
+};
+function runPlugin(config, plugin_interface) {
+  return new Promise((resolve, reject) => {
     const coreConnection = {
       connect() {
         coreConnection.on("executed", () => {});
@@ -22,11 +30,6 @@ describe("test", async () => {
           coreConnection._messageHandler[m.type](m);
         }
       }
-    };
-
-    const config = {
-      name: "test plugin",
-      allow_execution: false
     };
     const execute = code => {
       console.log("executing code", code);
@@ -72,7 +75,7 @@ describe("test", async () => {
         return;
       }
       console.log("plugin initialized:", pluginConfig);
-      const core = new RPC(coreConnection);
+      const core = new RPC(coreConnection, { name: "core" });
       core.on("disconnected", details => {
         console.log("status: plugin is disconnected", details);
       });
@@ -89,11 +92,7 @@ describe("test", async () => {
         console.log("status: plugin is busy");
       });
 
-      core.setInterface({
-        alert: msg => {
-          console.log("alert:", msg);
-        }
-      });
+      core.setInterface(core_interface);
 
       core.sendInterface().then(() => {
         if (pluginConfig.allow_execution) {
@@ -101,21 +100,83 @@ describe("test", async () => {
         }
         core.on("remoteReady", async () => {
           const api = core.getRemote();
-          console.log("plugin api", api);
-          await api.imshow("this is an image.");
-          done();
+          resolve(api);
         });
         core.requestRemote();
       });
     });
-    const plugin = connectRPC(pluginConnection, config);
-    plugin.setInterface({
-      imshow: img => {
-        console.log("show image:", img);
-      }
-    });
 
+    const plugin = connectRPC(pluginConnection, config);
+    plugin.setInterface(plugin_interface);
     pluginConnection.connect();
-    expect(true).to.be.true;
+  });
+}
+
+describe("RPC", async () => {
+  it("should connect", async () => {
+    const config = {
+      name: "test plugin",
+      allow_execution: false
+    };
+    const api = await runPlugin(config, {});
+    console.log("plugin api", api);
+  });
+
+  it("should encode/decode data", async () => {
+    const plugin_interface = {
+      echo: msg => {
+        return msg;
+      }
+    };
+    const config = {
+      name: "test plugin",
+      allow_execution: false
+    };
+    const api = await runPlugin(config, plugin_interface);
+
+    const msg = "this is an messge.";
+    expect(await api.echo(msg)).to.equal(msg);
+    expect(await api.echo(99)).to.equal(99);
+    expect(await api.echo(true)).to.equal(true);
+    const date = new Date(2018, 11, 24, 10, 33, 30, 0);
+    expect((await api.echo(date)).getTime()).to.equal(date.getTime());
+    const imageData = new ImageData(200, 100);
+    expect((await api.echo(imageData)).width).to.equal(200);
+    expect(await api.echo({ a: 1, b: 93 })).to.include.all.keys("a", "b");
+    expect(await api.echo(["12", 33, { foo: "bar" }])).to.include(33);
+    expect(await api.echo(["12", 33, { foo: "bar" }])).to.include("12");
+    expect(await api.echo(["12", 33, { foo: "bar" }])).to.deep.include({
+      foo: "bar"
+    });
+    const blob = new Blob(["hello"], { type: "text/plain" });
+    expect(await api.echo(blob)).to.be.an.instanceof(Blob);
+    const file = new File(["foo"], "foo.txt", {
+      type: "text/plain"
+    });
+    expect(await api.echo(file)).to.be.an.instanceof(File);
+
+    // send a callback function
+    const callback = () => {
+      return 123;
+    };
+    const received_callback = await api.echo(callback);
+
+    expect(await received_callback()).to.equal(123);
+    try {
+      await received_callback();
+    } catch (error) {
+      expect(error).to.be.an("error");
+    }
+    // send an interface
+    const itf = {
+      __as_interface__: true,
+      add(a, b) {
+        return a + b;
+      }
+    };
+    const received_itf = await api.echo(itf);
+    expect(await received_itf.add(1, 3)).to.equal(4);
+    expect(await received_itf.add(9, 3)).to.equal(12);
+    expect(await received_itf.add("12", 2)).to.equal("122");
   });
 });
