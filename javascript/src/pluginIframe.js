@@ -200,6 +200,6 @@ export default function setupIframe(config) {
   config.lang = "javascript";
   config.api_version = API_VERSION;
   const conn = new Connection(config);
-  conn.connect();
   connectRPC(conn, config);
+  conn.connect();
 }

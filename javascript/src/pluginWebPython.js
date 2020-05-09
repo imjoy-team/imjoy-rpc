@@ -238,7 +238,7 @@ export default function setupWebPython(config) {
   config.api_version = API_VERSION;
   const conn = new Connection(config);
   setupPyodide().then(() => {
-    conn.connect();
     connectRPC(conn, config);
+    conn.connect();
   });
 }

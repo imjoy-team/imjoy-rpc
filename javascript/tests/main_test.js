@@ -2,59 +2,89 @@ import { expect } from "chai";
 import { RPC } from "../src/rpc.js";
 import { connectRPC } from "../src/pluginCore";
 
+const plugins = {
+  plugin22: {
+    _rintf: true,
+    multiply(a, b) {
+      return a * b;
+    }
+  }
+};
+
+function evalInScope(code, scope) {
+  var keys = Object.keys(scope);
+  var values = keys.map(function(key) {
+    return scope[key];
+  });
+  var f = Function(keys.join(", "), code);
+  // Note that at this point you could cache the function f.
+  return f.apply(undefined, values);
+}
+
 const core_interface = {
   alert: msg => {
     console.log("alert:", msg);
   },
   log: msg => {
     console.log("log:", msg);
+  },
+  getPlugin: name => {
+    return plugins[name];
   }
 };
-function runPlugin(config, plugin_interface) {
+function runPlugin(config, plugin_interface, code) {
   return new Promise((resolve, reject) => {
     const coreConnection = {
-      connect() {
-        coreConnection.on("executed", () => {});
-      },
+      connect() {},
       disconnect: function() {},
       emit: function(data) {
         // connect to the plugin
-        pluginConnection.receiveMsg(data);
+        setTimeout(() => {
+          pluginConnection.receiveMsg(data);
+        }, 30);
       },
       on: function(event, handler) {
         coreConnection._messageHandler[event] = handler;
       },
       _messageHandler: {},
+      async execute(code) {
+        coreConnection.emit({ type: "execute", code: code });
+      },
       receiveMsg: function(m) {
         if (coreConnection._messageHandler[m.type]) {
           coreConnection._messageHandler[m.type](m);
         }
       }
     };
-    const execute = code => {
-      console.log("executing code", code);
-    };
+
+    let imjoy_api_in_plugin;
     const pluginConnection = {
       connect() {
-        pluginConnection.on("execute", () => {
-          if (config.allow_execution) {
-            execute(m.code);
-          } else {
-            console.warn(
-              "execute script is not allowed (allow_execution=false)"
-            );
-          }
-        });
         pluginConnection.emit({
           type: "initialized",
           success: true,
           config: config
         });
       },
+      async execute(code) {
+        if (config.allow_execution) {
+          if (code.type == "script" && code.content) {
+            evalInScope(code.content, { api: imjoy_api_in_plugin });
+          } else {
+            throw new Error("unsupported");
+          }
+        } else {
+          throw new Error(
+            "execute script is not allowed (allow_execution=false)"
+          );
+        }
+      },
       disconnect: function() {},
       emit: function(data) {
         // connect to the core
-        coreConnection.receiveMsg(data);
+        setTimeout(() => {
+          coreConnection.receiveMsg(data);
+        }, 30);
       },
       on: function(event, handler) {
         pluginConnection._messageHandler[event] = handler;
@@ -95,9 +125,20 @@ function runPlugin(config, plugin_interface) {
       core.setInterface(core_interface);
 
       core.sendInterface().then(() => {
-        if (pluginConfig.allow_execution) {
-          console.log("execute code");
+        // if (pluginConfig.allow_execution) {
+        if (code) {
+          coreConnection.on("executed", data => {
+            if (!data.success) {
+              reject(data.error);
+            }
+          });
+          coreConnection.execute({
+            type: "script",
+            content: code
+          });
         }
+        // }
+
         core.on("remoteReady", async () => {
           const api = core.getRemote();
           resolve(api);
@@ -106,9 +147,14 @@ function runPlugin(config, plugin_interface) {
       });
     });
 
-    const plugin = connectRPC(pluginConnection, config);
-    plugin.setInterface(plugin_interface);
     pluginConnection.connect();
+    const plugin = connectRPC(pluginConnection, config);
+    if (plugin_interface) plugin.setInterface(plugin_interface);
+
+    window.addEventListener("imjoy_remote_api_ready", e => {
+      // imjoy plugin api
+      imjoy_api_in_plugin = e.detail;
+    });
   });
 }
 
@@ -122,17 +168,73 @@ describe("RPC", async () => {
     console.log("plugin api", api);
   });
 
+  it("should support plugin class", async () => {
+    class Plugin {
+      _invisible_method() {}
+      echo(msg) {
+        return msg;
+      }
+    }
+    const api = await runPlugin(
+      {
+        name: "test plugin",
+        allow_execution: false
+      },
+      new Plugin()
+    );
+    expect(await api.echo(32)).to.equal(32);
+    expect(api._invisible_method).to.be.undefined;
+  });
+
+  const testGetPluginCode = `
+    class Plugin {
+      async testGetPlugin(a, b){
+        const p = await api.getPlugin('plugin22')
+        return p.multiply(a, b)
+      }
+    };
+    api.export(new Plugin())
+    `;
+
+  it("should execute code and get plugin", async () => {
+    const api = await runPlugin(
+      {
+        name: "test plugin",
+        allow_execution: true
+      },
+      null,
+      testGetPluginCode
+    );
+    expect(await api.testGetPlugin(9, 8)).to.equal(72);
+    expect(await api.testGetPlugin(3, 6)).to.equal(18);
+  });
+
+  it("should block execution if allow_execution=false", async () => {
+    try {
+      await runPlugin(
+        { name: "test2", allow_execution: false },
+        null,
+        testGetPluginCode
+      );
+      expect("this line will not be reached").to.equal(true);
+    } catch (error) {
+      expect(error).to.be.an("error");
+    }
+  });
+
   it("should encode/decode data", async () => {
     const plugin_interface = {
       echo: msg => {
         return msg;
       }
     };
-    const config = {
-      name: "test plugin",
-      allow_execution: false
-    };
-    const api = await runPlugin(config, plugin_interface);
+    const api = await runPlugin(
+      {
+        name: "test plugin",
+        allow_execution: false
+      },
+      plugin_interface
+    );
 
     const msg = "this is an messge.";
     expect(await api.echo(msg)).to.equal(msg);
@@ -164,6 +266,7 @@ describe("RPC", async () => {
     expect(await received_callback()).to.equal(123);
     try {
       await received_callback();
+      expect("this line will not be reached").to.equal(true);
     } catch (error) {
       expect(error).to.be.an("error");
     }

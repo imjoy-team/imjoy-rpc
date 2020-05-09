@@ -165,10 +165,12 @@ export function setupRPC(config) {
         reject("Unsupported plugin type: " + config.type);
       }
       try {
-        window.addEventListener("imjoy_remote_api_ready", e => {
+        this.handleEvent = e => {
           // imjoy plugin api
           resolve(e.detail);
-        });
+          window.removeEventListener("imjoy_remote_api_ready", this);
+        };
+        window.addEventListener("imjoy_remote_api_ready", this);
       } catch (e) {
         reject(e);
       }

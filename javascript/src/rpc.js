@@ -36,6 +36,13 @@ export class RPC extends EventManager {
     this._interface = null;
     this._plugin_interfaces = {};
     this._remote = null;
+    // make sure there is an execute function
+    const name = this.config.name;
+    this._connection.execute =
+      this._connection.execute ||
+      function() {
+        throw new Error(`connection.execute not implemented (in "${name}")`);
+      };
     this._store = new ReferenceStore();
     this._method_refs = new ReferenceStore();
     this._method_refs.onReady(() => {
@@ -167,8 +174,7 @@ export class RPC extends EventManager {
       });
     });
     this._connection.on("execute", data => {
-      this._connection
-        .execute(data.code)
+      Promise.resolve(this._connection.execute(data.code))
         .then(() => {
           this._connection.emit({ type: "executed", success: true });
         })
@@ -177,7 +183,7 @@ export class RPC extends EventManager {
           this._connection.emit({
             type: "executed",
             success: false,
-            error: e.stack || String(e)
+            error: e
           });
         });
     });
