@@ -17,7 +17,8 @@
     "deploy": "npm run build && node deploy-site.js",
     "format": "prettier --write \"{src,tests}/**/**\"",
     "check-format": "prettier --check \"{src,tests}/**/**\"",
-    "test": "karma start --single-run --browsers ChromeHeadless,FirefoxHeadless karma.conf.js"
+    "test": "karma start --single-run --browsers ChromeHeadless,FirefoxHeadless karma.conf.js",
+    "test-watch": "karma start --auto-watch --browsers ChromeHeadless,FirefoxHeadless karma.conf.js"
   },
   "repository": {
     "type": "git",

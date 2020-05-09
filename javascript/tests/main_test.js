@@ -7,6 +7,14 @@ const plugins = {
     _rintf: true,
     multiply(a, b) {
       return a * b;
+    },
+    close() {
+      plugins.plugin22.__close_callback();
+    },
+    on(event, callback) {
+      if (event === "close") {
+        plugins.plugin22.__close_callback = callback;
+      }
     }
   }
 };
@@ -56,7 +64,7 @@ function runPlugin(config, plugin_interface, code) {
         }
       }
     };
-
+    let plugin;
     let imjoy_api_in_plugin;
     const pluginConnection = {
       connect() {
@@ -141,14 +149,14 @@ function runPlugin(config, plugin_interface, code) {
 
         core.on("remoteReady", async () => {
           const api = core.getRemote();
-          resolve(api);
+          resolve({ api, plugin, core });
         });
         core.requestRemote();
       });
     });
 
     pluginConnection.connect();
-    const plugin = connectRPC(pluginConnection, config);
+    plugin = connectRPC(pluginConnection, config);
     if (plugin_interface) plugin.setInterface(plugin_interface);
 
     window.addEventListener("imjoy_remote_api_ready", e => {
@@ -164,7 +172,7 @@ describe("RPC", async () => {
       name: "test plugin",
       allow_execution: false
     };
-    const api = await runPlugin(config, {});
+    const { api } = await runPlugin(config, {});
     console.log("plugin api", api);
   });
 
@@ -175,7 +183,7 @@ describe("RPC", async () => {
         return msg;
       }
     }
-    const api = await runPlugin(
+    const { api } = await runPlugin(
       {
         name: "test plugin",
         allow_execution: false
@@ -189,15 +197,19 @@ describe("RPC", async () => {
   const testGetPluginCode = `
     class Plugin {
       async testGetPlugin(a, b){
-        const p = await api.getPlugin('plugin22')
-        return p.multiply(a, b)
+        
+        this.plugin22 = await api.getPlugin('plugin22')
+        return this.plugin22.multiply(a, b)
+      }
+      async closePlugin22(){
+        this.plugin22.close()
       }
     };
     api.export(new Plugin())
     `;
 
   it("should execute code and get plugin", async () => {
-    const api = await runPlugin(
+    const { api, core } = await runPlugin(
       {
         name: "test plugin",
         allow_execution: true
@@ -207,6 +219,9 @@ describe("RPC", async () => {
     );
     expect(await api.testGetPlugin(9, 8)).to.equal(72);
     expect(await api.testGetPlugin(3, 6)).to.equal(18);
+    expect(Object.keys(core._plugin_interfaces).length).to.equal(1);
+    await api.closePlugin22();
+    expect(Object.keys(core._plugin_interfaces).length).to.equal(0);
   });
 
   it("should block execution if allow_execution=false", async () => {
@@ -228,7 +243,7 @@ describe("RPC", async () => {
         return msg;
       }
     };
-    const api = await runPlugin(
+    const { api } = await runPlugin(
       {
         name: "test plugin",
         allow_execution: false
