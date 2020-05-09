@@ -169,7 +169,7 @@ describe("RPC", async () => {
     }
     // send an interface
     const itf = {
-      __as_interface__: true,
+      _rintf: true,
       add(a, b) {
         return a + b;
       }

@@ -239,7 +239,7 @@ export class RPC extends EventManager {
       if (data.promise) {
         [resolve, reject] = this._unwrap(data.promise, false);
         try {
-          method = this._store.fetch(data.num);
+          method = this._store.fetch(data._rindex);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -261,7 +261,7 @@ export class RPC extends EventManager {
         }
       } else {
         try {
-          method = this._store.fetch(data.num);
+          method = this._store.fetch(data._rindex);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -321,10 +321,10 @@ export class RPC extends EventManager {
     }
     shape = shape || [typedArray.length];
     return {
-      __jailed_type__: "ndarray",
-      __value__: typedArray,
-      __shape__: shape,
-      __dtype__: _dtype
+      _rtype: "ndarray",
+      _rvalue: typedArray,
+      _rshape: shape,
+      _rdtype: _dtype
     };
   }
 
@@ -448,7 +448,7 @@ export class RPC extends EventManager {
   _encodeInterface(aObject, bObject) {
     var v, k;
     const encoded_interface = {};
-    aObject["__id__"] = aObject["__id__"] || randId();
+    aObject["_rid"] = aObject["_rid"] || randId();
     for (k in aObject) {
       if (k === "hasOwnProperty") continue;
       if (aObject.hasOwnProperty(k)) {
@@ -459,14 +459,14 @@ export class RPC extends EventManager {
 
         if (typeof v === "function") {
           bObject[k] = {
-            __jailed_type__: "plugin_interface",
-            __plugin_id__: aObject["__id__"],
-            __value__: k,
-            num: null
+            _rtype: "plugin_interface",
+            _rid: aObject["_rid"],
+            _rvalue: k,
+            _rindex: null
           };
           encoded_interface[k] = v;
         } else if (Object(v) !== v) {
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
+          bObject[k] = { _rtype: "argument", _rvalue: v };
           encoded_interface[k] = v;
         } else if (typeof v === "object") {
           bObject[k] = Array.isArray(v) ? [] : {};
@@ -474,11 +474,11 @@ export class RPC extends EventManager {
         }
       }
     }
-    this._plugin_interfaces[aObject["__id__"]] = encoded_interface;
+    this._plugin_interfaces[aObject["_rid"]] = encoded_interface;
 
     if (aObject.on) {
       aObject.on("close", () => {
-        delete this._plugin_interfaces[aObject["__id__"]];
+        delete this._plugin_interfaces[aObject["_rid"]];
       });
     }
   }
@@ -493,11 +493,7 @@ export class RPC extends EventManager {
     var isarray = Array.isArray(aObject);
     bObject = isarray ? [] : {};
     //skip if already encoded
-    if (
-      typeof aObject === "object" &&
-      aObject.__jailed_type__ &&
-      aObject.__value__
-    ) {
+    if (typeof aObject === "object" && aObject._rtype && aObject._rvalue) {
       return aObject;
     }
 
@@ -505,16 +501,16 @@ export class RPC extends EventManager {
     if (
       typeof aObject === "object" &&
       !Array.isArray(aObject) &&
-      (aObject.__as_interface__ || as_interface)
+      (aObject._rintf || as_interface)
     ) {
       this._encodeInterface(aObject, bObject);
       return bObject;
     }
 
     if (as_interface) {
-      aObject["__id__"] = aObject["__id__"] || randId();
-      this._plugin_interfaces[aObject["__id__"]] =
-        this._plugin_interfaces[aObject["__id__"]] || {};
+      aObject["_rid"] = aObject["_rid"] || randId();
+      this._plugin_interfaces[aObject["_rid"]] =
+        this._plugin_interfaces[aObject["_rid"]] || {};
     }
     for (k in aObject) {
       if (k === "hasOwnProperty") continue;
@@ -524,26 +520,24 @@ export class RPC extends EventManager {
           const encoded_obj = this._interface._rpcEncode(v);
           if (encoded_obj && encoded_obj.__rpc_dtype__) {
             bObject[k] = {
-              __jailed_type__: "custom_encoding",
-              __value__: encoded_obj
+              _rtype: "custom_encoding",
+              _rvalue: encoded_obj
             };
             continue;
           }
-          // if the returned object does not contain __jailed_type__, assuming the object has been transformed
+          // if the returned object does not contain _rtype, assuming the object has been transformed
           else {
             v = encoded_obj;
           }
         }
         if (typeof v === "function") {
           if (as_interface) {
-            const encoded_interface = this._plugin_interfaces[
-              aObject["__id__"]
-            ];
+            const encoded_interface = this._plugin_interfaces[aObject["_rid"]];
             bObject[k] = {
-              __jailed_type__: "plugin_interface",
-              __plugin_id__: aObject["__id__"],
-              __value__: k,
-              num: null
+              _rtype: "plugin_interface",
+              _rid: aObject["_rid"],
+              _rvalue: k,
+              _rindex: null
             };
             encoded_interface[k] = v;
             continue;
@@ -573,15 +567,15 @@ export class RPC extends EventManager {
           if (!interfaceFuncName) {
             var id = this._store.put(v);
             bObject[k] = {
-              __jailed_type__: "callback",
-              __value__: (v.constructor && v.constructor.name) || id,
-              num: id
+              _rtype: "callback",
+              _rvalue: (v.constructor && v.constructor.name) || id,
+              _rindex: id
             };
           } else {
             bObject[k] = {
-              __jailed_type__: "interface",
-              __value__: interfaceFuncName,
-              num: null
+              _rtype: "interface",
+              _rvalue: interfaceFuncName,
+              _rindex: null
             };
           }
         } else if (
@@ -596,10 +590,10 @@ export class RPC extends EventManager {
             delete v._transfer;
           }
           bObject[k] = {
-            __jailed_type__: "ndarray",
-            __value__: v_buffer,
-            __shape__: v.shape,
-            __dtype__: v.dtype
+            _rtype: "ndarray",
+            _rvalue: v_buffer,
+            _rshape: v.shape,
+            _rdtype: v.dtype
           };
         } else if (
           /*global nj*/
@@ -613,19 +607,19 @@ export class RPC extends EventManager {
             delete v._transfer;
           }
           bObject[k] = {
-            __jailed_type__: "ndarray",
-            __value__: v.selection.data,
-            __shape__: v.shape,
-            __dtype__: dtype
+            _rtype: "ndarray",
+            _rvalue: v.selection.data,
+            _rshape: v.shape,
+            _rdtype: dtype
           };
         } else if (v instanceof Error) {
           console.error(v);
-          bObject[k] = { __jailed_type__: "error", __value__: v.toString() };
+          bObject[k] = { _rtype: "error", _rvalue: v.toString() };
         } else if (typeof File !== "undefined" && v instanceof File) {
           bObject[k] = {
-            __jailed_type__: "file",
-            __value__: v,
-            __relative_path__: v.relativePath || v.webkitRelativePath
+            _rtype: "file",
+            _rvalue: v,
+            _rrelative_path: v.relativePath || v.webkitRelativePath
           };
         }
         // send objects supported by structure clone algorithm
@@ -640,23 +634,23 @@ export class RPC extends EventManager {
           v instanceof ImageData ||
           (typeof FileList !== "undefined" && v instanceof FileList)
         ) {
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
+          bObject[k] = { _rtype: "argument", _rvalue: v };
         } else if (v instanceof ArrayBuffer) {
           if (v._transfer || _transfer) {
             transferables.push(v);
             delete v._transfer;
           }
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
+          bObject[k] = { _rtype: "argument", _rvalue: v };
         } else if (v instanceof ArrayBufferView) {
           if (v._transfer || _transfer) {
             transferables.push(v.buffer);
             delete v._transfer;
           }
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
+          bObject[k] = { _rtype: "argument", _rvalue: v };
         }
         // TODO: support also Map and Set
         // TODO: avoid object such as DynamicPlugin instance.
-        else if (v.__as_interface__) {
+        else if (v._rintf) {
           bObject[k] = this._encode(v, true);
         } else if (typeof v === "object" || Array.isArray(v)) {
           bObject[k] = this._encode(v, as_interface);
@@ -692,63 +686,61 @@ export class RPC extends EventManager {
     }
     var bObject, v, k;
 
-    if (
-      aObject.hasOwnProperty("__jailed_type__") &&
-      aObject.hasOwnProperty("__value__")
-    ) {
-      if (aObject.__jailed_type__.startsWith("custom_encoding")) {
+    if (aObject.hasOwnProperty("_rtype") && aObject.hasOwnProperty("_rvalue")) {
+      if (aObject._rtype.startsWith("custom_encoding")) {
         if (typeof this._interface._rpcDecode === "function") {
-          const decodedObj = this._interface._rpcDecode(aObject.__value__);
+          const decodedObj = this._interface._rpcDecode(aObject._rvalue);
           bObject = decodedObj;
         } else {
           bObject = aObject;
         }
-      } else if (aObject.__jailed_type__ === "callback") {
-        bObject = this._genRemoteCallback(callbackId, aObject.num, withPromise);
-      } else if (aObject.__jailed_type__ === "interface") {
-        bObject =
-          this._remote[aObject.__value__] ||
-          this._genRemoteMethod(aObject.__value__);
-      } else if (aObject.__jailed_type__ === "plugin_interface") {
-        bObject = this._genRemoteMethod(
-          aObject.__value__,
-          aObject.__plugin_id__
+      } else if (aObject._rtype === "callback") {
+        bObject = this._genRemoteCallback(
+          callbackId,
+          aObject._rindex,
+          withPromise
         );
-      } else if (aObject.__jailed_type__ === "ndarray") {
+      } else if (aObject._rtype === "interface") {
+        bObject =
+          this._remote[aObject._rvalue] ||
+          this._genRemoteMethod(aObject._rvalue);
+      } else if (aObject._rtype === "plugin_interface") {
+        bObject = this._genRemoteMethod(aObject._rvalue, aObject._rid);
+      } else if (aObject._rtype === "ndarray") {
         /*global nj tf*/
         //create build array/tensor if used in the plugin
         if (this.id === "__plugin__" && typeof nj !== "undefined" && nj.array) {
-          if (Array.isArray(aObject.__value__)) {
-            aObject.__value__ = aObject.__value__.reduce(_appendBuffer);
+          if (Array.isArray(aObject._rvalue)) {
+            aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = nj
-            .array(aObject.__value__, aObject.__dtype__)
-            .reshape(aObject.__shape__);
+            .array(aObject._rvalue, aObject._rdtype)
+            .reshape(aObject._rshape);
         } else if (
           this.id === "__plugin__" &&
           typeof tf !== "undefined" &&
           tf.Tensor
         ) {
-          if (Array.isArray(aObject.__value__)) {
-            aObject.__value__ = aObject.__value__.reduce(_appendBuffer);
+          if (Array.isArray(aObject._rvalue)) {
+            aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = tf.tensor(
-            aObject.__value__,
-            aObject.__shape__,
-            aObject.__dtype__
+            aObject._rvalue,
+            aObject._rshape,
+            aObject._rdtype
           );
         } else {
           //keep it as regular if transfered to the main app
           bObject = aObject;
         }
-      } else if (aObject.__jailed_type__ === "error") {
-        bObject = new Error(aObject.__value__);
-      } else if (aObject.__jailed_type__ === "file") {
-        bObject = aObject.__value__;
+      } else if (aObject._rtype === "error") {
+        bObject = new Error(aObject._rvalue);
+      } else if (aObject._rtype === "file") {
+        bObject = aObject._rvalue;
         //patch relativePath
-        bObject.relativePath = aObject.__relative_path__;
-      } else if (aObject.__jailed_type__ === "argument") {
-        bObject = aObject.__value__;
+        bObject.relativePath = aObject._rrelative_path;
+      } else if (aObject._rtype === "argument") {
+        bObject = aObject._rvalue;
       }
       return bObject;
     } else {
@@ -832,7 +824,7 @@ export class RPC extends EventManager {
               {
                 type: "callback",
                 id: id,
-                num: argNum,
+                _rindex: argNum,
                 args: args,
                 // pid :  me.id,
                 promise: me._wrap([resolve, reject])
@@ -856,7 +848,7 @@ export class RPC extends EventManager {
           {
             type: "callback",
             id: id,
-            num: argNum,
+            _rindex: argNum,
             args: args
             // pid :  me.id
           },

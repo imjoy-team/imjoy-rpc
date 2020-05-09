@@ -186,7 +186,7 @@ class RPC(EventManager):
                         {
                             "type": "callback",
                             "id": id_,
-                            "num": arg_num,
+                            "_rindex": arg_num,
                             # 'pid'  : self.id,
                             "args": self.wrap(arguments),
                             "promise": self.wrap([resolve, reject]),
@@ -205,7 +205,7 @@ class RPC(EventManager):
                     {
                         "type": "callback",
                         "id": id_,
-                        "num": arg_num,
+                        "_rindex": arg_num,
                         # 'pid'  : self.id,
                         "args": self.wrap(arguments),
                     }
@@ -387,7 +387,7 @@ class RPC(EventManager):
         if "promise" in data:
             resolve, reject = self.unwrap(data["promise"], False)
             try:
-                method = self._store.fetch(data["num"])
+                method = self._store.fetch(data["_rindex"])
                 if method is None:
                     raise Exception(
                         "Callback function can only called once, "
@@ -402,12 +402,12 @@ class RPC(EventManager):
                 resolve(result)
             except Exception as e:
                 traceback_error = traceback.format_exc()
-                logger.error("error in method %s: %s", data["num"], traceback_error)
+                logger.error("error in method %s: %s", data["_rindex"], traceback_error)
                 reject(Exception(format_traceback(traceback_error)))
                 self._connection.emit({"type": "error", "message": traceback_error})
         else:
             try:
-                method = self._store.fetch(data["num"])
+                method = self._store.fetch(data["_rindex"])
                 self._connection.emit({"type": "log", "message": "running callback"})
                 if method is None:
                     raise Exception(
@@ -422,7 +422,7 @@ class RPC(EventManager):
                     self._create_waiting_task(result)
             except Exception:
                 traceback_error = traceback.format_exc()
-                logger.error("error in method %s: %s", data["num"], traceback_error)
+                logger.error("error in method %s: %s", data["_rindex"], traceback_error)
                 self._connection.emit({"type": "error", "message": traceback_error})
 
     def wrap(self, args):
@@ -442,29 +442,29 @@ class RPC(EventManager):
         # skip if already encoded
         if (
             isinstance(a_object, dict)
-            and "__jailed_type__" in a_object
-            and "__value__" in a_object
+            and "_rtype" in a_object
+            and "_rvalue" in a_object
         ):
             return a_object
 
         # encode interfaces
         if (
             isinstance(a_object, dict)
-            and "__id__" in a_object
-            and "__jailed_type__" in a_object
-            and a_object["__jailed_type__"] == "plugin_api"
+            and "_rid" in a_object
+            and "_rtype" in a_object
+            and a_object["_rtype"] == "plugin_api"
         ):
             encoded_interface = {}
             for key, val in a_object.items():
                 if callable(val):
                     b_object[key] = {
-                        "__jailed_type__": "plugin_interface",
-                        "__plugin_id__": a_object["__id__"],
-                        "__value__": key,
-                        "num": None,
+                        "_rtype": "plugin_interface",
+                        "_rid": a_object["_rid"],
+                        "_rvalue": key,
+                        "_rindex": None,
                     }
                     encoded_interface[key] = val
-            self.plugin_interfaces[a_object["__id__"]] = encoded_interface
+            self.plugin_interfaces[a_object["_rid"]] = encoded_interface
             return b_object
 
         keys = range(len(a_object)) if isarray else a_object.keys()
@@ -483,14 +483,14 @@ class RPC(EventManager):
                 if interface_func_name is None:
                     cid = self._store.put(val)
                     v_obj = {
-                        "__jailed_type__": "callback",
-                        "__value__": "f",
-                        "num": cid,
+                        "_rtype": "callback",
+                        "_rvalue": "f",
+                        "_rindex": cid,
                     }
                 else:
                     v_obj = {
-                        "__jailed_type__": "interface",
-                        "__value__": interface_func_name,
+                        "_rtype": "interface",
+                        "_rvalue": interface_func_name,
                     }
 
             # send objects supported by structure clone algorithm
@@ -512,19 +512,19 @@ class RPC(EventManager):
             elif NUMPY and isinstance(val, (NUMPY.ndarray, NUMPY.generic)):
                 v_bytes = val.tobytes()
                 v_obj = {
-                    "__jailed_type__": "ndarray",
-                    "__value__": v_bytes,
-                    "__shape__": val.shape,
-                    "__dtype__": str(val.dtype),
+                    "_rtype": "ndarray",
+                    "_rvalue": v_bytes,
+                    "_rshape": val.shape,
+                    "_rdtype": str(val.dtype),
                 }
             elif isinstance(val, (dict, list)):
                 v_obj = self._encode(val)
             elif not isinstance(val, basestring) and isinstance(val, bytes):
                 v_obj = val.decode()  # covert python3 bytes to str
             elif isinstance(val, Exception):
-                v_obj = {"__jailed_type__": "error", "__value__": str(val)}
+                v_obj = {"_rtype": "error", "_rvalue": str(val)}
             else:
-                v_obj = {"__jailed_type__": "argument", "__value__": val}
+                v_obj = {"_rtype": "argument", "_rvalue": val}
 
             if isarray:
                 b_object.append(v_obj)
@@ -545,41 +545,41 @@ class RPC(EventManager):
         """Decode object."""
         if a_object is None:
             return a_object
-        if "__jailed_type__" in a_object and "__value__" in a_object:
-            if a_object["__jailed_type__"] == "callback":
+        if "_rtype" in a_object and "_rvalue" in a_object:
+            if a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(
-                    callback_id, a_object["num"], with_promise
+                    callback_id, a_object["_rindex"], with_promise
                 )
-            elif a_object["__jailed_type__"] == "interface":
-                name = a_object["__value__"]
+            elif a_object["_rtype"] == "interface":
+                name = a_object["_rvalue"]
                 if name in self._remote:
                     b_object = self._remote[name]
                 else:
                     b_object = self._gen_remote_method(name)
-            elif a_object["__jailed_type__"] == "plugin_interface":
+            elif a_object["_rtype"] == "plugin_interface":
                 b_object = self._gen_remote_method(
-                    a_object["__value__"], a_object["__plugin_id__"]
+                    a_object["_rvalue"], a_object["_rid"]
                 )
-            elif a_object["__jailed_type__"] == "ndarray":
+            elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
                 try:
                     np = self.local_context.np  # pylint: disable=invalid-name
-                    if isinstance(a_object["__value__"], bytes):
-                        a_object["__value__"] = a_object["__value__"]
-                    elif isinstance(a_object["__value__"], (list, tuple)):
-                        a_object["__value__"] = reduce(
-                            (lambda x, y: x + y), a_object["__value__"]
+                    if isinstance(a_object["_rvalue"], bytes):
+                        a_object["_rvalue"] = a_object["_rvalue"]
+                    elif isinstance(a_object["_rvalue"], (list, tuple)):
+                        a_object["_rvalue"] = reduce(
+                            (lambda x, y: x + y), a_object["_rvalue"]
                         )
                     else:
                         raise Exception(
                             "Unsupported data type: ",
-                            type(a_object["__value__"]),
-                            a_object["__value__"],
+                            type(a_object["_rvalue"]),
+                            a_object["_rvalue"],
                         )
                     if NUMPY:
                         b_object = NUMPY.frombuffer(
-                            a_object["__value__"], dtype=a_object["__dtype__"]
-                        ).reshape(tuple(a_object["__shape__"]))
+                            a_object["_rvalue"], dtype=a_object["_rdtype"]
+                        ).reshape(tuple(a_object["_rshape"]))
                     else:
                         b_object = a_object
                         logger.warn("numpy is not available, failed to decode ndarray")
@@ -588,12 +588,12 @@ class RPC(EventManager):
                     logger.debug("Error in converting: %s", exc)
                     b_object = a_object
                     raise exc
-            elif a_object["__jailed_type__"] == "error":
-                b_object = Exception(a_object["__value__"])
-            elif a_object["__jailed_type__"] == "argument":
-                b_object = a_object["__value__"]
+            elif a_object["_rtype"] == "error":
+                b_object = Exception(a_object["_rvalue"])
+            elif a_object["_rtype"] == "argument":
+                b_object = a_object["_rvalue"]
             else:
-                b_object = a_object["__value__"]
+                b_object = a_object["_rvalue"]
             return b_object
 
         if isinstance(a_object, tuple):
