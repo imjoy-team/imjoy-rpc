@@ -110,7 +110,7 @@ describe("RPC", async () => {
   it("should connect", async () => {
     const socket = io("http://localhost:9988");
     socket.on("connect", async () => {
-      // socket.emit('imjoy_rpc', 'hello')
+      await socket.emit("join_rpc_channel", { channel: "test_plugin" });
       console.log("socketio connected");
       const { api, core } = await setupCore(
         socket,

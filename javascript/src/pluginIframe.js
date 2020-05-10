@@ -50,15 +50,18 @@ export class Connection extends EventManager {
     super(config && config.debug);
     this.config = config || {};
   }
-  connect() {
-    this.config.target_origin = this.config.target_origin || "*";
-    // this will call handleEvent function
-    window.addEventListener("message", this);
+  init() {
     this.emit({
       type: "initialized",
       success: true,
       config: this.config
     });
+  }
+  connect() {
+    this.config.target_origin = this.config.target_origin || "*";
+    // this will call handleEvent function
+    window.addEventListener("message", this);
+    this.init();
     this._fire("connected");
   }
   handleEvent(e) {

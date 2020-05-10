@@ -7,7 +7,7 @@ import socketio
 
 from aiohttp import web, streamer
 
-logging.basicConfig(stream=sys.stdout)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("socketio-server")
 
 parser = argparse.ArgumentParser()
@@ -64,14 +64,15 @@ def setup_router(app):
 
 def setup_socketio(sio):
     @sio.event
-    def join_room(sid):
-        print("===join_room====>", sid)
-        sio.enter_room(sid, "imjoy")
+    def join_rpc_channel(sid, data):
+        logger.info(f'{sid} joined the rpc channel')
+        sio.enter_room(sid, data.get('channel'))
 
     @sio.event
     async def imjoy_rpc(sid, data):
-        print("broadcase message: ", data)
-        await sio.emit("imjoy_rpc", data, room="imjoy", skip_sid=sid)
+        for room in sio.rooms(sid):
+            logger.info("broadcase message to room %s", room)
+            await sio.emit("imjoy_rpc", data, room=room, skip_sid=sid)
 
 
 if __name__ == "__main__":

@@ -28,10 +28,7 @@ import { EventManager } from "./utils.js";
       super(config && config.debug);
       this.config = config || {};
     }
-    connect() {
-      self.addEventListener("message", e => {
-        this._fire(e.data.type, e.data);
-      });
+    init() {
       this.emit({
         type: "initialized",
         success: true,
@@ -43,6 +40,12 @@ import { EventManager } from "./utils.js";
           api_version: API_VERSION
         }
       });
+    }
+    connect() {
+      self.addEventListener("message", e => {
+        this._fire(e.data.type, e.data);
+      });
+      this.init();
     }
     disconnect() {
       this._fire("beforeDisconnect");
@@ -142,4 +145,7 @@ import { EventManager } from "./utils.js";
     connectRPC(conn, data.config);
   });
   conn.connect();
+  self.postMessage({
+    type: "worker-ready"
+  });
 })();

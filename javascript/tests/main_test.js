@@ -46,6 +46,7 @@ const core_interface = {
 function runPlugin(config, plugin_interface, code) {
   return new Promise((resolve, reject) => {
     const coreConnection = {
+      init() {},
       connect() {},
       disconnect: function() {},
       emit: function(data) {
@@ -70,12 +71,15 @@ function runPlugin(config, plugin_interface, code) {
     let plugin;
     let imjoy_api_in_plugin;
     const pluginConnection = {
-      connect() {
+      init() {
         pluginConnection.emit({
           type: "initialized",
           success: true,
           config: config
         });
+      },
+      connect() {
+        pluginConnection.init();
       },
       async execute(code) {
         if (config.allow_execution) {

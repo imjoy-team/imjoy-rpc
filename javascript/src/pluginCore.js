@@ -4,6 +4,7 @@
  * Initializes the plugin-site API global methods.
  */
 import { RPC } from "./rpc.js";
+import { Connection } from "./pluginIframe.js";
 
 export function connectRPC(connection, config) {
   config = config || {};

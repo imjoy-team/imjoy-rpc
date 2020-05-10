@@ -25,11 +25,13 @@ _local_context = Local()
 _local_manager = LocalManager([_local_context])
 api = LocalProxy(_local_context, "api")
 
-
-def initial_export(interface, config=None):
+def setupConnection(config):
     connection = Connection(config)
     connection.connect()
     rpc = RPC(connection, local_context=_local_context, config=config)
+    return rpc
+
+def initial_export(interface, config=None):
     rpc.set_interface(interface)
     rpc.init()
 

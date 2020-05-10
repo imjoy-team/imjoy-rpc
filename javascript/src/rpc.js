@@ -53,6 +53,13 @@ export class RPC extends EventManager {
     this._setupMessageHanlders();
   }
 
+  init() {
+    this._connection.emit({
+      type: "initialized",
+      success: true,
+      config: this.config
+    });
+  }
   /**
    * Set a handler to be called when received a responce from the
    * remote site reporting that the previously provided interface
@@ -121,6 +128,7 @@ export class RPC extends EventManager {
    */
   // var callback_reg = new RegExp("onupdate|run$")
   _setupMessageHanlders() {
+    this._connection.on("init", this._connection.init);
     this._connection.on("authenticate", credential => {
       // TODO: check credential
       this._connection.emit({

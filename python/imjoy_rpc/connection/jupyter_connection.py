@@ -12,6 +12,9 @@ class JupyterConnection(EventManager):
         self._event_handlers = {}
         self.comm = None
 
+    def init(self):
+        pass
+
     def connect(self):
         if self.channel not in _comms:
             _comms[self.channel] = Comm(
@@ -35,6 +38,7 @@ class JupyterConnection(EventManager):
 
         comm.on_close(remove_channel)
         self.comm = comm
+        self.init()
 
     def disconnect(self):
         pass
