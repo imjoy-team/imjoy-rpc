@@ -165,6 +165,7 @@ class FuturePromise(Promise, asyncio.Future):
 class EventManager:
     def __init__(self, debug):
         self._debug = debug
+        self._event_handlers = {}
 
     def on(self, event, handler):
         if event not in self._event_handlers:
@@ -185,8 +186,8 @@ class EventManager:
             if event in self._event_handlers:
                 self._event_handlers[event].remove(handler)
 
-    def _fire(self, event, data):
-        if self._event_handlers[event]:
+    def _fire(self, event, data=None):
+        if event in self._event_handlers:
             for cb in self._event_handlers[event]:
                 try:
                     cb(data)

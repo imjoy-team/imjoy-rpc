@@ -1,10 +1,11 @@
 import socketio
+from imjoy_rpc.utils import EventManager, dotdict
 
 
 class SocketioConnection(EventManager):
     def __init__(self, config):
-        self.config = config or {}
-        super().__init__(config.get("debug"))
+        self.config = dotdict(config or {})
+        super().__init__(self.config.get("debug"))
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
 
@@ -28,7 +29,7 @@ class SocketioConnection(EventManager):
         def disconnect():
             self._fire("disconnected")
 
-        sio.connect(config.url)
+        sio.connect(self.config.url)
         self.sio = sio
 
     def disconnect(self):

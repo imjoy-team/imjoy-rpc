@@ -6,8 +6,8 @@ _comms = {}
 
 class JupyterConnection(EventManager):
     def __init__(self, config):
-        self.config = config or {}
-        super().__init__(config.get("debug"))
+        self.config = dotdict(config or {})
+        super().__init__(self.config.get("debug"))
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
         self.comm = None

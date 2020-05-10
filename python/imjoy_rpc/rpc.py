@@ -10,7 +10,13 @@ import uuid
 
 from werkzeug.local import Local
 
-from .utils import dotdict, format_traceback, ReferenceStore, FuturePromise
+from .utils import (
+    dotdict,
+    format_traceback,
+    ReferenceStore,
+    FuturePromise,
+    EventManager,
+)
 
 API_VERSION = "0.2.1"
 
@@ -40,7 +46,6 @@ class RPC(EventManager):
         self._store = ReferenceStore()
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
-        
 
         if config is None:
             config = dotdict()
@@ -125,7 +130,7 @@ class RPC(EventManager):
         """Send interface."""
         if self._local_api is None:
             raise Exception("interface is not set.")
-        self._local_api['_rid'] = '_rlocal'
+        self._local_api["_rid"] = "_rlocal"
         api = self._encode(self._local_api, True)
         self._connection.emit({"type": "setInterface", "api": api})
 
@@ -203,7 +208,7 @@ class RPC(EventManager):
         """Set remote."""
         _remote = self._decode(api)
         self._interface_store["_rremote"] = _remote
-        self._fire('remoteReady')
+        self._fire("remoteReady")
         self._set_local_api(_remote)
 
     def export(self, interface):
@@ -216,7 +221,6 @@ class RPC(EventManager):
         _remote["utils"] = dotdict()
         _remote["WORK_DIR"] = self.work_dir
 
-        
         self.local_context.api = _remote
         self.local_context.api.export = self.export
 
@@ -461,7 +465,9 @@ class RPC(EventManager):
 
         if as_interface:
             a_object["_rid"] = a_object["_rid"] or str(uuid.uuid4)
-            self._interface_store[a_object["_rid"]] = self._interface_store[a_object["_rid"]] or {}
+            self._interface_store[a_object["_rid"]] = (
+                self._interface_store[a_object["_rid"]] or {}
+            )
 
         keys = range(len(a_object)) if isarray else a_object.keys()
         for key in keys:
@@ -470,13 +476,13 @@ class RPC(EventManager):
                 basestring
             except NameError:
                 basestring = str
-            if val is not None and callable(self._local_api.get('_rpc_encode')):
-                encoded_obj = self._local_api['_rpc_encode'](val)
-                if isinstance(encoded_obj, dict) and encoded_obj.get('_ctype'):
+            if val is not None and callable(self._local_api.get("_rpc_encode")):
+                encoded_obj = self._local_api["_rpc_encode"](val)
+                if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
                     b_object[key] = {
                         "_rtype": "custom",
                         "_rvalue": encoded_obj,
-                        "_rid": a_object["_rid"]
+                        "_rid": a_object["_rid"],
                     }
                     continue
                 # if the returned object does not contain _rtype, assuming the object has been transformed
@@ -489,7 +495,7 @@ class RPC(EventManager):
                     b_object[key] = {
                         "_rtype": "interface",
                         "_rid": a_object["_rid"],
-                        "_rvalue": key
+                        "_rvalue": key,
                     }
                     encoded_interface[k] = val
                     continue
@@ -540,12 +546,12 @@ class RPC(EventManager):
                 v_obj = val.decode()  # covert python3 bytes to str
             elif isinstance(val, Exception):
                 v_obj = {"_rtype": "error", "_rvalue": str(val)}
-            else:
-                v_obj = {"_rtype": "argument", "_rvalue": val}
             elif val._rintf:
                 v_obj = self._encode(val, true)
             elif isinstance(val, (dict, list)):
                 v_obj = self._encode(val, as_interface)
+            else:
+                v_obj = {"_rtype": "argument", "_rvalue": val}
 
             if isarray:
                 b_object.append(v_obj)
@@ -567,9 +573,9 @@ class RPC(EventManager):
         if a_object is None:
             return a_object
         if "_rtype" in a_object and "_rvalue" in a_object:
-            if a_object['_rtype'] == "custom":
-                if a_object['_rvalue'] and callable(self._local_api.get('_rpc_decode')):
-                    b_object = self._local_api['_rpc_decode'](a_object['_rvalue'])
+            if a_object["_rtype"] == "custom":
+                if a_object["_rvalue"] and callable(self._local_api.get("_rpc_decode")):
+                    b_object = self._local_api["_rpc_decode"](a_object["_rvalue"])
                     if b_object is None:
                         b_object = a_object
                 else:
@@ -582,7 +588,9 @@ class RPC(EventManager):
             elif a_object["_rtype"] == "interface":
                 name = a_object["_rvalue"]
                 rid = a_object["_rid"]
-                intfid = "_rrmote" if a_object["_rid"] == "_rlocal" else a_object["_rid"]
+                intfid = (
+                    "_rrmote" if a_object["_rid"] == "_rlocal" else a_object["_rid"]
+                )
                 if intfid in self._interface_store:
                     b_object = self._interface_store[intfid][name]
                 else:
