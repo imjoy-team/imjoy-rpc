@@ -128,7 +128,7 @@ export class RPC extends EventManager {
    */
   // var callback_reg = new RegExp("onupdate|run$")
   _setupMessageHanlders() {
-    this._connection.on("init", this._connection.init);
+    this._connection.on("init", this.init);
     this._connection.on("authenticate", credential => {
       // TODO: check credential
       this._connection.emit({

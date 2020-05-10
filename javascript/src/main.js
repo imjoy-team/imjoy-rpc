@@ -82,7 +82,7 @@ function setupWebWorker(config) {
         delete m.__transferables__;
       }
     }
-    parent.postMessage(m, "*", transferables);
+    parent.postMessage(m, config.target_origin || "*", transferables);
   });
 
   window.addEventListener("message", function(e) {

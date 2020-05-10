@@ -7,7 +7,7 @@
     "build": "rm -rf dist && npm run build-umd && npm run build-module",
     "build-umd": "webpack --config webpack.config.js --mode development --filename imjoy-rpc.js && webpack --config webpack.config.js --mode production --devtool source-map --filename imjoy-rpc.min.js",
     "build-module": "webpack --config webpack.config.js --mode development --libraryTarget commonjs2 --filename imjoy-rpc.module.js",
-    "watch": "webpack --watch --progress --config webpack.config.js --mode development --libraryTarget commonjs2 --filename imjoy-rpc.module.js",
+    "watch": "webpack --watch --progress --config webpack.config.js --mode production --devtool source-map --filename imjoy-rpc.min.js",
     "serve": "webpack-dev-server --filename imjoy-rpc.js",
     "stats": "webpack --profile --json > stats.json",
     "stats-prod": "webpack --profile --json --mode production > stats-prod.json",

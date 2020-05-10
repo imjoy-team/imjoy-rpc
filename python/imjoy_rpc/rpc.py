@@ -242,6 +242,7 @@ class RPC(EventManager):
         self.loop.create_task(_wait())
 
     def _setup_handlers(self, connection):
+        connection.on("init", self.init)
         connection.on("disconnected", self.disconnect)
         connection.on("authenticate", self._handle_auth)
         connection.on("execute", self._handle_execute)

@@ -8,9 +8,6 @@ class SocketioConnection(EventManager):
         super().__init__(self.config.get("debug"))
         self.channel = self.config.get("channel") or 'test_plugin'
         self._event_handlers = {}
-    
-    def init(self):
-        pass
 
     def connect(self):
         sio = socketio.Client()
@@ -35,8 +32,6 @@ class SocketioConnection(EventManager):
 
         sio.connect(self.config.url)
         self.sio = sio
-
-        self.init()
 
     def disconnect(self):
         self.sio.disconnect()

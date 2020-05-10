@@ -28,24 +28,15 @@ import { EventManager } from "./utils.js";
       super(config && config.debug);
       this.config = config || {};
     }
-    init() {
-      this.emit({
-        type: "initialized",
-        success: true,
-        config: {
-          type: "web-worker",
-          dedicated_thread: true,
-          allow_execution: true,
-          lang: "javascript",
-          api_version: API_VERSION
-        }
-      });
-    }
     connect() {
       self.addEventListener("message", e => {
         this._fire(e.data.type, e.data);
       });
-      this.init();
+      this.emit({
+        type: "initialized",
+        success: true,
+        config: this.config
+      });
     }
     disconnect() {
       this._fire("beforeDisconnect");
@@ -140,9 +131,16 @@ import { EventManager } from "./utils.js";
       }
     }
   }
-  const conn = new Connection();
+  const config = {
+    type: "web-worker",
+    dedicated_thread: true,
+    allow_execution: true,
+    lang: "javascript",
+    api_version: API_VERSION
+  };
+  const conn = new Connection(config);
   conn.on("connectRPC", data => {
-    connectRPC(conn, data.config);
+    connectRPC(conn, Object.assign(data.config, config));
   });
   conn.connect();
   self.postMessage({
