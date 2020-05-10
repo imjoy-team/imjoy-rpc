@@ -34,18 +34,18 @@ const core_interface = {
   }
 };
 
-function setupCore(socket, channel, code) {
+function setupCore(socket, code) {
   return new Promise((resolve, reject) => {
     const coreConnection = {
       connect() {
-        socket.on(channel, m => {
+        socket.on("imjoy_rpc", m => {
           if (coreConnection._messageHandler[m.type]) {
             coreConnection._messageHandler[m.type](m);
           }
         });
       },
       disconnect: function() {},
-      emit: msg => socket.emit(channel, msg),
+      emit: msg => socket.emit("imjoy_rpc", msg),
       on: function(event, handler) {
         coreConnection._messageHandler[event] = handler;
       },
@@ -116,7 +116,7 @@ describe("RPC", async () => {
         socket,
         "imjoy_rpc",
         `
-        print('=======')
+        print('hello')
         `
       );
       await api.run();

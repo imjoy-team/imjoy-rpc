@@ -123,6 +123,14 @@ export class RPC extends EventManager {
     this._connection.emit({ type: "setInterface", api: api });
   }
 
+  setAuthenticator(authenticator) {
+    this.authenticator = authenticator;
+  }
+
+  setAuthorizer(authorizer) {
+    this.authorizer = authorizer;
+  }
+
   /**
    * Handles a message from the remote site
    */
@@ -130,12 +138,29 @@ export class RPC extends EventManager {
   _setupMessageHanlders() {
     this._connection.on("init", this.init);
     this._connection.on("authenticate", credential => {
-      // TODO: check credential
-      this._connection.emit({
-        type: "authenticated",
-        success: true,
-        token: "123"
-      });
+      Promise.resolve(this.authenticator(credential))
+        .then(result => {
+          if (result === true) {
+            this._connection.emit({
+              type: "authenticated",
+              success: true,
+              token: token
+            });
+          } else {
+            this._connection.emit({
+              type: "authenticated",
+              success: false,
+              error: result
+            });
+          }
+        })
+        .catch(e => {
+          this._connection.emit({
+            type: "authenticated",
+            success: false,
+            error: e
+          });
+        });
     });
     this._connection.on("execute", data => {
       Promise.resolve(this._connection.execute(data.code))

@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import uuid
+import traceback
 
 
 class dotdict(dict):  # pylint: disable=invalid-name
@@ -188,14 +189,16 @@ class EventManager:
 
     def _fire(self, event, data=None):
         if event in self._event_handlers:
-            for cb in self._event_handlers[event]:
+            for handler in self._event_handlers[event]:
                 try:
-                    cb(data)
+                    handler(data)
                 except Exception as e:
                     traceback_error = traceback.format_exc()
+                    if self._debug:
+                        print(traceback_error)
                     self.emit({"type": "error", "message": traceback_error})
                 finally:
-                    if handler.___event_run_once:
+                    if hasattr(handler, "___event_run_once"):
                         self._event_handlers[event].remove(handler)
         else:
             if self._debug:

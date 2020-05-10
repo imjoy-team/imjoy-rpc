@@ -1,8 +1,6 @@
 import asyncio
 from imjoy_rpc import api
 
-'''
-from imjoy import api
 
 class ImJoyPlugin:
     async def setup(self):
@@ -12,8 +10,6 @@ class ImJoyPlugin:
         await api.alert("hello")
         await api.showDialog(type="external", src="https://imjoy.io")
 
-api.export(ImJoyPlugin())
-'''
 
 if __name__ == "__main__":
-    
+    api.export(ImJoyPlugin(), {"debug": True, "url": "http://localhost:9988"})

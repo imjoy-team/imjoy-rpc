@@ -7,11 +7,12 @@ import socketio
 
 from aiohttp import web, streamer
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("socketio-server")
+logger.setLevel(logging.INFO)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--web_app_dir", type=str, default="./", help="connection token")
+parser.add_argument("--static-dir", type=str, default=None, help="connection token")
 
 opt = parser.parse_args()
 
@@ -52,26 +53,20 @@ def setup_cors(app):
 
 
 def setup_router(app):
-    async def index(request):
-        """Serve the client-side application."""
-        with open(
-            os.path.join(opt.web_app_dir, "index.html"), "r", encoding="utf-8",
-        ) as fil:
-            return web.Response(text=fil.read(), content_type="text/html")
-
-    app.router.add_static("/static", path=str(os.path.join(opt.web_app_dir, "static")))
+    if opt.static_dir is not None:
+        app.router.add_static("/", path=str(opt.static_dir))
 
 
 def setup_socketio(sio):
     @sio.event
     def join_rpc_channel(sid, data):
-        logger.info(f'{sid} joined the rpc channel')
-        sio.enter_room(sid, data.get('channel'))
+        logger.info(f'{sid} joined the rpc channel: {data.get("channel")}')
+        sio.enter_room(sid, data.get("channel"))
 
     @sio.event
     async def imjoy_rpc(sid, data):
         for room in sio.rooms(sid):
-            logger.info("broadcase message to room %s", room)
+            logger.info("broadcase message to room %s: %s", room, data)
             await sio.emit("imjoy_rpc", data, room=room, skip_sid=sid)
 
 
