@@ -34,8 +34,8 @@ class RPC(EventManager):
 
         self.manager_api = {}
         self.services = {}
-        self._remote_interfaces = {}
-        self._local_interface = None
+        self._interface_store = {}
+        self._local_api = None
         self._remote_set = False
         self._store = ReferenceStore()
         self.work_dir = os.getcwd()
@@ -117,16 +117,16 @@ class RPC(EventManager):
             api["exit"] = exit_wrapper
         else:
             api["exit"] = self.default_exit
-        self._local_interface = api
+        self._local_api = api
 
         self._fire("interfaceAvailable")
 
     def send_interface(self):
         """Send interface."""
-        if self._local_interface is None:
+        if self._local_api is None:
             raise Exception("interface is not set.")
-        self._local_interface['_rid'] = '_rlocal'
-        api = this._encode(self._local_interface, True)
+        self._local_api['_rid'] = '_rlocal'
+        api = self._encode(self._local_api, True)
         self._connection.emit({"type": "setInterface", "api": api})
 
     def _gen_remote_method(self, name, plugin_id=None):
@@ -202,8 +202,8 @@ class RPC(EventManager):
     def set_remote_interface(self, api):
         """Set remote."""
         _remote = self._decode(api)
-        self._remote_interfaces["_rcore"] = _remote
-        this._fire('remoteReady')
+        self._interface_store["_rremote"] = _remote
+        self._fire('remoteReady')
         self._set_local_api(_remote)
 
     def export(self, interface):
@@ -216,7 +216,7 @@ class RPC(EventManager):
         _remote["utils"] = dotdict()
         _remote["WORK_DIR"] = self.work_dir
 
-        self._remote_interfaces["_rcore"] = _remote
+        
         self.local_context.api = _remote
         self.local_context.api.export = self.export
 
@@ -260,7 +260,7 @@ class RPC(EventManager):
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Error when exiting: %s", exc)
         elif data["type"] == "getInterface":
-            if self._local_interface is not None:
+            if self._local_api is not None:
                 self.send_interface()
             else:
                 self.once("interfaceAvailable", self.send_interface)
@@ -307,9 +307,7 @@ class RPC(EventManager):
             logger.warn("execution is blocked due to allow_execution=False")
 
     async def _handle_method(self, data):
-        interface = self._local_interface
-        if "pid" in data and data["pid"] is not None:
-            interface = self._remote_interfaces[data["pid"]]
+        interface = self._interface_store[data["pid"]]
         if data["name"] in interface:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
@@ -410,7 +408,7 @@ class RPC(EventManager):
                 continue
             if callable(val):
                 v_obj = {
-                    "_rtype": "plugin_interface",
+                    "_rtype": "interface",
                     "_rid": a_object["_rid"],
                     "_rvalue": key,
                 }
@@ -426,13 +424,13 @@ class RPC(EventManager):
             else:
                 b_object[key] = v_obj
 
-        self._remote_interfaces[a_object["_rid"]] = encoded_interface
+        self._interface_store[a_object["_rid"]] = encoded_interface
 
         # remove interface when closed
         if "on" in a_object and callable(a_object["on"]):
 
             def remove_interface():
-                del self._remote_interfaces[a_object["_rid"]]
+                del self._interface_store[a_object["_rid"]]
 
             a_object["on"]("close", remove_interface)
 
@@ -463,7 +461,7 @@ class RPC(EventManager):
 
         if as_interface:
             a_object["_rid"] = a_object["_rid"] or str(uuid.uuid4)
-            self._remote_interfaces[a_object["_rid"]] = self._remote_interfaces[a_object["_rid"]] or {}
+            self._interface_store[a_object["_rid"]] = self._interface_store[a_object["_rid"]] or {}
 
         keys = range(len(a_object)) if isarray else a_object.keys()
         for key in keys:
@@ -472,11 +470,24 @@ class RPC(EventManager):
                 basestring
             except NameError:
                 basestring = str
+            if val is not None and callable(self._local_api.get('_rpc_encode')):
+                encoded_obj = self._local_api['_rpc_encode'](val)
+                if isinstance(encoded_obj, dict) and encoded_obj.get('_ctype'):
+                    b_object[key] = {
+                        "_rtype": "custom",
+                        "_rvalue": encoded_obj,
+                        "_rid": a_object["_rid"]
+                    }
+                    continue
+                # if the returned object does not contain _rtype, assuming the object has been transformed
+                elif encoded_obj is not None:
+                    val = encoded_obj
+
             if callable(val):
                 if as_interface:
-                    encoded_interface = this._remote_interfaces[a_object["_rid"]]
-                    bObject[key] = {
-                        "_rtype": "plugin_interface",
+                    encoded_interface = self._interface_store[a_object["_rid"]]
+                    b_object[key] = {
+                        "_rtype": "interface",
                         "_rid": a_object["_rid"],
                         "_rvalue": key
                     }
@@ -484,8 +495,8 @@ class RPC(EventManager):
                     continue
 
                 interface_func_name = None
-                for name in self._local_interface:
-                    if self._local_interface[name] == val:
+                for name in self._local_api:
+                    if self._local_api[name] == val:
                         interface_func_name = name
                         break
                 if interface_func_name is None:
@@ -531,7 +542,7 @@ class RPC(EventManager):
                 v_obj = {"_rtype": "error", "_rvalue": str(val)}
             else:
                 v_obj = {"_rtype": "argument", "_rvalue": val}
-            else if val._rintf:
+            elif val._rintf:
                 v_obj = self._encode(val, true)
             elif isinstance(val, (dict, list)):
                 v_obj = self._encode(val, as_interface)
@@ -556,20 +567,26 @@ class RPC(EventManager):
         if a_object is None:
             return a_object
         if "_rtype" in a_object and "_rvalue" in a_object:
+            if a_object['_rtype'] == "custom":
+                if a_object['_rvalue'] and callable(self._local_api.get('_rpc_decode')):
+                    b_object = self._local_api['_rpc_decode'](a_object['_rvalue'])
+                    if b_object is None:
+                        b_object = a_object
+                else:
+                    b_object = a_object
+
             if a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(
                     callback_id, a_object["_rindex"], with_promise
                 )
             elif a_object["_rtype"] == "interface":
                 name = a_object["_rvalue"]
-                if name in self._remote:
-                    b_object = self._remote[name]
+                rid = a_object["_rid"]
+                intfid = "_rrmote" if a_object["_rid"] == "_rlocal" else a_object["_rid"]
+                if intfid in self._interface_store:
+                    b_object = self._interface_store[intfid][name]
                 else:
-                    b_object = self._gen_remote_method(name)
-            elif a_object["_rtype"] == "plugin_interface":
-                b_object = self._gen_remote_method(
-                    a_object["_rvalue"], a_object["_rid"]
-                )
+                    b_object = self._gen_remote_method(name, rid)
             elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
                 try:

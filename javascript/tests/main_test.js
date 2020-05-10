@@ -38,6 +38,9 @@ const core_interface = {
   },
   getPlugin: name => {
     return plugins[name];
+  },
+  echo: msg => {
+    return msg;
   }
 };
 function runPlugin(config, plugin_interface, code) {
@@ -132,8 +135,7 @@ function runPlugin(config, plugin_interface, code) {
 
       core.setInterface(core_interface);
 
-      core.sendInterface().then(() => {
-        // if (pluginConfig.allow_execution) {
+      core.on("interfaceSetAsRemote", () => {
         if (code) {
           coreConnection.on("executed", data => {
             if (!data.success) {
@@ -145,7 +147,6 @@ function runPlugin(config, plugin_interface, code) {
             content: code
           });
         }
-        // }
 
         core.on("remoteReady", async () => {
           const api = core.getRemote();
@@ -153,6 +154,7 @@ function runPlugin(config, plugin_interface, code) {
         });
         core.requestRemote();
       });
+      core.sendInterface();
     });
 
     pluginConnection.connect();
@@ -219,9 +221,52 @@ describe("RPC", async () => {
     );
     expect(await api.testGetPlugin(9, 8)).to.equal(72);
     expect(await api.testGetPlugin(3, 6)).to.equal(18);
-    const count = Object.keys(core._remote_interfaces).length;
+    const count = Object.keys(core._interface_store).length;
     await api.closePlugin22();
-    expect(Object.keys(core._remote_interfaces).length).to.equal(count - 1);
+    expect(Object.keys(core._interface_store).length).to.equal(count - 1);
+  });
+
+  it("should encode and decode", async () => {
+    const testEncodDecodePlugin = `
+    class Cat{
+      constructor(name, color, age){
+        this.name = name
+        this.color = color
+        this.age = age
+      }
+    }
+  
+    class Plugin {
+      _rpc_encode(obj){
+        if(obj instanceof Cat){
+          return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age}
+        }
+      }
+      _rpc_decode(encoded_obj){
+        if(encoded_obj._ctype === 'cat'){
+          return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
+        }
+      }
+      async run(){
+        const bobo = new Cat('boboshu', 'mixed', 0.67)
+        const cat = await api.echo(bobo)
+        if(cat instanceof Cat && bobo.name === cat.name && bobo.color === cat.color && bobo.age === cat.age)
+          return true
+        else
+          return false
+      }
+    };
+    api.export(new Plugin())
+    `;
+    const { api, core } = await runPlugin(
+      {
+        name: "test plugin",
+        allow_execution: true
+      },
+      null,
+      testEncodDecodePlugin
+    );
+    expect(await api.run()).to.equal(true);
   });
 
   it("should block execution if allow_execution=false", async () => {

@@ -1,7 +1,9 @@
 export function randId() {
-  return Math.random()
-    .toString(36)
-    .substr(2, 10);
+  return (
+    Math.random()
+      .toString(36)
+      .substr(2, 10) + new Date().getTime()
+  );
 }
 
 export const dtypeToTypedArray = {
