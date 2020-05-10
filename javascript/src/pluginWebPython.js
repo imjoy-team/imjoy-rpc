@@ -244,11 +244,6 @@ export default function setupWebPython(config) {
         case "execute":
           if (config.allow_execution) {
             execute(m.code);
-            if (m.code.type === "requirements") {
-              if (!Array.isArray(m.code.requirements)) {
-                m.code.requirements = [m.code.requirements];
-              }
-            }
           } else {
             console.warn(
               "execute script is not allowed (allow_execution=false)"

@@ -192,11 +192,6 @@ export default function setupIframe(config) {
         case "execute":
           if (config.allow_execution) {
             execute(m.code);
-            if (m.code.type === "requirements") {
-              if (!Array.isArray(m.code.requirements)) {
-                m.code.requirements = [m.code.requirements];
-              }
-            }
           } else {
             console.warn(
               "import script is not allowed (allow_execution=false)"

@@ -147,9 +147,6 @@ import { API_VERSION } from "./rpc.js";
       case "execute":
         execute(m.code);
         if (m.code.type === "requirements") {
-          if (!Array.isArray(m.code.requirements)) {
-            m.code.requirements = [m.code.requirements];
-          }
           self.postMessage({
             type: "cacheRequirements",
             requirements: m.code.requirements
