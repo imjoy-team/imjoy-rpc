@@ -10,9 +10,15 @@ import uuid
 
 from werkzeug.local import Local
 
-from .utils import dotdict, format_traceback, ReferenceStore, FuturePromise
+from .utils import (
+    dotdict,
+    format_traceback,
+    ReferenceStore,
+    FuturePromise,
+    EventManager,
+)
 
-API_VERSION = "0.2.0"
+API_VERSION = "0.2.1"
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
@@ -27,13 +33,15 @@ except:
     logger.warn("failed to import numpy, ndarray encoding/decoding will not work")
 
 
-class RPC:
+class RPC(EventManager):
     def __init__(
-        self, transport, local_context=None, config=None,
+        self, connection, local_context=None, config=None,
     ):
+
         self.manager_api = {}
         self.services = {}
-        self._plugin_interfaces = {}
+        self._interface_store = {}
+        self._local_api = None
         self._remote_set = False
         self._store = ReferenceStore()
         self.work_dir = os.getcwd()
@@ -43,8 +51,10 @@ class RPC:
             config = dotdict()
         else:
             config = dotdict(config)
+
+        super().__init__(config.debug)
+
         self.id = config.id or str(uuid.uuid4())
-        self.token = config.token or str(uuid.uuid4())
         self.allow_execution = config.allow_execution or False
         self.config = {
             "allow_execution": self.allow_execution,
@@ -54,7 +64,6 @@ class RPC:
             "id": self.id,
             "lang": "python",
             "name": config.name or "ImJoy RPC Python",
-            "token": self.token,
             "type": "rpc-worker",
             "work_dir": self.work_dir,
             "version": config.version or "0.1.0",
@@ -68,29 +77,22 @@ class RPC:
         self.local_context = local_context
         self.export = self.local_context.api.export
 
-        if transport is not None:
-
-            def process_message(msg):
-                self.loop.create_task(self.processMessage(msg))
-
-            self.transport = transport
-            self.transport.on(process_message)
+        if connection is not None:
+            self._connection = connection
+            self._setup_handlers(connection)
 
     def init(self):
-        self.emit(
-            {"type": "initialized", "config": self.config,}
+        self._connection.emit(
+            {"type": "initialized", "config": self.config}
         )
 
     def start(self):
         self.run_forever()
 
-    def emit(self, msg):
-        self.transport.emit(msg)
-
     def register(self, plugin_path):
         service = Service(plugin_path)
 
-    def on_close(self, conn):
+    def disconnect(self, conn):
         local_manager.cleanup()
 
     def default_exit(self):
@@ -120,27 +122,17 @@ class RPC:
             api["exit"] = exit_wrapper
         else:
             api["exit"] = self.default_exit
-        self.interface = api
+        self._local_api = api
+
+        self._fire("interfaceAvailable")
 
     def send_interface(self):
         """Send interface."""
-        names = []
-        for name in self.interface:
-            if callable(self.interface[name]):
-                names.append({"name": name, "data": None})
-            else:
-                data = self.interface[name]
-                if data is not None and isinstance(data, dict):
-                    data2 = {}
-                    for k in data:
-                        if callable(data[k]):
-                            data2[k] = "rpc_method::" + k
-                        else:
-                            data2[k] = data[k]
-                    names.append({"name": name, "data": data2})
-                elif isinstance(data, (str, int, float, bool)):
-                    names.append({"name": name, "data": data})
-        self.emit({"type": "setInterface", "api": names})
+        if self._local_api is None:
+            raise Exception("interface is not set.")
+        self._local_api["_rid"] = "_rlocal"
+        api = self._encode(self._local_api, True)
+        self._connection.emit({"type": "setInterface", "api": api})
 
     def _gen_remote_method(self, name, plugin_id=None):
         """Return remote method."""
@@ -161,7 +153,7 @@ class RPC:
                     "args": self.wrap(arguments),
                     "promise": self.wrap([resolve, reject]),
                 }
-                self.emit(call_func)
+                self._connection.emit(call_func)
 
             return FuturePromise(pfunc, self.loop)
 
@@ -176,16 +168,16 @@ class RPC:
                 # wrap keywords to a dictionary and pass to the first argument
                 if not arguments and kwargs:
                     arguments = [kwargs]
-                self.emit({"type": "log", "message": str(arguments)})
+                self._connection.emit({"type": "log", "message": str(arguments)})
 
                 def pfunc(resolve, reject):
                     resolve.__jailed_pairs__ = reject
                     reject.__jailed_pairs__ = resolve
-                    self.emit(
+                    self._connection.emit(
                         {
                             "type": "callback",
                             "id": id_,
-                            "num": arg_num,
+                            "_rindex": arg_num,
                             # 'pid'  : self.id,
                             "args": self.wrap(arguments),
                             "promise": self.wrap([resolve, reject]),
@@ -200,11 +192,11 @@ class RPC:
                 # wrap keywords to a dictionary and pass to the first argument
                 if not arguments and kwargs:
                     arguments = [kwargs]
-                self.emit(
+                self._connection.emit(
                     {
                         "type": "callback",
                         "id": id_,
-                        "num": arg_num,
+                        "_rindex": arg_num,
                         # 'pid'  : self.id,
                         "args": self.wrap(arguments),
                     }
@@ -212,32 +204,12 @@ class RPC:
 
         return remote_callback
 
-    def set_remote(self, api):
+    def set_remote_interface(self, api):
         """Set remote."""
-        _remote = dotdict()
-        for i, _ in enumerate(api):
-            if isinstance(api[i], dict) and "name" in api[i]:
-                name = api[i]["name"]
-                data = api[i].get("data", None)
-                if data is not None:
-                    if isinstance(data, dict):
-                        data2 = dotdict()
-                        for key in data:
-                            if key in data:
-                                if data[key] == "rpc_method::" + key:
-                                    data2[key] = self._gen_remote_method(
-                                        name + "." + key
-                                    )
-                                else:
-                                    data2[key] = data[key]
-                        _remote[name] = data2
-                    else:
-                        _remote[name] = data
-                else:
-                    _remote[name] = self._gen_remote_method(name)
-
+        _remote = self._decode(api)
+        self._interface_store["_rremote"] = _remote
+        self._fire("remoteReady")
         self._set_local_api(_remote)
-        return _remote
 
     def export(self, interface):
         self.set_interface(interface)
@@ -252,15 +224,40 @@ class RPC:
         self.local_context.api = _remote
         self.local_context.api.export = self.export
 
-    async def processMessage(self, data):
-        try:
-            await self._processMessage(data)
-        except Exception:
-            traceback_error = traceback.format_exc()
-            self.emit({"type": "error", "message": traceback_error})
+    def _create_waiting_task(self, result, resolve=None, reject=None):
+        async def _wait():
+            try:
+                result = await result
+                if resolve is not None:
+                    resolve(result)
+                elif result is not None:
+                    logger.debug("returned value %s", result)
+            except Exception as ex:
+                traceback_error = traceback.format_exc()
+                logger.error("error in method %s", traceback_error)
+                self._connection.emit({"type": "error", "message": traceback_error})
+                if reject is not None:
+                    reject(Exception(format_traceback(traceback_error)))
 
-    async def _processMessage(self, data):
-        if data["type"] == "disconnect":
+        self.loop.create_task(_wait())
+
+    def _setup_handlers(self, connection):
+        connection.on("init", self.init)
+        connection.on("disconnected", self.disconnect)
+        connection.on("authenticate", self._handle_auth)
+        connection.on("execute", self._handle_execute)
+        connection.on("method", self._handle_method)
+        connection.on("callback", self._handle_callback)
+        for event in [
+            "disconnected",
+            "getInterface",
+            "setInterface",
+            "interfaceSetAsRemote",
+        ]:
+            connection.on(event, self._default_hanlder)
+
+    def _default_hanlder(self, data):
+        if data["type"] == "disconnected":
             conn.abort.set()
             try:
                 if "exit" in conn.interface and callable(conn.interface["exit"]):
@@ -268,122 +265,134 @@ class RPC:
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Error when exiting: %s", exc)
         elif data["type"] == "getInterface":
-            self.send_interface()
+            if self._local_api is not None:
+                self.send_interface()
+            else:
+                self.once("interfaceAvailable", self.send_interface)
         elif data["type"] == "setInterface":
-            self.set_remote(data["api"])
-            self.emit({"type": "interfaceSetAsRemote"})
+            self.set_remote_interface(data["api"])
+            self._connection.emit({"type": "interfaceSetAsRemote"})
         elif data["type"] == "interfaceSetAsRemote":
             self._remote_set = True
-        elif data["type"] == "getConfig":
-            self.emit(
-                {"type": "config", "config": self.config,}
-            )
-        elif data["type"] == "execute":
-            if self.allow_execution:
-                try:
-                    t = data["code"]["type"]
-                    if t == "script":
-                        content = data["code"]["content"]
-                        exec(content, self._local)
-                    elif t == "requirements":
-                        pass
-                    else:
-                        raise Exception("unsupported type")
-                    self.emit({"type": "executeSuccess"})
-                except Exception as e:
-                    traceback_error = traceback.format_exc()
-                    logger.error("error during execution: %s", traceback_error)
-                    self.emit({"type": "executeFailure", "error": traceback_error})
-            else:
-                self.emit(
-                    {"type": "executeFailure", "error": "execution is not allowed"}
-                )
-                logger.warn("execution is blocked due to allow_execution=False")
+        else:
+            logger.debug("Unhanled event: %s", data["type"])
 
-        elif data["type"] == "method":
-            interface = self.interface
-            if "pid" in data and data["pid"] is not None:
-                interface = self._plugin_interfaces[data["pid"]]
-            if data["name"] in interface:
-                if "promise" in data:
-                    resolve, reject = self.unwrap(data["promise"], False)
-                    try:
-                        method = interface[data["name"]]
-                        args = self.unwrap(data["args"], True)
-                        # args.append({'id': self.id})
-                        result = method(*args)
-                        if result is not None and inspect.isawaitable(result):
-                            result = await result
-                        resolve(result)
-                    except Exception as e:
-                        traceback_error = traceback.format_exc()
-                        logger.error(
-                            "error in method %s: %s", data["name"], traceback_error
-                        )
-                        self.emit({"type": "error", "message": traceback_error})
-                        reject(Exception(format_traceback(traceback_error)))
+    def _handle_auth(self, credential):
+        self._connection.emit(
+            {"type": "authenticated", "token": str(uuid.uuid4())}
+        )
+        # self._connection.emit({"type": "authenticated", "error": "Unauthorized access"})
+
+    def _handle_execute(self, data):
+        if self.allow_execution:
+            try:
+                t = data["code"]["type"]
+                if t == "script":
+                    content = data["code"]["content"]
+                    exec(content, self._local)
+                elif t == "requirements":
+                    pass
                 else:
-                    try:
-                        method = interface[data["name"]]
-                        args = self.unwrap(data["args"], True)
-                        # args.append({'id': self.id})
-                        result = method(*args)
-                        if result is not None and inspect.isawaitable(result):
-                            await result
-                    except Exception:
-                        traceback_error = traceback.format_exc()
-                        self.emit({"type": "error", "message": traceback_error})
-                        logger.error(
-                            "error in method %s: %s", data["name"], traceback_error,
-                        )
-            else:
-                traceback_error = "method " + data["name"] + " is not found."
-                self.emit({"type": "error", "message": traceback_error})
-                logger.error(
-                    "error in method %s: %s", data["name"], traceback_error,
+                    raise Exception("unsupported type")
+                self._connection.emit({"type": "executed"})
+            except Exception as e:
+                traceback_error = traceback.format_exc()
+                logger.error("error during execution: %s", traceback_error)
+                self._connection.emit(
+                    {"type": "executed", "error": traceback_error}
                 )
+        else:
+            self._connection.emit(
+                {
+                    "type": "executed",
+                    "error": "execution is not allowed",
+                }
+            )
+            logger.warn("execution is blocked due to allow_execution=False")
 
-        elif data["type"] == "callback":
+    async def _handle_method(self, data):
+        interface = self._interface_store[data["pid"]]
+        if data["name"] in interface:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
                 try:
-                    method = self._store.fetch(data["num"])
-                    if method is None:
-                        raise Exception(
-                            "Callback function can only called once, "
-                            "if you want to call a function for multiple times, "
-                            "please make it as a plugin api function. "
-                            "See https://imjoy.io/docs for more details."
-                        )
+                    method = interface[data["name"]]
                     args = self.unwrap(data["args"], True)
+                    # args.append({'id': self.id})
                     result = method(*args)
                     if result is not None and inspect.isawaitable(result):
-                        result = await result
-                    resolve(result)
+                        self._create_waiting_task(result, resolve, reject)
+                    else:
+                        resolve(result)
                 except Exception as e:
                     traceback_error = traceback.format_exc()
-                    logger.error("error in method %s: %s", data["num"], traceback_error)
+                    logger.error(
+                        "error in method %s: %s", data["name"], traceback_error
+                    )
+                    self._connection.emit({"type": "error", "message": traceback_error})
                     reject(Exception(format_traceback(traceback_error)))
-                    self.emit({"type": "error", "message": traceback_error})
             else:
                 try:
-                    method = self._store.fetch(data["num"])
-                    self.emit({"type": "log", "message": "running callback"})
-                    if method is None:
-                        raise Exception(
-                            "Callback function can only called once, "
-                            "if you want to call a function for multiple times, "
-                            "please make it as a plugin api function. "
-                            "See https://imjoy.io/docs for more details."
-                        )
+                    method = interface[data["name"]]
                     args = self.unwrap(data["args"], True)
+                    # args.append({'id': self.id})
                     result = method(*args)
                     if result is not None and inspect.isawaitable(result):
-                        await result
+                        self._create_waiting_task(result)
                 except Exception:
                     traceback_error = traceback.format_exc()
-                    logger.error("error in method %s: %s", data["num"], traceback_error)
-                    self.emit({"type": "error", "message": traceback_error})
+                    self._connection.emit({"type": "error", "message": traceback_error})
+                    logger.error(
+                        "error in method %s: %s", data["name"], traceback_error,
+                    )
+        else:
+            traceback_error = "method " + data["name"] + " is not found."
+            self._connection.emit({"type": "error", "message": traceback_error})
+            logger.error(
+                "error in method %s: %s", data["name"], traceback_error,
+            )
+
+    def _handle_callback(self, data):
+        if "promise" in data:
+            resolve, reject = self.unwrap(data["promise"], False)
+            try:
+                method = self._store.fetch(data["_rindex"])
+                if method is None:
+                    raise Exception(
+                        "Callback function can only called once, "
+                        "if you want to call a function for multiple times, "
+                        "please make it as a plugin api function. "
+                        "See https://imjoy.io/docs for more details."
+                    )
+                args = self.unwrap(data["args"], True)
+                result = method(*args)
+                if result is not None and inspect.isawaitable(result):
+                    self._create_waiting_task(result, resolve, reject)
+                resolve(result)
+            except Exception as e:
+                traceback_error = traceback.format_exc()
+                logger.error("error in method %s: %s", data["_rindex"], traceback_error)
+                reject(Exception(format_traceback(traceback_error)))
+                self._connection.emit({"type": "error", "message": traceback_error})
+        else:
+            try:
+                method = self._store.fetch(data["_rindex"])
+                self._connection.emit({"type": "log", "message": "running callback"})
+                if method is None:
+                    raise Exception(
+                        "Callback function can only called once, "
+                        "if you want to call a function for multiple times, "
+                        "please make it as a plugin api function. "
+                        "See https://imjoy.io/docs for more details."
+                    )
+                args = self.unwrap(data["args"], True)
+                result = method(*args)
+                if result is not None and inspect.isawaitable(result):
+                    self._create_waiting_task(result)
+            except Exception:
+                traceback_error = traceback.format_exc()
+                logger.error("error in method %s: %s", data["_rindex"], traceback_error)
+                self._connection.emit({"type": "error", "message": traceback_error})
 
     def wrap(self, args):
         """Wrap arguments."""
@@ -391,7 +400,45 @@ class RPC:
         result = {"args": wrapped}
         return result
 
-    def _encode(self, a_object):
+    def _encode_interface(self, a_object):
+        encoded_interface = {}
+        a_object["_rid"] = a_object["_rid"] or str(uuid.uuid4())
+        isarray = isinstance(a_object, list)
+        keys = range(len(a_object)) if isarray else a_object.keys()
+        b_object = [] if iisarray else {}
+        for key in keys:
+            val = a_object[key]
+            if key.startswith("_"):
+                continue
+            if callable(val):
+                v_obj = {
+                    "_rtype": "interface",
+                    "_rid": a_object["_rid"],
+                    "_rvalue": key,
+                }
+                encoded_interface[key] = val
+            elif type(val) in (int, float, bool, str):
+                v_obj = {"_rtype": "argument", "_rvalue": val}
+                encoded_interface[key] = val
+            elif isinstance(val, (dict, list)):
+                v_obj = self._encode_interface(val)
+
+            if isarray:
+                b_object.append(v_obj)
+            else:
+                b_object[key] = v_obj
+
+        self._interface_store[a_object["_rid"]] = encoded_interface
+
+        # remove interface when closed
+        if "on" in a_object and callable(a_object["on"]):
+
+            def remove_interface():
+                del self._interface_store[a_object["_rid"]]
+
+            a_object["on"]("close", remove_interface)
+
+    def _encode(self, a_object, as_interface):
         """Encode object."""
         if a_object is None:
             return a_object
@@ -402,30 +449,25 @@ class RPC:
         # skip if already encoded
         if (
             isinstance(a_object, dict)
-            and "__jailed_type__" in a_object
-            and "__value__" in a_object
+            and "_rtype" in a_object
+            and "_rvalue" in a_object
         ):
             return a_object
 
         # encode interfaces
         if (
             isinstance(a_object, dict)
-            and "__id__" in a_object
-            and "__jailed_type__" in a_object
-            and a_object["__jailed_type__"] == "plugin_api"
+            and "_rid" in a_object
+            and "_rtype" in a_object
+            and (a_object.get("_rintf") or as_interface)
         ):
-            encoded_interface = {}
-            for key, val in a_object.items():
-                if callable(val):
-                    b_object[key] = {
-                        "__jailed_type__": "plugin_interface",
-                        "__plugin_id__": a_object["__id__"],
-                        "__value__": key,
-                        "num": None,
-                    }
-                    encoded_interface[key] = val
-            self.plugin_interfaces[a_object["__id__"]] = encoded_interface
-            return b_object
+            return self._encode_interface(a_object)
+
+        if as_interface:
+            a_object["_rid"] = a_object["_rid"] or str(uuid.uuid4)
+            self._interface_store[a_object["_rid"]] = (
+                self._interface_store[a_object["_rid"]] or {}
+            )
 
         keys = range(len(a_object)) if isarray else a_object.keys()
         for key in keys:
@@ -434,23 +476,46 @@ class RPC:
                 basestring
             except NameError:
                 basestring = str
+            if val is not None and callable(self._local_api.get("_rpc_encode")):
+                encoded_obj = self._local_api["_rpc_encode"](val)
+                if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
+                    b_object[key] = {
+                        "_rtype": "custom",
+                        "_rvalue": encoded_obj,
+                        "_rid": a_object["_rid"],
+                    }
+                    continue
+                # if the returned object does not contain _rtype, assuming the object has been transformed
+                elif encoded_obj is not None:
+                    val = encoded_obj
+
             if callable(val):
+                if as_interface:
+                    encoded_interface = self._interface_store[a_object["_rid"]]
+                    b_object[key] = {
+                        "_rtype": "interface",
+                        "_rid": a_object["_rid"],
+                        "_rvalue": key,
+                    }
+                    encoded_interface[k] = val
+                    continue
+
                 interface_func_name = None
-                for name in self.interface:
-                    if self.interface[name] == val:
+                for name in self._local_api:
+                    if self._local_api[name] == val:
                         interface_func_name = name
                         break
                 if interface_func_name is None:
                     cid = self._store.put(val)
                     v_obj = {
-                        "__jailed_type__": "callback",
-                        "__value__": "f",
-                        "num": cid,
+                        "_rtype": "callback",
+                        "_rvalue": "f",
+                        "_rindex": cid,
                     }
                 else:
                     v_obj = {
-                        "__jailed_type__": "interface",
-                        "__value__": interface_func_name,
+                        "_rtype": "interface",
+                        "_rvalue": interface_func_name,
                     }
 
             # send objects supported by structure clone algorithm
@@ -472,19 +537,21 @@ class RPC:
             elif NUMPY and isinstance(val, (NUMPY.ndarray, NUMPY.generic)):
                 v_bytes = val.tobytes()
                 v_obj = {
-                    "__jailed_type__": "ndarray",
-                    "__value__": v_bytes,
-                    "__shape__": val.shape,
-                    "__dtype__": str(val.dtype),
+                    "_rtype": "ndarray",
+                    "_rvalue": v_bytes,
+                    "_rshape": val.shape,
+                    "_rdtype": str(val.dtype),
                 }
-            elif isinstance(val, (dict, list)):
-                v_obj = self._encode(val)
             elif not isinstance(val, basestring) and isinstance(val, bytes):
                 v_obj = val.decode()  # covert python3 bytes to str
             elif isinstance(val, Exception):
-                v_obj = {"__jailed_type__": "error", "__value__": str(val)}
+                v_obj = {"_rtype": "error", "_rvalue": str(val)}
+            elif val._rintf:
+                v_obj = self._encode(val, true)
+            elif isinstance(val, (dict, list)):
+                v_obj = self._encode(val, as_interface)
             else:
-                v_obj = {"__jailed_type__": "argument", "__value__": val}
+                v_obj = {"_rtype": "argument", "_rvalue": val}
 
             if isarray:
                 b_object.append(v_obj)
@@ -505,41 +572,49 @@ class RPC:
         """Decode object."""
         if a_object is None:
             return a_object
-        if "__jailed_type__" in a_object and "__value__" in a_object:
-            if a_object["__jailed_type__"] == "callback":
-                b_object = self._gen_remote_callback(
-                    callback_id, a_object["num"], with_promise
-                )
-            elif a_object["__jailed_type__"] == "interface":
-                name = a_object["__value__"]
-                if name in self._remote:
-                    b_object = self._remote[name]
+        if "_rtype" in a_object and "_rvalue" in a_object:
+            if a_object["_rtype"] == "custom":
+                if a_object["_rvalue"] and callable(self._local_api.get("_rpc_decode")):
+                    b_object = self._local_api["_rpc_decode"](a_object["_rvalue"])
+                    if b_object is None:
+                        b_object = a_object
                 else:
-                    b_object = self._gen_remote_method(name)
-            elif a_object["__jailed_type__"] == "plugin_interface":
-                b_object = self._gen_remote_method(
-                    a_object["__value__"], a_object["__plugin_id__"]
+                    b_object = a_object
+
+            if a_object["_rtype"] == "callback":
+                b_object = self._gen_remote_callback(
+                    callback_id, a_object["_rindex"], with_promise
                 )
-            elif a_object["__jailed_type__"] == "ndarray":
+            elif a_object["_rtype"] == "interface":
+                name = a_object["_rvalue"]
+                rid = a_object["_rid"]
+                intfid = (
+                    "_rrmote" if a_object["_rid"] == "_rlocal" else a_object["_rid"]
+                )
+                if intfid in self._interface_store:
+                    b_object = self._interface_store[intfid][name]
+                else:
+                    b_object = self._gen_remote_method(name, rid)
+            elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
                 try:
                     np = self.local_context.np  # pylint: disable=invalid-name
-                    if isinstance(a_object["__value__"], bytes):
-                        a_object["__value__"] = a_object["__value__"]
-                    elif isinstance(a_object["__value__"], (list, tuple)):
-                        a_object["__value__"] = reduce(
-                            (lambda x, y: x + y), a_object["__value__"]
+                    if isinstance(a_object["_rvalue"], bytes):
+                        a_object["_rvalue"] = a_object["_rvalue"]
+                    elif isinstance(a_object["_rvalue"], (list, tuple)):
+                        a_object["_rvalue"] = reduce(
+                            (lambda x, y: x + y), a_object["_rvalue"]
                         )
                     else:
                         raise Exception(
                             "Unsupported data type: ",
-                            type(a_object["__value__"]),
-                            a_object["__value__"],
+                            type(a_object["_rvalue"]),
+                            a_object["_rvalue"],
                         )
                     if NUMPY:
                         b_object = NUMPY.frombuffer(
-                            a_object["__value__"], dtype=a_object["__dtype__"]
-                        ).reshape(tuple(a_object["__shape__"]))
+                            a_object["_rvalue"], dtype=a_object["_rdtype"]
+                        ).reshape(tuple(a_object["_rshape"]))
                     else:
                         b_object = a_object
                         logger.warn("numpy is not available, failed to decode ndarray")
@@ -548,12 +623,12 @@ class RPC:
                     logger.debug("Error in converting: %s", exc)
                     b_object = a_object
                     raise exc
-            elif a_object["__jailed_type__"] == "error":
-                b_object = Exception(a_object["__value__"])
-            elif a_object["__jailed_type__"] == "argument":
-                b_object = a_object["__value__"]
+            elif a_object["_rtype"] == "error":
+                b_object = Exception(a_object["_rvalue"])
+            elif a_object["_rtype"] == "argument":
+                b_object = a_object["_rvalue"]
             else:
-                b_object = a_object["__value__"]
+                b_object = a_object["_rvalue"]
             return b_object
 
         if isinstance(a_object, tuple):

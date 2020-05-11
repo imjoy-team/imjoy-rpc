@@ -56,10 +56,12 @@ function setupWebWorker(config) {
   worker.addEventListener("message", function(e) {
     let transferables = undefined;
     const m = e.data;
-    if (m.type === "initialized") {
+    if (m.type === "worker-ready") {
       // send config to the worker
       worker.postMessage({ type: "connectRPC", config: config });
       clearTimeout(fallbackTimeout);
+      return;
+    } else if (m.type === "initialized") {
       // complete the missing fields
       m.config = Object.assign({}, config, m.config);
     } else if (m.type === "imjoy_remote_api_ready") {
@@ -80,7 +82,7 @@ function setupWebWorker(config) {
         delete m.__transferables__;
       }
     }
-    parent.postMessage(m, "*", transferables);
+    parent.postMessage(m, config.target_origin || "*", transferables);
   });
 
   window.addEventListener("message", function(e) {
@@ -133,7 +135,6 @@ export function setupRPC(config) {
   config.type = config.type || "rpc-window";
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
-  config.token = config.token || randId();
   // remove functions
   config = Object.keys(config).reduce((p, c) => {
     if (typeof config[c] !== "function") p[c] = config[c];
@@ -162,10 +163,12 @@ export function setupRPC(config) {
         reject("Unsupported plugin type: " + config.type);
       }
       try {
-        window.addEventListener("imjoy_remote_api_ready", e => {
+        this.handleEvent = e => {
           // imjoy plugin api
           resolve(e.detail);
-        });
+          window.removeEventListener("imjoy_remote_api_ready", this);
+        };
+        window.addEventListener("imjoy_remote_api_ready", this);
       } catch (e) {
         reject(e);
       }

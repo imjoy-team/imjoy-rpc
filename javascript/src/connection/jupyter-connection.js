@@ -57,13 +57,12 @@ function setupMessageForwarding(config) {
   const pluginConfig = {
     allow_execution: true,
     version: "0.1.0",
-    api_version: "0.2.0",
+    api_version: "0.2.1",
     dedicated_thread: true,
     description: "Jupyter notebook",
     id: "jupyter_" + randId(),
     lang: "python",
     name: "Jupyter Notebook",
-    token: randId() + randId(),
     type: "rpc-window"
   };
   parent.postMessage(

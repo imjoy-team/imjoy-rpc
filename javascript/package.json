@@ -1,13 +1,13 @@
 {
   "name": "imjoy-rpc",
-  "version": "0.1.17",
+  "version": "0.2.0",
   "description": "Remote procedure calls for ImJoy.",
   "module": "index.js",
   "scripts": {
     "build": "rm -rf dist && npm run build-umd && npm run build-module",
     "build-umd": "webpack --config webpack.config.js --mode development --filename imjoy-rpc.js && webpack --config webpack.config.js --mode production --devtool source-map --filename imjoy-rpc.min.js",
     "build-module": "webpack --config webpack.config.js --mode development --libraryTarget commonjs2 --filename imjoy-rpc.module.js",
-    "watch": "webpack --watch --progress --config webpack.config.js --mode development --libraryTarget commonjs2 --filename imjoy-rpc.module.js",
+    "watch": "webpack --watch --progress --config webpack.config.js --mode production --devtool source-map --filename imjoy-rpc.min.js",
     "serve": "webpack-dev-server --filename imjoy-rpc.js",
     "stats": "webpack --profile --json > stats.json",
     "stats-prod": "webpack --profile --json --mode production > stats-prod.json",
@@ -17,7 +17,8 @@
     "deploy": "npm run build && node deploy-site.js",
     "format": "prettier --write \"{src,tests}/**/**\"",
     "check-format": "prettier --check \"{src,tests}/**/**\"",
-    "test": "karma start --single-run --browsers ChromeHeadless,FirefoxHeadless karma.conf.js"
+    "test": "karma start --single-run --browsers ChromeHeadless,FirefoxHeadless karma.conf.js",
+    "test-watch": "karma start --auto-watch --browsers ChromeHeadless,FirefoxHeadless karma.conf.js"
   },
   "repository": {
     "type": "git",
@@ -68,6 +69,7 @@
     "prettier": "^1.6.1",
     "rimraf": "^2.6.2",
     "schema-utils": "^0.4.3",
+    "socket.io-client": "^2.3.0",
     "style-loader": "^0.18.1",
     "url-loader": "^0.5.9",
     "webpack": "^4.0.0",

@@ -12,4 +12,4 @@ class ImJoyPlugin:
 
 
 if __name__ == "__main__":
-    api.export(ImJoyPlugin())
+    api.export(ImJoyPlugin(), {"debug": True, "url": "http://localhost:9988"})

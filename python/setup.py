@@ -35,5 +35,6 @@ setup(
     include_package_data=True,
     install_requires=read("requirements.txt"),
     tests_require=read("requirements.txt") + read("requirements_test.txt"),
+    extras_require={"jupyter": "ipykernel", "socketio": "python-socketio[client]"},
     zip_safe=False,
 )

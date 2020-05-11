@@ -2,9 +2,9 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype } from "./utils.js";
+import { randId, typedArrayToDtype, EventManager } from "./utils.js";
 
-export const API_VERSION = "0.2.0";
+export const API_VERSION = "0.2.1";
 
 const ArrayBufferView = Object.getPrototypeOf(
   Object.getPrototypeOf(new Uint8Array())
@@ -28,36 +28,37 @@ function getKeyByValue(object, value) {
  * and receive messages from the opposite site (basically it
  * should only provide send() and onMessage() methods)
  */
-export class RPC {
+export class RPC extends EventManager {
   constructor(connection, config) {
+    super(config && config.debug);
     this._connection = connection;
     this.config = config || {};
-    this._interface = {};
-    this._plugin_interfaces = {};
-    this._remote = null;
-    this._remoteUpdateHandler = function() {};
-    this._getInterfaceHandler = function() {};
-    this._interfaceSetAsRemoteHandler = null;
-    this._disconnectHandler = function() {};
+    this._interface_store = {};
+    this._local_api = null;
+    // make sure there is an execute function
+    const name = this.config.name;
+    this._connection.execute =
+      this._connection.execute ||
+      function() {
+        throw new Error(`connection.execute not implemented (in "${name}")`);
+      };
     this._store = new ReferenceStore();
     this._method_refs = new ReferenceStore();
-    this._connection = connection;
-    let me = this;
-    this._connection.onMessage(function(data) {
-      me._processMessage(data);
+    this._method_refs.onReady(() => {
+      this._fire("remoteIdle");
+    });
+    this._method_refs.onBusy(() => {
+      this._fire("remoteBusy");
+    });
+    this._setupMessageHanlders();
+  }
+
+  init() {
+    this._connection.emit({
+      type: "initialized",
+      config: this.config
     });
   }
-
-  /**
-   * Set a handler to be called when the remote site updates its
-   * interface
-   *
-   * @param {Function} handler
-   */
-  onRemoteUpdate(handler) {
-    this._remoteUpdateHandler = handler;
-  }
-
   /**
    * Set a handler to be called when received a responce from the
    * remote site reporting that the previously provided interface
@@ -66,35 +67,15 @@ export class RPC {
    * @param {Function} handler
    */
 
-  onRemoteReady(handler) {
-    this._method_refs.onReady(handler);
-  }
-
-  onRemoteBusy(handler) {
-    this._method_refs.onBusy(handler);
-  }
-
   getRemoteCallStack() {
     return this._method_refs.getStack();
-  }
-  /**
-   * Set a handler to be called when the remote site requests to
-   * (re)send the interface. Used to detect an initialzation
-   * completion without sending additional request, since in fact
-   * 'getInterface' request is only sent by application at the last
-   * step of the plugin initialization
-   *
-   * @param {Function} handler
-   */
-  onGetInterface(handler) {
-    this._getInterfaceHandler = handler;
   }
 
   /**
    * @returns {Object} set of remote interface methods
    */
   getRemote() {
-    return this._remote;
+    return this._interface_store["_rremote"];
   }
 
   /**
@@ -106,24 +87,26 @@ export class RPC {
   setInterface(_interface) {
     if (this.config.forwarding_functions) {
       for (let func_name of this.config.forwarding_functions) {
-        if (this._remote[func_name]) {
+        const _remote = this._interface_store["_rremote"];
+        if (_remote[func_name]) {
           if (_interface.constructor === Object) {
             if (!_interface[func_name]) {
               _interface[func_name] = (...args) => {
-                this._remote[func_name](...args);
+                _remote[func_name](...args);
               };
             }
           } else if (_interface.constructor.constructor === Function) {
             if (!_interface.constructor.prototype[func_name]) {
               _interface.constructor.prototype[func_name] = (...args) => {
-                this._remote[func_name](...args);
+                _remote[func_name](...args);
               };
             }
           }
         }
       }
     }
-    this._interface = _interface;
+    this._local_api = _interface;
+    this._fire("interfaceAvailable");
   }
 
   /**
@@ -131,171 +114,176 @@ export class RPC {
    * updated or by a special request of the remote site
    */
   sendInterface() {
-    return new Promise(resolve => {
-      var names = [];
-      if (!this._interface) {
-        throw new Error("interface is not set.");
-      }
-      if (this._interface.constructor === Object) {
-        for (var name of Object.keys(this._interface)) {
-          if (name.startsWith("_")) continue;
-          if (typeof this._interface[name] === "function") {
-            names.push({ name: name, data: null, type: "function" });
-          } else {
-            var data = this._interface[name];
-            if (data !== null && typeof data === "object") {
-              var data2 = {};
-              for (var k of Object.keys(data)) {
-                if (typeof data[k] === "function") {
-                  data2[k] = "rpc_method::" + k;
-                } else {
-                  data2[k] = data[k];
-                }
-              }
-              names.push({ name: name, data: data2, type: "object" });
-            } else if (Object(data) !== data) {
-              names.push({ name: name, data: data, type: "data" });
-            }
-          }
-        }
-      }
-      // a class
-      else if (this._interface.constructor === Function) {
-        throw new Error("Please instantiate the class before exportting it.");
-      }
-      // instance of a class
-      else if (this._interface.constructor.constructor === Function) {
-        var functions = Object.getOwnPropertyNames(
-          Object.getPrototypeOf(this._interface)
-        ).concat(Object.keys(this._interface));
-        for (var i = 0; i < functions.length; i++) {
-          var name_ = functions[i];
-          if (name_.startsWith("_") || name_ === "constructor") continue;
-          if (typeof this._interface[name_] === "function") {
-            names.push({ name: name_, data: null });
-          }
-        }
-      } else {
-        throw Error("Unsupported interface type");
-      }
-      this._interfaceSetAsRemoteHandler = resolve;
-      this._connection.send({ type: "setInterface", api: names });
-    });
+    if (!this._local_api) {
+      throw new Error("interface is not set.");
+    }
+    this._local_api._rid = "_rlocal";
+    const api = this._encode(this._local_api, true);
+    this._connection.emit({ type: "setInterface", api: api });
+  }
+
+  setAuthenticator(authenticator) {
+    this.authenticator = authenticator;
+  }
+
+  setAuthorizer(authorizer) {
+    this.authorizer = authorizer;
   }
 
   /**
    * Handles a message from the remote site
    */
   // var callback_reg = new RegExp("onupdate|run$")
-  _processMessage(data) {
-    var resolve, reject, method, args, result;
-    switch (data.type) {
-      case "method":
-        var _interface = this._interface;
-        var _method_context = _interface.__this__ || _interface;
-        if (data.pid) {
-          _interface = this._plugin_interfaces[data.pid];
-          if (!_interface) {
-            if (data.promise) {
-              [resolve, reject] = this._unwrap(data.promise, false);
-              reject(
-                `plugin api function is not avaialbe in "${data.pid}", the plugin maybe terminated.`
-              );
-            } else {
-              console.error(
-                `plugin api function is not avaialbe in ${data.pid}, the plugin maybe terminated.`
-              );
-            }
-            return;
+  _setupMessageHanlders() {
+    this._connection.on("init", this.init);
+    this._connection.on("authenticate", credential => {
+      Promise.resolve(this.authenticator(credential))
+        .then(result => {
+          if (result === true) {
+            this._connection.emit({
+              type: "authenticated",
+              token: token
+            });
+          } else {
+            this._connection.emit({
+              type: "authenticated",
+              error: result
+            });
           }
-        }
-        if (data.name.indexOf(".") !== -1) {
-          var names = data.name.split(".");
-          method = _interface[names[0]][names[1]];
-        } else {
-          method = _interface[data.name];
-        }
-        args = this._unwrap(data.args, true);
-        if (data.promise) {
-          [resolve, reject] = this._unwrap(data.promise, false);
-          try {
-            result = method.apply(_method_context, args);
-            if (
-              result instanceof Promise ||
-              (method.constructor &&
-                method.constructor.name === "AsyncFunction")
-            ) {
-              result.then(resolve).catch(reject);
-            } else {
-              resolve(result);
-            }
-          } catch (e) {
-            console.error(e, method);
-            reject(e);
-          }
-        } else {
-          try {
-            method.apply(_method_context, args);
-          } catch (e) {
-            console.error(e, method, args);
-          }
-        }
+        })
+        .catch(e => {
+          this._connection.emit({
+            type: "authenticated",
+            error: e
+          });
+        });
+    });
+    this._connection.on("execute", data => {
+      Promise.resolve(this._connection.execute(data.code))
+        .then(() => {
+          this._connection.emit({ type: "executed" });
+        })
+        .catch(e => {
+          console.error(e);
+          this._connection.emit({
+            type: "executed",
+            error: e
+          });
+        });
+    });
 
-        break;
-      case "callback":
+    this._connection.on("method", data => {
+      let resolve, reject, method, args, result;
+      let _interface = this._interface_store[data.pid];
+      const _method_context = _interface.__this__ || _interface;
+      if (!_interface) {
         if (data.promise) {
           [resolve, reject] = this._unwrap(data.promise, false);
-          try {
-            method = this._store.fetch(data.num);
-            args = this._unwrap(data.args, true);
-            if (!method) {
-              throw "Callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
-            }
-            result = method.apply(null, args);
-            if (
-              result instanceof Promise ||
-              (method.constructor &&
-                method.constructor.name === "AsyncFunction")
-            ) {
-              result.then(resolve).catch(reject);
-            } else {
-              resolve(result);
-            }
-          } catch (e) {
-            console.error(e, method);
-            reject(e);
-          }
+          reject(
+            `plugin api function is not avaialbe in "${data.pid}", the plugin maybe terminated.`
+          );
         } else {
-          try {
-            method = this._store.fetch(data.num);
-            args = this._unwrap(data.args, true);
-            if (!method) {
-              throw "Please notice that callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details.";
-            }
-            method.apply(null, args);
-          } catch (e) {
-            console.error(e, method, args);
+          console.error(
+            `plugin api function is not avaialbe in ${data.pid}, the plugin maybe terminated.`
+          );
+        }
+        return;
+      }
+
+      method = _interface[data.name];
+      args = this._unwrap(data.args, true);
+      if (data.promise) {
+        [resolve, reject] = this._unwrap(data.promise, false);
+        try {
+          result = method.apply(_method_context, args);
+          if (
+            result instanceof Promise ||
+            (method.constructor && method.constructor.name === "AsyncFunction")
+          ) {
+            result.then(resolve).catch(reject);
+          } else {
+            resolve(result);
           }
+        } catch (e) {
+          console.error(this.config.name, e, method);
+          reject(e);
         }
-        break;
-      case "setInterface":
-        this._setRemote(data.api);
-        break;
-      case "getInterface":
-        this.sendInterface();
-        this._getInterfaceHandler();
-        break;
-      case "interfaceSetAsRemote":
-        if (typeof this._interfaceSetAsRemoteHandler === "function") {
-          this._interfaceSetAsRemoteHandler();
-          this._interfaceSetAsRemoteHandler === null;
+      } else {
+        try {
+          method.apply(_method_context, args);
+        } catch (e) {
+          console.error(this.config.name, e, method, args);
         }
-        break;
-      case "disconnect":
-        this._disconnectHandler();
-        this._connection.disconnect();
-        break;
-    }
+      }
+    });
+
+    this._connection.on("callback", data => {
+      let resolve, reject, method, args, result;
+      if (data.promise) {
+        [resolve, reject] = this._unwrap(data.promise, false);
+        try {
+          method = this._store.fetch(data._rindex);
+          args = this._unwrap(data.args, true);
+          if (!method) {
+            throw new Error(
+              "Callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details."
+            );
+          }
+          result = method.apply(null, args);
+          if (
+            result instanceof Promise ||
+            (method.constructor && method.constructor.name === "AsyncFunction")
+          ) {
+            result.then(resolve).catch(reject);
+          } else {
+            resolve(result);
+          }
+        } catch (e) {
+          console.error(this.config.name, e, method);
+          reject(e);
+        }
+      } else {
+        try {
+          method = this._store.fetch(data._rindex);
+          args = this._unwrap(data.args, true);
+          if (!method) {
+            throw new Error(
+              "Please notice that callback function can only called once, if you want to call a function for multiple times, please make it as a plugin api function. See https://imjoy.io/docs for more details."
+            );
+          }
+          method.apply(null, args);
+        } catch (e) {
+          console.error(this.config.name, e, method, args);
+        }
+      }
+    });
+    this._connection.on("setInterface", data => {
+      this._setRemoteInterface(data.api);
+    });
+    this._connection.on("getInterface", () => {
+      this._fire("getInterface");
+      if (this._local_api) this.sendInterface();
+      else this.once("interfaceAvailable", this.sendInterface);
+    });
+    this._connection.on("interfaceSetAsRemote", () => {
+      this._fire("interfaceSetAsRemote");
+    });
+    this._connection.on("disconnect", () => {
+      this._fire("beforeDisconnect");
+      this._connection.disconnect();
+      this._fire("disconnected");
+    });
+  }
+
+  async authenticate(credential) {
+    this.once("authenticated", result => {
+      if (!result.error) {
+        resolve(result);
+      } else {
+        reject(result.error);
+      }
+    });
+    this._connection.emit({ type: "authenticate", credential: credential });
   }
 
   /**
@@ -303,7 +291,7 @@ export class RPC {
    * current interface
    */
   requestRemote() {
-    this._connection.send({ type: "getInterface" });
+    this._connection.emit({ type: "getInterface" });
   }
 
   _ndarray(typedArray, shape, dtype) {
@@ -316,10 +304,10 @@ export class RPC {
     }
     shape = shape || [typedArray.length];
     return {
-      __jailed_type__: "ndarray",
-      __value__: typedArray,
-      __shape__: shape,
-      __dtype__: _dtype
+      _rtype: "ndarray",
+      _rvalue: typedArray,
+      _rshape: shape,
+      _rdtype: _dtype
     };
   }
 
@@ -328,37 +316,9 @@ export class RPC {
    *
    * @param {Array} names list of function names
    */
-  _setRemote(api) {
-    this._remote = {};
-    var i, name, data, type;
-    for (i = 0; i < api.length; i++) {
-      name = api[i].name;
-      data = api[i].data;
-      type = api[i].type;
-      if (type === "data") {
-        this._remote[name] = data;
-      } else if (data) {
-        if (typeof data === "object") {
-          var data2 = {};
-          for (var key in data) {
-            if (data.hasOwnProperty(key)) {
-              if (data[key] === "rpc_method::" + key) {
-                data2[key] = this._genRemoteMethod(name + "." + key);
-              } else {
-                data2[key] = data[key];
-              }
-            }
-          }
-          this._remote[name] = data2;
-        } else {
-          this._remote[name] = data;
-        }
-      } else {
-        this._remote[name] = this._genRemoteMethod(name);
-      }
-    }
-
-    this._remoteUpdateHandler();
+  _setRemoteInterface(api) {
+    this._interface_store["_rremote"] = this._decode(api);
+    this._fire("remoteReady");
     this._reportRemoteSet();
   }
 
@@ -372,13 +332,15 @@ export class RPC {
    *
    * @returns {Function} wrapped remote method
    */
-  _genRemoteMethod(name, plugin_id) {
+  _genRemoteMethod(name, interface_id) {
     var me = this;
     var remoteMethod = function() {
       return new Promise((resolve, reject) => {
         let id = null;
         try {
-          id = me._method_refs.put(plugin_id ? plugin_id + "/" + name : name);
+          id = me._method_refs.put(
+            interface_id ? interface_id + "/" + name : name
+          );
           var wrapped_resolve = function() {
             if (id !== null) me._method_refs.fetch(id);
             return resolve.apply(this, arguments);
@@ -399,11 +361,11 @@ export class RPC {
           }
           var transferables = args.args.__transferables__;
           if (transferables) delete args.args.__transferables__;
-          me._connection.send(
+          me._connection.emit(
             {
               type: "method",
               name: name,
-              pid: plugin_id,
+              pid: interface_id,
               args: args,
               promise: me._wrap([wrapped_resolve, wrapped_reject])
             },
@@ -412,7 +374,7 @@ export class RPC {
         } catch (e) {
           if (id) me._method_refs.fetch(id);
           reject(
-            `Failed to exectue remote method (plugin: ${plugin_id ||
+            `Failed to exectue remote method (interface: ${interface_id ||
               me.id}, method: ${name}), error: ${e}`
           );
         }
@@ -427,7 +389,7 @@ export class RPC {
    * remote site was successfully set by this site as remote
    */
   _reportRemoteSet() {
-    this._connection.send({ type: "interfaceSetAsRemote" });
+    this._connection.emit({ type: "interfaceSetAsRemote" });
   }
 
   /**
@@ -440,59 +402,72 @@ export class RPC {
    * @returns {Array} wrapped arguments
    */
 
-  _encode_interface(aObject, bObject) {
-    var v, k;
+  _encodeInterface(aObject) {
+    let v, k, keys;
     const encoded_interface = {};
-    aObject["__id__"] = aObject["__id__"] || randId();
-    for (k in aObject) {
-      if (k === "hasOwnProperty") continue;
-      if (aObject.hasOwnProperty(k)) {
-        if (k.startsWith("_")) {
-          continue;
-        }
-        v = aObject[k];
+    aObject["_rid"] = aObject["_rid"] || randId();
+    // an object/array
+    if (aObject.constructor === Object || Array.isArray(aObject)) {
+      keys = Object.keys(aObject);
+    }
+    // a class
+    else if (aObject.constructor === Function) {
+      throw new Error("Please instantiate the class before exportting it.");
+    }
+    // instance of a class
+    else if (aObject.constructor.constructor === Function) {
+      keys = Object.getOwnPropertyNames(Object.getPrototypeOf(aObject)).concat(
+        Object.keys(aObject)
+      );
+    } else {
+      throw Error("Unsupported interface type");
+    }
 
-        if (typeof v === "function") {
-          bObject[k] = {
-            __jailed_type__: "plugin_interface",
-            __plugin_id__: aObject["__id__"],
-            __value__: k,
-            num: null
-          };
-          encoded_interface[k] = v;
-        } else if (Object(v) !== v) {
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
-          encoded_interface[k] = v;
-        } else if (typeof v === "object") {
-          bObject[k] = Array.isArray(v) ? [] : {};
-          this._encode_interface(v, bObject[k]);
-        }
+    const bObject = Array.isArray(aObject) ? [] : {};
+
+    for (k of keys) {
+      if (["hasOwnProperty", "constructor"].includes(k)) continue;
+
+      if (k.startsWith("_")) {
+        continue;
+      }
+      v = aObject[k];
+
+      if (typeof v === "function") {
+        bObject[k] = {
+          _rtype: "interface",
+          _rid: aObject["_rid"],
+          _rvalue: k
+        };
+        encoded_interface[k] = v;
+      } else if (Object(v) !== v) {
+        bObject[k] = { _rtype: "argument", _rvalue: v };
+        encoded_interface[k] = v;
+      } else if (typeof v === "object") {
+        bObject[k] = this._encodeInterface(v);
       }
     }
-    this._plugin_interfaces[aObject["__id__"]] = encoded_interface;
+    this._interface_store[aObject["_rid"]] = encoded_interface;
 
-    if (aObject.on) {
+    // remove interface when closed
+    if (aObject.on && typeof aObject.on === "function") {
       aObject.on("close", () => {
-        delete this._plugin_interfaces[aObject["__id__"]];
+        delete this._interface_store[aObject["_rid"]];
       });
     }
+    return bObject;
   }
 
   _encode(aObject, as_interface) {
-    var transferables = [];
+    const transferables = [];
     if (!aObject) {
       return aObject;
     }
-    var _transfer = aObject._transfer;
-    var bObject, v, k;
-    var isarray = Array.isArray(aObject);
-    bObject = isarray ? [] : {};
+    const _transfer = aObject._transfer;
+    let bObject, v, k;
+    const isarray = Array.isArray(aObject);
     //skip if already encoded
-    if (
-      typeof aObject === "object" &&
-      aObject.__jailed_type__ &&
-      aObject.__value__
-    ) {
+    if (typeof aObject === "object" && aObject._rtype && aObject._rvalue) {
       return aObject;
     }
 
@@ -500,54 +475,53 @@ export class RPC {
     if (
       typeof aObject === "object" &&
       !Array.isArray(aObject) &&
-      (aObject.__as_interface__ || as_interface)
+      (aObject._rintf || as_interface)
     ) {
-      this._encode_interface(aObject, bObject);
-      return bObject;
+      return this._encodeInterface(aObject);
     }
 
     if (as_interface) {
-      aObject["__id__"] = aObject["__id__"] || randId();
-      this._plugin_interfaces[aObject["__id__"]] =
-        this._plugin_interfaces[aObject["__id__"]] || {};
+      aObject["_rid"] = aObject["_rid"] || randId();
+      this._interface_store[aObject["_rid"]] =
+        this._interface_store[aObject["_rid"]] || (isarray ? [] : {});
     }
+
+    bObject = isarray ? [] : {};
     for (k in aObject) {
-      if (k === "hasOwnProperty") continue;
+      if (["hasOwnProperty", "constructor"].includes(k)) continue;
       if (isarray || aObject.hasOwnProperty(k)) {
         v = aObject[k];
-        if (typeof this._interface._rpcEncode === "function") {
-          const encoded_obj = this._interface._rpcEncode(v);
-          if (encoded_obj && encoded_obj.__rpc_dtype__) {
+        if (v && typeof this._local_api._rpc_encode === "function") {
+          const encoded_obj = this._local_api._rpc_encode(v);
+          if (encoded_obj && encoded_obj._ctype) {
             bObject[k] = {
-              __jailed_type__: "custom_encoding",
-              __value__: encoded_obj
+              _rtype: "custom",
+              _rvalue: encoded_obj,
+              _rid: aObject["_rid"]
             };
             continue;
           }
-          // if the returned object does not contain __jailed_type__, assuming the object has been transformed
-          else {
+          // if the returned object does not contain _rtype, assuming the object has been transformed
+          else if (encoded_obj !== undefined) {
             v = encoded_obj;
           }
         }
         if (typeof v === "function") {
           if (as_interface) {
-            const encoded_interface = this._plugin_interfaces[
-              aObject["__id__"]
-            ];
+            const encoded_interface = this._interface_store[aObject["_rid"]];
             bObject[k] = {
-              __jailed_type__: "plugin_interface",
-              __plugin_id__: aObject["__id__"],
-              __value__: k,
-              num: null
+              _rtype: "interface",
+              _rid: aObject["_rid"],
+              _rvalue: k
             };
             encoded_interface[k] = v;
             continue;
           }
           let interfaceFuncName = null;
-          for (var name in this._interface) {
-            if (this._interface.hasOwnProperty(name)) {
+          for (var name in this._local_api) {
+            if (this._local_api.hasOwnProperty(name)) {
               if (name.startsWith("_")) continue;
-              if (this._interface[name] === v) {
+              if (this._local_api[name] === v) {
                 interfaceFuncName = name;
                 break;
               }
@@ -555,12 +529,12 @@ export class RPC {
           }
           // search for prototypes
           var functions = Object.getOwnPropertyNames(
-            Object.getPrototypeOf(this._interface)
+            Object.getPrototypeOf(this._local_api)
           );
           for (var i = 0; i < functions.length; i++) {
             var name_ = functions[i];
             if (name_.startsWith("_")) continue;
-            if (this._interface[name_] === v) {
+            if (this._local_api[name_] === v) {
               interfaceFuncName = name_;
               break;
             }
@@ -568,15 +542,15 @@ export class RPC {
           if (!interfaceFuncName) {
             var id = this._store.put(v);
             bObject[k] = {
-              __jailed_type__: "callback",
-              __value__: (v.constructor && v.constructor.name) || id,
-              num: id
+              _rtype: "callback",
+              _rvalue: (v.constructor && v.constructor.name) || id,
+              _rindex: id
             };
           } else {
             bObject[k] = {
-              __jailed_type__: "interface",
-              __value__: interfaceFuncName,
-              num: null
+              _rtype: "interface",
+              _rvalue: interfaceFuncName,
+              _rid: "_rlocal"
             };
           }
         } else if (
@@ -591,10 +565,10 @@ export class RPC {
             delete v._transfer;
           }
           bObject[k] = {
-            __jailed_type__: "ndarray",
-            __value__: v_buffer,
-            __shape__: v.shape,
-            __dtype__: v.dtype
+            _rtype: "ndarray",
+            _rvalue: v_buffer,
+            _rshape: v.shape,
+            _rdtype: v.dtype
           };
         } else if (
           /*global nj*/
@@ -608,19 +582,19 @@ export class RPC {
             delete v._transfer;
           }
           bObject[k] = {
-            __jailed_type__: "ndarray",
-            __value__: v.selection.data,
-            __shape__: v.shape,
-            __dtype__: dtype
+            _rtype: "ndarray",
+            _rvalue: v.selection.data,
+            _rshape: v.shape,
+            _rdtype: dtype
           };
         } else if (v instanceof Error) {
           console.error(v);
-          bObject[k] = { __jailed_type__: "error", __value__: v.toString() };
+          bObject[k] = { _rtype: "error", _rvalue: v.toString() };
         } else if (typeof File !== "undefined" && v instanceof File) {
           bObject[k] = {
-            __jailed_type__: "file",
-            __value__: v,
-            __relative_path__: v.relativePath || v.webkitRelativePath
+            _rtype: "file",
+            _rvalue: v,
+            _rrelative_path: v.relativePath || v.webkitRelativePath
           };
         }
         // send objects supported by structure clone algorithm
@@ -635,25 +609,25 @@ export class RPC {
           v instanceof ImageData ||
           (typeof FileList !== "undefined" && v instanceof FileList)
         ) {
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
+          bObject[k] = { _rtype: "argument", _rvalue: v };
         } else if (v instanceof ArrayBuffer) {
           if (v._transfer || _transfer) {
             transferables.push(v);
             delete v._transfer;
           }
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
+          bObject[k] = { _rtype: "argument", _rvalue: v };
         } else if (v instanceof ArrayBufferView) {
           if (v._transfer || _transfer) {
             transferables.push(v.buffer);
             delete v._transfer;
           }
-          bObject[k] = { __jailed_type__: "argument", __value__: v };
+          bObject[k] = { _rtype: "argument", _rvalue: v };
         }
         // TODO: support also Map and Set
         // TODO: avoid object such as DynamicPlugin instance.
-        else if (v.__as_interface__) {
+        else if (v._rintf) {
           bObject[k] = this._encode(v, true);
-        } else if (typeof v === "object" || Array.isArray(v)) {
+        } else if (typeof v === "object") {
           bObject[k] = this._encode(v, as_interface);
           // move transferables to the top level object
           if (bObject[k].__transferables__) {
@@ -662,16 +636,8 @@ export class RPC {
             }
             delete bObject[k].__transferables__;
           }
-        } else if (typeof v === "object" && v.constructor) {
-          throw "Unsupported data type for transferring between the plugin and the main app: " +
-            k +
-            " : " +
-            v.constructor.name;
         } else {
-          throw "Unsupported data type for transferring between the plugin and the main app: " +
-            k +
-            "," +
-            v;
+          throw "imjoy-rpc: Unsupported data type " + k + "," + v;
         }
       }
     }
@@ -686,64 +652,62 @@ export class RPC {
       return aObject;
     }
     var bObject, v, k;
-
-    if (
-      aObject.hasOwnProperty("__jailed_type__") &&
-      aObject.hasOwnProperty("__value__")
-    ) {
-      if (aObject.__jailed_type__.startsWith("custom_encoding")) {
-        if (typeof this._interface._rpcDecode === "function") {
-          const decodedObj = this._interface._rpcDecode(aObject.__value__);
-          bObject = decodedObj;
+    if (aObject.hasOwnProperty("_rtype") && aObject.hasOwnProperty("_rvalue")) {
+      if (aObject._rtype === "custom") {
+        if (
+          aObject._rvalue &&
+          typeof this._local_api._rpc_decode === "function"
+        ) {
+          bObject = this._local_api._rpc_decode(aObject._rvalue);
+          if (bObject === undefined) {
+            bObject = aObject;
+          }
         } else {
           bObject = aObject;
         }
-      } else if (aObject.__jailed_type__ === "callback") {
-        bObject = this._genRemoteCallback(callbackId, aObject.num, withPromise);
-      } else if (aObject.__jailed_type__ === "interface") {
-        bObject =
-          this._remote[aObject.__value__] ||
-          this._genRemoteMethod(aObject.__value__);
-      } else if (aObject.__jailed_type__ === "plugin_interface") {
-        bObject = this._genRemoteMethod(
-          aObject.__value__,
-          aObject.__plugin_id__
+      } else if (aObject._rtype === "callback") {
+        bObject = this._genRemoteCallback(
+          callbackId,
+          aObject._rindex,
+          withPromise
         );
-      } else if (aObject.__jailed_type__ === "ndarray") {
+      } else if (aObject._rtype === "interface") {
+        const intfid = aObject._rid === "_rlocal" ? "_rrmote" : aObject._rid;
+        bObject =
+          (this._interface_store[intfid] &&
+            this._interface_store[intfid][aObject._rvalue]) ||
+          this._genRemoteMethod(aObject._rvalue, aObject._rid);
+      } else if (aObject._rtype === "ndarray") {
         /*global nj tf*/
         //create build array/tensor if used in the plugin
-        if (this.id === "__plugin__" && typeof nj !== "undefined" && nj.array) {
-          if (Array.isArray(aObject.__value__)) {
-            aObject.__value__ = aObject.__value__.reduce(_appendBuffer);
+        if (typeof nj !== "undefined" && nj.array) {
+          if (Array.isArray(aObject._rvalue)) {
+            aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = nj
-            .array(aObject.__value__, aObject.__dtype__)
-            .reshape(aObject.__shape__);
-        } else if (
-          this.id === "__plugin__" &&
-          typeof tf !== "undefined" &&
-          tf.Tensor
-        ) {
-          if (Array.isArray(aObject.__value__)) {
-            aObject.__value__ = aObject.__value__.reduce(_appendBuffer);
+            .array(aObject._rvalue, aObject._rdtype)
+            .reshape(aObject._rshape);
+        } else if (typeof tf !== "undefined" && tf.Tensor) {
+          if (Array.isArray(aObject._rvalue)) {
+            aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = tf.tensor(
-            aObject.__value__,
-            aObject.__shape__,
-            aObject.__dtype__
+            aObject._rvalue,
+            aObject._rshape,
+            aObject._rdtype
           );
         } else {
           //keep it as regular if transfered to the main app
           bObject = aObject;
         }
-      } else if (aObject.__jailed_type__ === "error") {
-        bObject = new Error(aObject.__value__);
-      } else if (aObject.__jailed_type__ === "file") {
-        bObject = aObject.__value__;
+      } else if (aObject._rtype === "error") {
+        bObject = new Error(aObject._rvalue);
+      } else if (aObject._rtype === "file") {
+        bObject = aObject._rvalue;
         //patch relativePath
-        bObject.relativePath = aObject.__relative_path__;
-      } else if (aObject.__jailed_type__ === "argument") {
-        bObject = aObject.__value__;
+        bObject.relativePath = aObject._rrelative_path;
+      } else if (aObject._rtype === "argument") {
+        bObject = aObject._rvalue;
       }
       return bObject;
     } else {
@@ -823,11 +787,11 @@ export class RPC {
           resolve.__jailed_pairs__ = reject;
           reject.__jailed_pairs__ = resolve;
           try {
-            me._connection.send(
+            me._connection.emit(
               {
                 type: "callback",
                 id: id,
-                num: argNum,
+                _rindex: argNum,
                 args: args,
                 // pid :  me.id,
                 promise: me._wrap([resolve, reject])
@@ -847,11 +811,11 @@ export class RPC {
         var args = me._wrap(Array.prototype.slice.call(arguments));
         var transferables = args.args.__transferables__;
         if (transferables) delete args.args.__transferables__;
-        return me._connection.send(
+        return me._connection.emit(
           {
             type: "callback",
             id: id,
-            num: argNum,
+            _rindex: argNum,
             args: args
             // pid :  me.id
           },
@@ -866,18 +830,10 @@ export class RPC {
    * Sends the notification message and breaks the connection
    */
   disconnect() {
-    this._connection.send({ type: "disconnect" });
-    setTimeout(this._connection.disconnect, 2000);
-  }
-
-  /**
-   * Set a handler to be called when received a disconnect message
-   * from the remote site
-   *
-   * @param {Function} handler
-   */
-  onDisconnect(handler) {
-    this._disconnectHandler = handler;
+    this._connection.emit({ type: "disconnect" });
+    setTimeout(() => {
+      this._connection.disconnect();
+    }, 2000);
   }
 }
 
@@ -1015,14 +971,4 @@ class ReferenceStore {
     }
     return obj;
   }
-
-  /**
-   * Retrieves previously stored object
-   *
-   * @param {Number} id of an object to retrieve
-   */
-  // retrieve(id) {
-  //     var obj = this._store[id];
-  //     return obj;
-  // }
 }

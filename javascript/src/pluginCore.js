@@ -4,16 +4,17 @@
  * Initializes the plugin-site API global methods.
  */
 import { RPC } from "./rpc.js";
+import { Connection } from "./pluginIframe.js";
 
 export function connectRPC(connection, config) {
   config = config || {};
 
   const rpc = new RPC(connection, config);
-  rpc.onGetInterface(function() {
+  rpc.on("getInterface", function() {
     launchConnected();
   });
 
-  rpc.onRemoteUpdate(function() {
+  rpc.on("remoteReady", function() {
     const api = rpc.getRemote() || {};
     if (api.export) {
       throw new Error("`export` is a reserved function name");

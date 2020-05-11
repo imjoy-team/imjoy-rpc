@@ -1,7 +1,9 @@
 export function randId() {
-  return Math.random()
-    .toString(36)
-    .substr(2, 10);
+  return (
+    Math.random()
+      .toString(36)
+      .substr(2, 10) + new Date().getTime()
+  );
 }
 
 export const dtypeToTypedArray = {
@@ -119,4 +121,60 @@ export function urlJoin(...args) {
     .replace(/\/(\?|&|#[^!])/g, "$1")
     .replace(/\?/g, "&")
     .replace("&", "?");
+}
+
+export class EventManager {
+  constructor(debug) {
+    this._event_handlers = {};
+    this._once_handlers = {};
+    this._debug = debug;
+  }
+  on(event, handler) {
+    if (!this._event_handlers[event]) {
+      this._event_handlers[event] = [];
+    }
+    this._event_handlers[event].push(handler);
+  }
+  once(event, handler) {
+    handler.___event_run_once = true;
+    this.on(event, handler);
+  }
+  off(event, handler) {
+    if (!event && !handler) {
+      // remove all events handlers
+      this._event_handlers = {};
+    } else if (event && !handler) {
+      // remove all hanlders for the event
+      if (this._event_handlers[event]) this._event_handlers[event] = [];
+    } else {
+      // remove a specific handler
+      if (this._event_handlers[event]) {
+        const idx = this._event_handlers[event].indexOf(handler);
+        if (idx >= 0) {
+          this._event_handlers[event].splice(idx, 1);
+        }
+      }
+    }
+  }
+  _fire(event, data) {
+    if (this._event_handlers[event]) {
+      var i = this._event_handlers[event].length;
+      while (i--) {
+        const handler = this._event_handlers[event][i];
+        try {
+          handler(data);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          if (handler.___event_run_once) {
+            this._event_handlers[event].splice(i, 1);
+          }
+        }
+      }
+    } else {
+      if (this._debug) {
+        console.warn("unhandled event", event, data);
+      }
+    }
+  }
 }

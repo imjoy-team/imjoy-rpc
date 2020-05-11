@@ -7,50 +7,81 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
+import { EventManager } from "./utils.js";
+// Create a new, plain <span> element
+function _htmlToElement(html) {
+  var template = document.createElement("template");
+  html = html.trim(); // Never return a text node of whitespace as the result
+  template.innerHTML = html;
+  return template.content.firstChild;
+}
 
-export default function setupIframe(config) {
-  config = config || {};
-  const targetOrigin = config.target_origin || "*";
-  // Create a new, plain <span> element
-  function _htmlToElement(html) {
-    var template = document.createElement("template");
-    html = html.trim(); // Never return a text node of whitespace as the result
-    template.innerHTML = html;
-    return template.content.firstChild;
+var _importScript = function(url) {
+  //url is URL of external file, implementationCode is the code
+  //to be called from the file, location is the location to
+  //insert the <script> element
+  return new Promise((resolve, reject) => {
+    var scriptTag = document.createElement("script");
+    scriptTag.src = url;
+    scriptTag.type = "text/javascript";
+    scriptTag.onload = resolve;
+    scriptTag.onreadystatechange = function() {
+      if (this.readyState === "loaded" || this.readyState === "complete") {
+        resolve();
+      }
+    };
+    scriptTag.onerror = reject;
+    document.head.appendChild(scriptTag);
+  });
+};
+
+// support importScripts outside web worker
+async function importScripts() {
+  var args = Array.prototype.slice.call(arguments),
+    len = args.length,
+    i = 0;
+  for (; i < len; i++) {
+    await _importScript(args[i]);
   }
+}
 
-  var _importScript = function(url) {
-    //url is URL of external file, implementationCode is the code
-    //to be called from the file, location is the location to
-    //insert the <script> element
-    return new Promise((resolve, reject) => {
-      var scriptTag = document.createElement("script");
-      scriptTag.src = url;
-      scriptTag.type = "text/javascript";
-      scriptTag.onload = resolve;
-      scriptTag.onreadystatechange = function() {
-        if (this.readyState === "loaded" || this.readyState === "complete") {
-          resolve();
-        }
-      };
-      scriptTag.onerror = reject;
-      document.head.appendChild(scriptTag);
+export class Connection extends EventManager {
+  constructor(config) {
+    super(config && config.debug);
+    this.config = config || {};
+  }
+  connect() {
+    this.config.target_origin = this.config.target_origin || "*";
+    // this will call handleEvent function
+    window.addEventListener("message", this);
+    this.emit({
+      type: "initialized",
+      config: this.config
     });
-  };
-
-  // support importScripts outside web worker
-
-  async function importScripts() {
-    var args = Array.prototype.slice.call(arguments),
-      len = args.length,
-      i = 0;
-    for (; i < len; i++) {
-      await _importScript(args[i]);
+    this._fire("connected");
+  }
+  handleEvent(e) {
+    if (
+      (e.type === "message" && this.config.target_origin === "*") ||
+      e.origin === this.config.target_origin
+    ) {
+      this._fire(e.data.type, e.data);
     }
   }
-
-  // evaluates the provided string
-  var execute = async function(code) {
+  disconnect() {
+    this._fire("beforeDisconnect");
+    window.removeEventListener("message", this);
+    this._fire("disconnected");
+  }
+  emit(data) {
+    let transferables;
+    if (data.__transferables__) {
+      transferables = data.__transferables__;
+      delete data.__transferables__;
+    }
+    parent.postMessage(data, this.config.target_origin, transferables);
+  }
+  async execute(code) {
     try {
       if (code.type === "requirements") {
         if (
@@ -125,14 +156,14 @@ export default function setupIframe(config) {
           }
         }
       } else if (code.type === "style") {
-        var style_node = document.createElement("style");
+        const style_node = document.createElement("style");
         if (code.src) {
           style_node.src = code.src;
         }
         style_node.innerHTML = code.content;
         document.head.appendChild(style_node);
       } else if (code.type === "link") {
-        var link_node_ = document.createElement("link");
+        const link_node_ = document.createElement("link");
         if (code.rel) {
           link_node_.rel = code.rel;
         }
@@ -148,71 +179,23 @@ export default function setupIframe(config) {
       } else {
         throw "unsupported code type.";
       }
-      parent.postMessage({ type: "executeSuccess" }, targetOrigin);
+      parent.postMessage({ type: "executed" }, this.config.target_origin);
     } catch (e) {
       console.error("failed to execute scripts: ", code, e);
       parent.postMessage(
-        { type: "executeFailure", error: e.stack || String(e) },
-        targetOrigin
+        { type: "executed", error: e.stack || String(e) },
+        this.config.target_origin
       );
     }
-  };
+  }
+}
 
-  // connection object for the RPC constructor
-  const conn = {
-    disconnect: function() {},
-    send: function(data, transferables) {
-      parent.postMessage(data, targetOrigin, transferables);
-    },
-    onMessage: function(h) {
-      conn._messageHandler = h;
-    },
-    _messageHandler: function() {},
-    onDisconnect: function() {}
-  };
-
+export default function setupIframe(config) {
+  config = config || {};
   config.dedicated_thread = false;
   config.lang = "javascript";
   config.api_version = API_VERSION;
-
-  // event listener for the plugin message
-  window.addEventListener("message", function(e) {
-    if (targetOrigin === "*" || e.origin === targetOrigin) {
-      const m = e.data;
-      switch (m && m.type) {
-        case "getConfig":
-          parent.postMessage(
-            {
-              type: "config",
-              config: config
-            },
-            targetOrigin
-          );
-          break;
-        case "execute":
-          if (config.allow_execution) {
-            execute(m.code);
-          } else {
-            console.warn(
-              "import script is not allowed (allow_execution=false)"
-            );
-          }
-          break;
-        default:
-          conn._messageHandler(m);
-      }
-    }
-  });
-
-  connectRPC(conn, {
-    forwarding_functions: config.forwarding_functions
-  });
-
-  parent.postMessage(
-    {
-      type: "initialized",
-      config: config
-    },
-    targetOrigin
-  );
+  const conn = new Connection(config);
+  connectRPC(conn, config);
+  conn.connect();
 }
