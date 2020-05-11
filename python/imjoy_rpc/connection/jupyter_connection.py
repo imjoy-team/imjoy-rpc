@@ -78,7 +78,7 @@ def _separate_buffers(substate, path, buffer_paths, buffers):
     # any part of the dict/list that needs modification will be cloned, so the original stays untouched
     # e.g. {'x': {'ar': ar}, 'y': [ar2, ar3]}, where ar/ar2/ar3 are binary types
     # will result in {'x': {}, 'y': [None, None]}, [ar, ar2, ar3], [['x', 'ar'], ['y', 0], ['y', 1]]
-    # instead of removing elements from the list, self will make replacing the buffers on the js side much easier
+    # instead of removing elements from the list, this will make replacing the buffers on the js side much easier
     if isinstance(substate, (list, tuple)):
         is_cloned = False
         for i, v in enumerate(substate):
