@@ -56,7 +56,6 @@ export class RPC extends EventManager {
   init() {
     this._connection.emit({
       type: "initialized",
-      success: true,
       config: this.config
     });
   }
@@ -143,13 +142,11 @@ export class RPC extends EventManager {
           if (result === true) {
             this._connection.emit({
               type: "authenticated",
-              success: true,
               token: token
             });
           } else {
             this._connection.emit({
               type: "authenticated",
-              success: false,
               error: result
             });
           }
@@ -157,7 +154,6 @@ export class RPC extends EventManager {
         .catch(e => {
           this._connection.emit({
             type: "authenticated",
-            success: false,
             error: e
           });
         });
@@ -165,13 +161,12 @@ export class RPC extends EventManager {
     this._connection.on("execute", data => {
       Promise.resolve(this._connection.execute(data.code))
         .then(() => {
-          this._connection.emit({ type: "executed", success: true });
+          this._connection.emit({ type: "executed" });
         })
         .catch(e => {
           console.error(e);
           this._connection.emit({
             type: "executed",
-            success: false,
             error: e
           });
         });
@@ -282,7 +277,7 @@ export class RPC extends EventManager {
 
   async authenticate(credential) {
     this.once("authenticated", result => {
-      if (result.success) {
+      if (!result.error) {
         resolve(result);
       } else {
         reject(result.error);

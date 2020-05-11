@@ -34,7 +34,6 @@ import { EventManager } from "./utils.js";
       });
       this.emit({
         type: "initialized",
-        success: true,
         config: this.config
       });
     }

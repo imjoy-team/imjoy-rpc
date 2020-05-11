@@ -56,7 +56,6 @@ export class Connection extends EventManager {
     window.addEventListener("message", this);
     this.emit({
       type: "initialized",
-      success: true,
       config: this.config
     });
     this._fire("connected");
@@ -180,14 +179,11 @@ export class Connection extends EventManager {
       } else {
         throw "unsupported code type.";
       }
-      parent.postMessage(
-        { type: "executed", success: true },
-        this.config.target_origin
-      );
+      parent.postMessage({ type: "executed" }, this.config.target_origin);
     } catch (e) {
       console.error("failed to execute scripts: ", code, e);
       parent.postMessage(
-        { type: "executed", success: true, error: e.stack || String(e) },
+        { type: "executed", error: e.stack || String(e) },
         this.config.target_origin
       );
     }

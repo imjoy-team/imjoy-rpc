@@ -66,7 +66,7 @@ function setupMessageForwarding(config) {
     type: "rpc-window"
   };
   parent.postMessage(
-    { type: "initialized", success: true, config: pluginConfig },
+    { type: "initialized", config: pluginConfig },
     this.targetOrigin
   );
 }

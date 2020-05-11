@@ -58,8 +58,8 @@ function setupCore(socket, code) {
     coreConnection.on("initialized", data => {
       const pluginConfig = data.config;
 
-      if (!data.success) {
-        console.error("Failed to initialize the plugin", pluginConfig.error);
+      if (data.error) {
+        console.error("Failed to initialize the plugin", data.error);
         return;
       }
       console.log("plugin initialized:", pluginConfig);
@@ -85,7 +85,7 @@ function setupCore(socket, code) {
       core.on("interfaceSetAsRemote", () => {
         if (code) {
           coreConnection.on("executed", data => {
-            if (!data.success) {
+            if (data.error) {
               reject(data.error);
             }
           });

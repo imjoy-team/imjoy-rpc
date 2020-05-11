@@ -83,7 +83,7 @@ class RPC(EventManager):
 
     def init(self):
         self._connection.emit(
-            {"type": "initialized", "success": True, "config": self.config}
+            {"type": "initialized", "config": self.config}
         )
 
     def start(self):
@@ -279,9 +279,9 @@ class RPC(EventManager):
 
     def _handle_auth(self, credential):
         self._connection.emit(
-            {"type": "authenticated", "success": True, "token": str(uuid.uuid4())}
+            {"type": "authenticated", "token": str(uuid.uuid4())}
         )
-        # self._connection.emit({"type": "authenticated", "success": False, "error": "Unauthorized access"})
+        # self._connection.emit({"type": "authenticated", "error": "Unauthorized access"})
 
     def _handle_execute(self, data):
         if self.allow_execution:
@@ -294,18 +294,17 @@ class RPC(EventManager):
                     pass
                 else:
                     raise Exception("unsupported type")
-                self._connection.emit({"type": "executed", "success": True})
+                self._connection.emit({"type": "executed"})
             except Exception as e:
                 traceback_error = traceback.format_exc()
                 logger.error("error during execution: %s", traceback_error)
                 self._connection.emit(
-                    {"type": "executed", "success": False, "error": traceback_error}
+                    {"type": "executed", "error": traceback_error}
                 )
         else:
             self._connection.emit(
                 {
                     "type": "executed",
-                    "success": False,
                     "error": "execution is not allowed",
                 }
             )
