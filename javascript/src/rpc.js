@@ -332,13 +332,15 @@ export class RPC extends EventManager {
    *
    * @returns {Function} wrapped remote method
    */
-  _genRemoteMethod(name, plugin_id) {
+  _genRemoteMethod(name, interface_id) {
     var me = this;
     var remoteMethod = function() {
       return new Promise((resolve, reject) => {
         let id = null;
         try {
-          id = me._method_refs.put(plugin_id ? plugin_id + "/" + name : name);
+          id = me._method_refs.put(
+            interface_id ? interface_id + "/" + name : name
+          );
           var wrapped_resolve = function() {
             if (id !== null) me._method_refs.fetch(id);
             return resolve.apply(this, arguments);
@@ -363,7 +365,7 @@ export class RPC extends EventManager {
             {
               type: "method",
               name: name,
-              pid: plugin_id,
+              pid: interface_id,
               args: args,
               promise: me._wrap([wrapped_resolve, wrapped_reject])
             },
@@ -372,7 +374,7 @@ export class RPC extends EventManager {
         } catch (e) {
           if (id) me._method_refs.fetch(id);
           reject(
-            `Failed to exectue remote method (plugin: ${plugin_id ||
+            `Failed to exectue remote method (interface: ${interface_id ||
               me.id}, method: ${name}), error: ${e}`
           );
         }
@@ -635,10 +637,7 @@ export class RPC extends EventManager {
             delete bObject[k].__transferables__;
           }
         } else {
-          throw "Unsupported data type for transferring between the plugin and the main app: " +
-            k +
-            "," +
-            v;
+          throw "imjoy-rpc: Unsupported data type " + k + "," + v;
         }
       }
     }
@@ -681,18 +680,14 @@ export class RPC extends EventManager {
       } else if (aObject._rtype === "ndarray") {
         /*global nj tf*/
         //create build array/tensor if used in the plugin
-        if (this.id === "__plugin__" && typeof nj !== "undefined" && nj.array) {
+        if (typeof nj !== "undefined" && nj.array) {
           if (Array.isArray(aObject._rvalue)) {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = nj
             .array(aObject._rvalue, aObject._rdtype)
             .reshape(aObject._rshape);
-        } else if (
-          this.id === "__plugin__" &&
-          typeof tf !== "undefined" &&
-          tf.Tensor
-        ) {
+        } else if (typeof tf !== "undefined" && tf.Tensor) {
           if (Array.isArray(aObject._rvalue)) {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
