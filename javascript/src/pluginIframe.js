@@ -62,8 +62,9 @@ export class Connection extends EventManager {
   }
   handleEvent(e) {
     if (
-      (e.type === "message" && this.config.target_origin === "*") ||
-      e.origin === this.config.target_origin
+      e.type === "message" &&
+      (this.config.target_origin === "*" ||
+        e.origin === this.config.target_origin)
     ) {
       this._fire(e.data.type, e.data);
     }
