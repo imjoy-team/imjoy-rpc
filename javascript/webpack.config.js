@@ -29,10 +29,6 @@ const config =  (env, argv) => ({
     }
   },
   plugins: [
-    new CopyPlugin([
-      { from: path.resolve(__dirname, 'src', 'jupyter-connection.js'), to: path.resolve(__dirname, 'dist', 'jupyter-connection.js')},
-      { from: path.resolve(__dirname, 'src', 'base_frame.html'), to: path.resolve(__dirname, 'dist', 'base_frame.html')},
-    ]),
     new BundleAnalyzerPlugin({
       analyzerMode: 'static',
       openAnalyzer: false,
