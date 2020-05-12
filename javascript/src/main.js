@@ -15,7 +15,7 @@ import { setupServiceWorker, randId } from "./utils.js";
 export { RPC, API_VERSION } from "./rpc.js";
 export { version as VERSION } from "../package.json";
 
-function inIframe() {
+function _inIframe() {
   try {
     return window.self !== window.top;
   } catch (e) {
@@ -23,13 +23,26 @@ function inIframe() {
   }
 }
 
-function getParamValue(paramName) {
-  const url = window.location.search.substring(1); //get rid of "?" in querystring
-  const qArray = url.split("&"); //get key-value pairs
-  for (let i = 0; i < qArray.length; i++) {
-    const pArr = qArray[i].split("="); //split key and value
-    if (pArr[0] === paramName) return pArr[1]; //return value
-  }
+function _injectScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.addEventListener("load", resolve);
+    script.addEventListener("error", () => {
+      document.head.removeChild(script);
+      reject("Error loading script: " + src);
+    });
+    script.addEventListener("abort", () => reject("Script loading aborted."));
+    document.head.appendChild(script);
+  });
+}
+
+if (!window.location.origin) {
+  window.location.origin =
+    window.location.protocol +
+    "//" +
+    window.location.hostname +
+    (window.location.port ? ":" + window.location.port : "");
 }
 
 /**
@@ -64,6 +77,7 @@ function setupWebWorker(config) {
     } else if (m.type === "initialized") {
       // complete the missing fields
       m.config = Object.assign({}, config, m.config);
+      m.config.origin = window.location.origin;
     } else if (m.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
       window.dispatchEvent(
@@ -96,34 +110,64 @@ function setupWebWorker(config) {
   });
 }
 
-export async function setupBaseFrame(config) {
+export function waitForInitialization(config) {
   config = config || {};
-  config.name = config.name || "Generic RPC App";
-  config.type = config.type || getParamValue("_plugin_type") || "window";
-  config.allow_execution = config.allow_execution || true;
-  config.enable_service_worker = config.enable_service_worker || true;
-  if (config.enable_service_worker) {
-    setupServiceWorker(config.target_origin, config.cache_requirements);
+  const targetOrigin = config.target_origin || "*";
+  const done = () => {
+    window.removeEventListener("message", this);
+  };
+  if (
+    config.credential_required &&
+    typeof config.verify_credential !== "function"
+  ) {
+    throw new Error(
+      "Please also provide the `verify_credential` function with `credential_required`."
+    );
   }
-  if (config.cache_requirements) {
-    delete config.cache_requirements;
+  if (config.credential_required && targetOrigin === "*") {
+    throw new Error(
+      "`target_origin` was set to `*` with `credential_required=true`, there is a security risk that you may leak the credential to website from other origin. Please specify the `target_origin` explicitly."
+    );
   }
-  config.forwarding_functions = config.forwarding_functions;
-  if (config.forwarding_functions === undefined) {
-    config.forwarding_functions = ["close", "on", "off", "emit"];
-    if (["rpc-window", "window", "web-python-window"].includes(config.type)) {
-      config.forwarding_functions = config.forwarding_functions.concat([
-        "resize",
-        "show",
-        "hide",
-        "refresh"
-      ]);
+  this.handleEvent = e => {
+    if (
+      e.type === "message" &&
+      (targetOrigin === "*" || e.origin === targetOrigin)
+    ) {
+      if (e.data.type === "initialize") {
+        done();
+        const cfg = e.data.config;
+        // override the target_origin setting if it's configured by the rpc client
+        // otherwise take the setting from the core
+        if (targetOrigin !== "*") {
+          cfg.target_origin = targetOrigin;
+        }
+        if (config.credential_required) {
+          config.verify_credential(cfg.credential).then(result => {
+            if (result && result.auth && !result.error) {
+              // pass the authentication information with tokens
+              cfg.auth = result.auth;
+              setupRPC(cfg).then(() => {
+                console.log("ImJoy RPC loaded successfully!");
+              });
+            } else {
+              throw new Error(
+                "Failed to verify the credentail:" + (result && result.error)
+              );
+            }
+          });
+        } else {
+          setupRPC(cfg).then(() => {
+            console.log("ImJoy RPC loaded successfully!");
+          });
+        }
+      } else {
+        throw new Error(`invalid command: ${e.data.cmd}`);
+      }
     }
-  }
-  // expose the api object to window globally.
-  // note: the returned value will be null for webworker
-  window.api = await imjoyRPC.setupRPC(config);
-  return window.api;
+  };
+  window.addEventListener("message", this);
+  parent.postMessage({ type: "imjoyRPCReady", config: config }, "*");
 }
 
 export function setupRPC(config) {
@@ -135,13 +179,19 @@ export function setupRPC(config) {
   config.type = config.type || "rpc-window";
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
+  if (config.enable_service_worker) {
+    setupServiceWorker(config.target_origin, config.cache_requirements);
+  }
+  if (config.cache_requirements) {
+    delete config.cache_requirements;
+  }
   // remove functions
   config = Object.keys(config).reduce((p, c) => {
     if (typeof config[c] !== "function") p[c] = config[c];
     return p;
   }, {});
   return new Promise((resolve, reject) => {
-    if (inIframe()) {
+    if (_inIframe()) {
       if (config.type === "web-worker") {
         try {
           setupWebWorker(config);
@@ -164,8 +214,12 @@ export function setupRPC(config) {
       }
       try {
         this.handleEvent = e => {
+          const api = e.detail;
+          if (config.expose_api_globally) {
+            window.api = api;
+          }
           // imjoy plugin api
-          resolve(e.detail);
+          resolve(api);
           window.removeEventListener("imjoy_remote_api_ready", this);
         };
         window.addEventListener("imjoy_remote_api_ready", this);

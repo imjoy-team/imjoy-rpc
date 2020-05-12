@@ -45,6 +45,14 @@ async function importScripts() {
   }
 }
 
+if (!window.location.origin) {
+  window.location.origin =
+    window.location.protocol +
+    "//" +
+    window.location.hostname +
+    (window.location.port ? ":" + window.location.port : "");
+}
+
 export class Connection extends EventManager {
   constructor(config) {
     super(config && config.debug);
@@ -52,6 +60,7 @@ export class Connection extends EventManager {
   }
   connect() {
     this.config.target_origin = this.config.target_origin || "*";
+    this.config.origin = window.location.origin;
     // this will call handleEvent function
     window.addEventListener("message", this);
     this.emit({

@@ -244,7 +244,6 @@ class RPC(EventManager):
     def _setup_handlers(self, connection):
         connection.on("init", self.init)
         connection.on("disconnected", self.disconnect)
-        connection.on("authenticate", self._handle_auth)
         connection.on("execute", self._handle_execute)
         connection.on("method", self._handle_method)
         connection.on("callback", self._handle_callback)
@@ -276,12 +275,6 @@ class RPC(EventManager):
             self._remote_set = True
         else:
             logger.debug("Unhanled event: %s", data["type"])
-
-    def _handle_auth(self, credential):
-        self._connection.emit(
-            {"type": "authenticated", "token": str(uuid.uuid4())}
-        )
-        # self._connection.emit({"type": "authenticated", "error": "Unauthorized access"})
 
     def _handle_execute(self, data):
         if self.allow_execution:
