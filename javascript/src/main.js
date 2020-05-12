@@ -97,7 +97,6 @@ function setupWebWorker(config) {
 export function waitForInitialization(config) {
   config = config || {};
   const targetOrigin = config.target_origin || "*";
-
   if (
     config.credential_required &&
     typeof config.verify_credential !== "function"
