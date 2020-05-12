@@ -27,7 +27,9 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then(api => {
 
 ### `imjoyRPC.waitForInitialization`
 
-This function is used to listen for instructions from the core:
+This function is used to setup a base frame for running plugins. 
+It will send `imjoyRPCReady` signal to the imjoy-core and listen for the `initialize` signal.
+Once received, it will call `setupRPC` with the `config` from the imjoy-core:
 ```html
 <script
   type="text/javascript"
@@ -36,7 +38,9 @@ This function is used to listen for instructions from the core:
 ></script>
 ```
 
-#### Parameters
+If needed, the authentication will also be done in this step (see config below).
+
+#### config
 You can optionally pass a config object into the function `imjoyRPC.waitForInitialization(config)`
 
  * `config.credential_required`: `boolean`, whether your RPC app requires credentials
