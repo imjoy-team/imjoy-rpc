@@ -1,1 +1,1 @@
-module.exports = require('./dist/imjoy-rpc.module.js');
+module.exports = require('./dist/imjoy-rpc.js');

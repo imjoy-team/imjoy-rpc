@@ -1,14 +1,13 @@
 {
   "name": "imjoy-rpc",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Remote procedure calls for ImJoy.",
   "module": "index.js",
   "scripts": {
-    "build": "rm -rf dist && npm run build-umd && npm run build-module",
-    "build-umd": "webpack --config webpack.config.js --mode development --filename imjoy-rpc.js && webpack --config webpack.config.js --mode production --devtool source-map --filename imjoy-rpc.min.js",
-    "build-module": "webpack --config webpack.config.js --mode development --libraryTarget commonjs2 --filename imjoy-rpc.module.js",
-    "watch": "webpack --watch --progress --config webpack.config.js --mode production --devtool source-map --filename imjoy-rpc.min.js",
-    "serve": "webpack-dev-server --filename imjoy-rpc.js",
+    "build": "rm -rf dist && npm run build-umd",
+    "build-umd": "webpack --config webpack.config.js --mode development && NODE_ENV=production webpack --config webpack.config.js --mode production --devtool source-map ",
+    "watch": "NODE_ENV=production webpack --watch --progress --config webpack.config.js --mode production --devtool source-map",
+    "serve": "webpack-dev-server",
     "stats": "webpack --profile --json > stats.json",
     "stats-prod": "webpack --profile --json --mode production > stats-prod.json",
     "analyze": "webpack-bundle-analyzer -p 9999 stats.json",
@@ -78,6 +77,7 @@
     "webpack-cli": "^3.1.2",
     "webpack-dev-server": "^3.1.1",
     "webpack-merge": "^4.1.1",
+    "workbox-webpack-plugin": "^4.3.1",
     "worker-loader": "^2.0.0",
     "write-file-webpack-plugin": "^4.5.1"
   },

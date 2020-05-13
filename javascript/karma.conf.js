@@ -19,8 +19,20 @@ module.exports = function (config) {
             // only specify one entry point
             // and require all tests in there
             'tests/*_test.js',
-            { pattern: 'src/jailed/*', watched: false, included: false, served: true, nocache: false },
-            { pattern: 'src/*.js', watched: false, included: false, served: true, nocache: false },
+            {
+                pattern: 'src/jailed/*',
+                watched: false,
+                included: false,
+                served: true,
+                nocache: false
+            },
+            {
+                pattern: 'src/*.js',
+                watched: false,
+                included: false,
+                served: true,
+                nocache: false
+            },
         ],
 
         proxies: {
@@ -30,23 +42,22 @@ module.exports = function (config) {
 
 
         // list of files / patterns to exclude
-        exclude: [
-        ],
+        exclude: [],
 
 
         // preprocess matching files before serving them to the browser
         // available preprocessors: https://npmjs.org/browse/keyword/karma-preprocessor
         preprocessors: {
-        // add webpack as preprocessor
-        'tests/*_test.js': ['webpack']
+            // add webpack as preprocessor
+            'tests/*_test.js': ['webpack']
         },
 
-        webpack: webpackConfig(null, {'filename': 'imjoy-rpc.js'}),
+        webpack: webpackConfig,
 
         webpackMiddleware: {
-        // webpack-dev-middleware configuration
-        // i. e.
-        stats: 'errors-only',
+            // webpack-dev-middleware configuration
+            // i. e.
+            stats: 'errors-only',
         },
 
 
@@ -101,7 +112,7 @@ module.exports = function (config) {
         concurrency: Infinity,
         captureTimeout: 12000,
         browserDisconnectTolerance: 2,
-        browserDisconnectTimeout : 10000,
-        browserNoActivityTimeout : 10000,
+        browserDisconnectTimeout: 10000,
+        browserNoActivityTimeout: 10000,
     })
 }

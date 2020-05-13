@@ -1,18 +1,20 @@
 const path = require('path')
-// const WriteFilePlugin = require('write-file-webpack-plugin');
+const {
+  InjectManifest
+} = require('workbox-webpack-plugin');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
   .BundleAnalyzerPlugin
 
-const config =  (env, argv) => ({
+module.exports = {
   mode: 'development',
   entry: {
     index: './src/main.js',
   },
   output: {
-    filename: argv.filename || 'imjoy-rpc.js',
+    filename: process.env.NODE_ENV === 'production' ? 'imjoy-rpc.min.js' : 'imjoy-rpc.js',
     path: path.resolve(__dirname, 'dist'),
     library: 'imjoyRPC',
-    libraryTarget: argv.libraryTarget ? argv.libraryTarget : 'umd',
+    libraryTarget: 'umd',
     umdNamedDefine: true,
   },
   devtool: 'cheap-module-eval-source-map',
@@ -27,24 +29,33 @@ const config =  (env, argv) => ({
       "Access-Control-Allow-Headers": "X-Requested-With, content-type, Authorization"
     }
   },
-  plugins: [
+  plugins: (process.env.NODE_ENV === 'production' ? [
+    new InjectManifest({
+      swDest: 'plugin-service-worker.js',
+      swSrc: path.join(__dirname, 'src/plugin-service-worker.js'),
+      exclude: [new RegExp('^[.].*'), new RegExp('.*[.]map$')]
+    }),
     new BundleAnalyzerPlugin({
       analyzerMode: 'static',
       openAnalyzer: false,
       reportFilename: path.join(__dirname, 'report.html'),
     }),
-  ],
+  ] : []),
   module: {
-    rules: [
-      {
+    rules: [{
         test: /\.webworker\.js$/,
-        use: [
-          { loader: 'worker-loader',  options: { inline: true, name: (argv.filename).split('.').slice(0, -1).join('-')+'-webworker.js', fallback: false}},
-        ],
+        use: [{
+          loader: 'worker-loader',
+          options: {
+            inline: true,
+            name: '[name].js',
+            fallback: false
+          }
+        }, ],
       },
       {
         test: /\.js$/,
-        exclude: [/node_modules/,/\.webworker\.js$/],
+        exclude: [/node_modules/, /\.webworker\.js$/],
         use: [{
             loader: 'babel-loader',
             options: {
@@ -52,7 +63,9 @@ const config =  (env, argv) => ({
                 [
                   '@babel/preset-env',
                   {
-                    targets: { browsers: ['last 2 Chrome versions'] },
+                    targets: {
+                      browsers: ['last 2 Chrome versions']
+                    },
                     useBuiltIns: 'entry',
                     modules: false,
                   },
@@ -61,15 +74,14 @@ const config =  (env, argv) => ({
               plugins: ['@babel/plugin-syntax-dynamic-import'],
               cacheDirectory: true,
             },
-        },
-        "eslint-loader"
-      ],},
+          },
+          "eslint-loader"
+        ],
+      },
       {
         test: /\.css$/,
         use: ['style-loader', 'css-loader'],
       },
     ],
   },
-})
-
-module.exports = config
+}
