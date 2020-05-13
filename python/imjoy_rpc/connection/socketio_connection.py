@@ -1,8 +1,8 @@
 import socketio
-from imjoy_rpc.utils import EventManager, dotdict
+from imjoy_rpc.utils import EventEmitter, dotdict
 
 
-class SocketioConnection(EventManager):
+class SocketioConnection(EventEmitter):
     def __init__(self, config):
         self.config = dotdict(config or {})
         super().__init__(self.config.get("debug"))

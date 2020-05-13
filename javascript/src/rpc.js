@@ -2,7 +2,7 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype, EventManager } from "./utils.js";
+import { randId, typedArrayToDtype, EventEmitter } from "./utils.js";
 
 export const API_VERSION = "0.2.1";
 
@@ -28,7 +28,7 @@ function getKeyByValue(object, value) {
  * and receive messages from the opposite site (basically it
  * should only provide send() and onMessage() methods)
  */
-export class RPC extends EventManager {
+export class RPC extends EventEmitter {
   constructor(connection, config) {
     super(config && config.debug);
     this._connection = connection;

@@ -123,7 +123,7 @@ export function urlJoin(...args) {
     .replace("&", "?");
 }
 
-export class EventManager {
+export class EventEmitter {
   constructor(debug) {
     this._event_handlers = {};
     this._once_handlers = {};

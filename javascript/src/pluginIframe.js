@@ -7,7 +7,7 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
-import { EventManager } from "./utils.js";
+import { EventEmitter } from "./utils.js";
 // Create a new, plain <span> element
 function _htmlToElement(html) {
   var template = document.createElement("template");
@@ -45,7 +45,7 @@ async function importScripts() {
   }
 }
 
-export class Connection extends EventManager {
+export class Connection extends EventEmitter {
   constructor(config) {
     super(config && config.debug);
     this.config = config || {};

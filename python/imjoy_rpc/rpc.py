@@ -15,7 +15,7 @@ from .utils import (
     format_traceback,
     ReferenceStore,
     FuturePromise,
-    EventManager,
+    EventEmitter,
 )
 
 API_VERSION = "0.2.1"
@@ -33,7 +33,7 @@ except:
     logger.warn("failed to import numpy, ndarray encoding/decoding will not work")
 
 
-class RPC(EventManager):
+class RPC(EventEmitter):
     def __init__(
         self, connection, local_context=None, config=None,
     ):

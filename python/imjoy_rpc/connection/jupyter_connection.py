@@ -1,10 +1,10 @@
 from ipykernel.comm import Comm
-from imjoy_rpc.utils import EventManager
+from imjoy_rpc.utils import EventEmitter
 
 _comms = {}
 
 
-class JupyterConnection(EventManager):
+class JupyterConnection(EventEmitter):
     def __init__(self, config):
         self.config = dotdict(config or {})
         super().__init__(self.config.get("debug"))
