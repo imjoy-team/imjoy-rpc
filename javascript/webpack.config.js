@@ -1,5 +1,4 @@
 const path = require('path')
-const CopyPlugin = require('copy-webpack-plugin');
 // const WriteFilePlugin = require('write-file-webpack-plugin');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
   .BundleAnalyzerPlugin
