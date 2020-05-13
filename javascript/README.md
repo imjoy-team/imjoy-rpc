@@ -7,7 +7,7 @@ Load the library to the browser
 <script
   type="text/javascript"
   onload="imjoyRPC.setupRPC()"
-  src="https://cdn.jsdelivr.net/npm/imjoy-rpc@0.2.0/dist/imjoy-rpc.min.js"
+  src="https://cdn.jsdelivr.net/npm/imjoy-rpc@0.2.1/dist/imjoy-rpc.min.js"
 ></script>
 ```
 
@@ -34,7 +34,7 @@ Once received, it will call `setupRPC` with the `config` from the imjoy-core:
 <script
   type="text/javascript"
   onload="imjoyRPC.waitForInitialization()"
-  src="https://cdn.jsdelivr.net/npm/imjoy-rpc@0.2.0/dist/imjoy-rpc.min.js"
+  src="https://cdn.jsdelivr.net/npm/imjoy-rpc@0.2.1/dist/imjoy-rpc.min.js"
 ></script>
 ```
 
