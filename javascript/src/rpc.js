@@ -2,7 +2,7 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype, EventManager } from "./utils.js";
+import { randId, typedArrayToDtype, MessageEmitter } from "./utils.js";
 
 export const API_VERSION = "0.2.1";
 
@@ -28,7 +28,7 @@ function getKeyByValue(object, value) {
  * and receive messages from the opposite site (basically it
  * should only provide send() and onMessage() methods)
  */
-export class RPC extends EventManager {
+export class RPC extends MessageEmitter {
   constructor(connection, config) {
     super(config && config.debug);
     this._connection = connection;
@@ -56,7 +56,8 @@ export class RPC extends EventManager {
   init() {
     this._connection.emit({
       type: "initialized",
-      config: this.config
+      config: this.config,
+      peer_id: this._connection.peer_id
     });
   }
   /**
@@ -122,42 +123,12 @@ export class RPC extends EventManager {
     this._connection.emit({ type: "setInterface", api: api });
   }
 
-  setAuthenticator(authenticator) {
-    this.authenticator = authenticator;
-  }
-
-  setAuthorizer(authorizer) {
-    this.authorizer = authorizer;
-  }
-
   /**
    * Handles a message from the remote site
    */
   // var callback_reg = new RegExp("onupdate|run$")
   _setupMessageHanlders() {
     this._connection.on("init", this.init);
-    this._connection.on("authenticate", credential => {
-      Promise.resolve(this.authenticator(credential))
-        .then(result => {
-          if (result === true) {
-            this._connection.emit({
-              type: "authenticated",
-              token: token
-            });
-          } else {
-            this._connection.emit({
-              type: "authenticated",
-              error: result
-            });
-          }
-        })
-        .catch(e => {
-          this._connection.emit({
-            type: "authenticated",
-            error: e
-          });
-        });
-    });
     this._connection.on("execute", data => {
       Promise.resolve(this._connection.execute(data.code))
         .then(() => {
@@ -273,17 +244,6 @@ export class RPC extends EventManager {
       this._connection.disconnect();
       this._fire("disconnected");
     });
-  }
-
-  async authenticate(credential) {
-    this.once("authenticated", result => {
-      if (!result.error) {
-        resolve(result);
-      } else {
-        reject(result.error);
-      }
-    });
-    this._connection.emit({ type: "authenticate", credential: credential });
   }
 
   /**

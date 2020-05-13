@@ -1,16 +1,18 @@
+import uuid
 from ipykernel.comm import Comm
-from imjoy_rpc.utils import EventManager
+from imjoy_rpc.utils import MessageEmitter
 
 _comms = {}
 
 
-class JupyterConnection(EventManager):
+class JupyterConnection(MessageEmitter):
     def __init__(self, config):
         self.config = dotdict(config or {})
         super().__init__(self.config.get("debug"))
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
         self.comm = None
+        self.peer_id = str(uuid.uuid4())
 
     def connect(self):
         if self.channel not in _comms:
@@ -21,11 +23,15 @@ class JupyterConnection(EventManager):
 
         def msg_cb(msg):
             data = msg["content"]["data"]
-            if "__buffer_paths__" in data:
-                buffer_paths = data["__buffer_paths__"]
-                del data["__buffer_paths__"]
-                put_buffers(data, buffer_paths, msg["buffers"])
-            self._fire(data.type, data)
+            if data.get('peer_id') == self.peer_id:
+                if "type" in data:
+                    if "__buffer_paths__" in data:
+                        buffer_paths = data["__buffer_paths__"]
+                        del data["__buffer_paths__"]
+                        put_buffers(data, buffer_paths, msg["buffers"])
+                    self._fire(data.type, data)
+            elif self.config.get('debug'):
+                print(f'connection peer id mismatch {data.peer_id} != {self.peer_id}')
 
         comm.on_msg(msg_cb)
 
@@ -35,6 +41,9 @@ class JupyterConnection(EventManager):
 
         comm.on_close(remove_channel)
         self.comm = comm
+        self.emit(
+            {"type": "initialized", "config": self.config, "peer_id": self.peer_id}
+        )
 
     def disconnect(self):
         pass

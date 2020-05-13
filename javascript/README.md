@@ -6,8 +6,8 @@ Load the library to the browser
 ```html
 <script
   type="text/javascript"
-  onload="imjoyRPC.setupBaseFrame()"
-  src="https://lib.imjoy.io/imjoy-rpc.js"
+  onload="imjoyRPC.setupRPC()"
+  src="https://cdn.jsdelivr.net/npm/imjoy-rpc@0.2.1/dist/imjoy-rpc.min.js"
 ></script>
 ```
 
@@ -25,15 +25,28 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then(api => {
 
 ```
 
-### `imjoyRPC.setupBaseFrame`
-To bootstrap an iframe:
+### `imjoyRPC.waitForInitialization`
+
+This function is used to setup a base frame for running plugins. 
+It will send `imjoyRPCReady` signal to the imjoy-core and listen for the `initialize` signal.
+Once received, it will call `setupRPC` with the `config` from the imjoy-core:
 ```html
 <script
   type="text/javascript"
-  onload="imjoyRPC.setupBaseFrame()"
-  src="/imjoy-rpc.js"
+  onload="imjoyRPC.waitForInitialization()"
+  src="https://cdn.jsdelivr.net/npm/imjoy-rpc@0.2.1/dist/imjoy-rpc.min.js"
 ></script>
 ```
+
+If needed, the authentication will also be done in this step (see config below).
+
+#### config
+You can optionally pass a config object into the function `imjoyRPC.waitForInitialization(config)`
+
+ * `config.credential_required`: `boolean`, whether your RPC app requires credentials
+ * `config.credential_fields`: `array`(of `object`), what are the fields required for the credentials, the properties of the objects will be used to generate HTML `<input>` field, it should contain `label`, `id`, `value`(the default value), `type`(any type supported by `<input>`, e.g.: `text`, `number`, `password`). For example: `[{id: 'username', label: 'User Name', value: '', type: 'text'}, {id: 'password', label: 'Password', value: '', type: 'password'}]`.
+ * `config.verify_credential`: `function`, a function to check if the submitted credential is valid
+ * `config.target_origin`: `string`, the target origin required to connect to the RPC app, it's mandatory to set an explicit origin.
 
 ### `imjoyRPC.setupRPC`
 
