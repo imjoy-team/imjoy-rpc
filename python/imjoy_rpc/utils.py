@@ -163,7 +163,7 @@ class FuturePromise(Promise, asyncio.Future):
                 self.set_exception(Exception())
 
 
-class EventEmitter:
+class MessageEmitter:
     def __init__(self, debug):
         self._debug = debug
         self._event_handlers = {}

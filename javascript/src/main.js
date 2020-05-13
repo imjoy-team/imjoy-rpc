@@ -56,6 +56,7 @@ function setupWebWorker(config) {
     );
     setupIframe(config);
   }, 2000);
+  const peer_id = randId();
 
   // forwarding messages between the worker and parent window
   worker.addEventListener("message", function(e) {
@@ -70,6 +71,7 @@ function setupWebWorker(config) {
       // complete the missing fields
       m.config = Object.assign({}, config, m.config);
       m.config.origin = window.location.origin;
+      m.peer_id = peer_id;
     } else if (m.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
       window.dispatchEvent(
@@ -98,7 +100,11 @@ function setupWebWorker(config) {
       transferables = m.__transferables__;
       delete m.__transferables__;
     }
-    worker.postMessage(m, transferables);
+    if (m.peer_id === peer_id) {
+      worker.postMessage(m, transferables);
+    } else if (config.debug) {
+      console.log(`connection peer id mismatch ${m.peer_id} !== ${peer_id}`);
+    }
   });
 }
 

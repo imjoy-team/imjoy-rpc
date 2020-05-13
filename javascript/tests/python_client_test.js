@@ -62,6 +62,9 @@ function setupCore(socket, code) {
         console.error("Failed to initialize the plugin", data.error);
         return;
       }
+      if (!data.peer_id) {
+        throw "Please provide a peer_id for the connection.";
+      }
       console.log("plugin initialized:", pluginConfig);
       const core = new RPC(coreConnection, { name: "core" });
       core.on("disconnected", details => {

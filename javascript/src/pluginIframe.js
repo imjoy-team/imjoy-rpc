@@ -7,7 +7,7 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
-import { EventEmitter } from "./utils.js";
+import { MessageEmitter, randId } from "./utils.js";
 // Create a new, plain <span> element
 function _htmlToElement(html) {
   var template = document.createElement("template");
@@ -45,10 +45,11 @@ async function importScripts() {
   }
 }
 
-export class Connection extends EventEmitter {
+export class Connection extends MessageEmitter {
   constructor(config) {
     super(config && config.debug);
     this.config = config || {};
+    this.peer_id = randId();
   }
   connect() {
     this.config.target_origin = this.config.target_origin || "*";
@@ -57,7 +58,8 @@ export class Connection extends EventEmitter {
     window.addEventListener("message", this);
     this.emit({
       type: "initialized",
-      config: this.config
+      config: this.config,
+      peer_id: this.peer_id
     });
     this._fire("connected");
   }
@@ -67,7 +69,13 @@ export class Connection extends EventEmitter {
       (this.config.target_origin === "*" ||
         e.origin === this.config.target_origin)
     ) {
-      this._fire(e.data.type, e.data);
+      if (e.data.peer_id === this.peer_id) {
+        this._fire(e.data.type, e.data);
+      } else if (this.config.debug) {
+        console.log(
+          `connection peer id mismatch ${e.data.peer_id} !== ${this.peer_id}`
+        );
+      }
     }
   }
   disconnect() {

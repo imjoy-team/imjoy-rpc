@@ -2,7 +2,7 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype, EventEmitter } from "./utils.js";
+import { randId, typedArrayToDtype, MessageEmitter } from "./utils.js";
 
 export const API_VERSION = "0.2.1";
 
@@ -28,7 +28,7 @@ function getKeyByValue(object, value) {
  * and receive messages from the opposite site (basically it
  * should only provide send() and onMessage() methods)
  */
-export class RPC extends EventEmitter {
+export class RPC extends MessageEmitter {
   constructor(connection, config) {
     super(config && config.debug);
     this._connection = connection;
@@ -56,7 +56,8 @@ export class RPC extends EventEmitter {
   init() {
     this._connection.emit({
       type: "initialized",
-      config: this.config
+      config: this.config,
+      peer_id: this._connection.peer_id
     });
   }
   /**
@@ -120,14 +121,6 @@ export class RPC extends EventEmitter {
     this._local_api._rid = "_rlocal";
     const api = this._encode(this._local_api, true);
     this._connection.emit({ type: "setInterface", api: api });
-  }
-
-  setAuthenticator(authenticator) {
-    this.authenticator = authenticator;
-  }
-
-  setAuthorizer(authorizer) {
-    this.authorizer = authorizer;
   }
 
   /**

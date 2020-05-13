@@ -6,7 +6,7 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
-import { EventEmitter } from "./utils.js";
+import { MessageEmitter, randId } from "./utils.js";
 
 (function() {
   // make sure this runs inside a webworker
@@ -23,7 +23,7 @@ import { EventEmitter } from "./utils.js";
    * Global will be then cleared to prevent exposure into the
    * Worker, so we put this local connection object into a closure
    */
-  class Connection extends EventEmitter {
+  class Connection extends MessageEmitter {
     constructor(config) {
       super(config && config.debug);
       this.config = config || {};

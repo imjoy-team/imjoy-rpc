@@ -15,7 +15,7 @@ from .utils import (
     format_traceback,
     ReferenceStore,
     FuturePromise,
-    EventEmitter,
+    MessageEmitter,
 )
 
 API_VERSION = "0.2.1"
@@ -33,7 +33,7 @@ except:
     logger.warn("failed to import numpy, ndarray encoding/decoding will not work")
 
 
-class RPC(EventEmitter):
+class RPC(MessageEmitter):
     def __init__(
         self, connection, local_context=None, config=None,
     ):
@@ -83,7 +83,7 @@ class RPC(EventEmitter):
 
     def init(self):
         self._connection.emit(
-            {"type": "initialized", "config": self.config}
+            {"type": "initialized", "config": self.config, "peer_id": self._connection.peer_id}
         )
 
     def start(self):

@@ -49,6 +49,7 @@ function runPlugin(config, plugin_interface, code) {
       connect() {},
       disconnect: function() {},
       emit: function(data) {
+        data.peer_id = coreConnection.peer_id;
         // connect to the plugin
         setTimeout(() => {
           pluginConnection.receiveMsg(data);
@@ -69,11 +70,13 @@ function runPlugin(config, plugin_interface, code) {
     };
     let plugin;
     let imjoy_api_in_plugin;
+    const plugin_peer_id = "1234";
     const pluginConnection = {
       connect() {
         pluginConnection.emit({
           type: "initialized",
-          config: config
+          config: config,
+          peer_id: plugin_peer_id
         });
       },
       async execute(code) {
@@ -101,6 +104,11 @@ function runPlugin(config, plugin_interface, code) {
       },
       _messageHandler: {},
       receiveMsg: function(m) {
+        if (m.peer_id !== plugin_peer_id) {
+          throw new Error(
+            "peer_id mismatch: " + m.peer_id + "!=" + plugin_peer_id
+          );
+        }
         if (pluginConnection._messageHandler[m.type]) {
           pluginConnection._messageHandler[m.type](m);
         }
@@ -114,6 +122,10 @@ function runPlugin(config, plugin_interface, code) {
         console.error("Failed to initialize the plugin", data.error);
         return;
       }
+      if (!data.peer_id) {
+        throw "Please provide a peer_id for the connection.";
+      }
+      coreConnection.peer_id = data.peer_id;
       console.log("plugin initialized:", pluginConfig);
       const core = new RPC(coreConnection, { name: "core" });
       core.on("disconnected", details => {

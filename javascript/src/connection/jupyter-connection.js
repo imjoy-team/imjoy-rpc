@@ -21,6 +21,7 @@ function setupMessageForwarding(config) {
   this.config = config || {};
   this.targetOrigin = this.config.target_origin || "*";
   this.comm = null;
+  const peer_id = randId();
   if (config.listen_events)
     // event listener for the plugin message
     window.addEventListener("message", e => {
@@ -66,7 +67,7 @@ function setupMessageForwarding(config) {
     type: "rpc-window"
   };
   parent.postMessage(
-    { type: "initialized", config: pluginConfig },
+    { type: "initialized", config: pluginConfig, peer_id: peer_id },
     this.targetOrigin
   );
 }
