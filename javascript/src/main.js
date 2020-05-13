@@ -37,14 +37,6 @@ function _injectScript(src) {
   });
 }
 
-if (!window.location.origin) {
-  window.location.origin =
-    window.location.protocol +
-    "//" +
-    window.location.hostname +
-    (window.location.port ? ":" + window.location.port : "");
-}
-
 /**
  * Initializes the plugin inside a web worker. May throw an exception
  * in case this was not permitted by the browser.
@@ -113,9 +105,7 @@ function setupWebWorker(config) {
 export function waitForInitialization(config) {
   config = config || {};
   const targetOrigin = config.target_origin || "*";
-  const done = () => {
-    window.removeEventListener("message", this);
-  };
+
   if (
     config.credential_required &&
     typeof config.verify_credential !== "function"
@@ -129,7 +119,10 @@ export function waitForInitialization(config) {
       "`target_origin` was set to `*` with `credential_required=true`, there is a security risk that you may leak the credential to website from other origin. Please specify the `target_origin` explicitly."
     );
   }
-  this.handleEvent = e => {
+  const done = () => {
+    window.removeEventListener("message", handleEvent);
+  };
+  const handleEvent = e => {
     if (
       e.type === "message" &&
       (targetOrigin === "*" || e.origin === targetOrigin)
@@ -166,7 +159,7 @@ export function waitForInitialization(config) {
       }
     }
   };
-  window.addEventListener("message", this);
+  window.addEventListener("message", handleEvent);
   parent.postMessage({ type: "imjoyRPCReady", config: config }, "*");
 }
 
@@ -213,16 +206,16 @@ export function setupRPC(config) {
         reject("Unsupported plugin type: " + config.type);
       }
       try {
-        this.handleEvent = e => {
+        const handleEvent = e => {
           const api = e.detail;
           if (config.expose_api_globally) {
             window.api = api;
           }
           // imjoy plugin api
           resolve(api);
-          window.removeEventListener("imjoy_remote_api_ready", this);
+          window.removeEventListener("imjoy_remote_api_ready", handleEvent);
         };
-        window.addEventListener("imjoy_remote_api_ready", this);
+        window.addEventListener("imjoy_remote_api_ready", handleEvent);
       } catch (e) {
         reject(e);
       }
