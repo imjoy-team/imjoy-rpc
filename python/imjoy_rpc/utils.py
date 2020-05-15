@@ -187,6 +187,9 @@ class MessageEmitter:
             if event in self._event_handlers:
                 self._event_handlers[event].remove(handler)
 
+    def emit(self, msg):
+        raise NotImplementedError
+
     def _fire(self, event, data=None):
         if event in self._event_handlers:
             for handler in self._event_handlers[event]:

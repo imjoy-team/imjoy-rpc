@@ -83,7 +83,11 @@ class RPC(MessageEmitter):
 
     def init(self):
         self._connection.emit(
-            {"type": "initialized", "config": self.config, "peer_id": self._connection.peer_id}
+            {
+                "type": "initialized",
+                "config": dict(self.config),
+                "peer_id": self._connection.peer_id,
+            }
         )
 
     def start(self):
@@ -99,7 +103,7 @@ class RPC(MessageEmitter):
         """Exit default."""
         logger.info("Terminating plugin: %s", self.id)
         self.abort.set()
-        os._exit(0)  # pylint: disable=protected-access
+        # os._exit(0)  # pylint: disable=protected-access
 
     def set_interface(self, api):
         """Set interface."""
@@ -206,7 +210,7 @@ class RPC(MessageEmitter):
 
     def set_remote_interface(self, api):
         """Set remote."""
-        _remote = self._decode(api)
+        _remote = self._decode(api, None, False)
         self._interface_store["_rremote"] = _remote
         self._fire("remoteReady")
         self._set_local_api(_remote)
@@ -225,7 +229,7 @@ class RPC(MessageEmitter):
         self.local_context.api.export = self.export
 
     def _create_waiting_task(self, result, resolve=None, reject=None):
-        async def _wait():
+        async def _wait(result):
             try:
                 result = await result
                 if resolve is not None:
@@ -239,7 +243,7 @@ class RPC(MessageEmitter):
                 if reject is not None:
                     reject(Exception(format_traceback(traceback_error)))
 
-        self.loop.create_task(_wait())
+        self.loop.create_task(_wait(result))
 
     def _setup_handlers(self, connection):
         connection.on("init", self.init)
@@ -247,34 +251,26 @@ class RPC(MessageEmitter):
         connection.on("execute", self._handle_execute)
         connection.on("method", self._handle_method)
         connection.on("callback", self._handle_callback)
-        for event in [
-            "disconnected",
-            "getInterface",
-            "setInterface",
-            "interfaceSetAsRemote",
-        ]:
-            connection.on(event, self._default_hanlder)
+        connection.on("disconnected", self._disconnected_hanlder)
+        connection.on("getInterface", self._get_interface_handler)
+        connection.on("setInterface", self._set_interface_handler)
+        connection.on("interfaceSetAsRemote", self._remote_set_handler)
 
-    def _default_hanlder(self, data):
-        if data["type"] == "disconnected":
-            conn.abort.set()
-            try:
-                if "exit" in conn.interface and callable(conn.interface["exit"]):
-                    conn.interface["exit"]()
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.error("Error when exiting: %s", exc)
-        elif data["type"] == "getInterface":
-            if self._local_api is not None:
-                self.send_interface()
-            else:
-                self.once("interfaceAvailable", self.send_interface)
-        elif data["type"] == "setInterface":
-            self.set_remote_interface(data["api"])
-            self._connection.emit({"type": "interfaceSetAsRemote"})
-        elif data["type"] == "interfaceSetAsRemote":
-            self._remote_set = True
+    def _disconnected_hanlder(self, data):
+        self._connection.disconnect()
+
+    def _get_interface_handler(self, data):
+        if self._local_api is not None:
+            self.send_interface()
         else:
-            logger.debug("Unhanled event: %s", data["type"])
+            self.once("interfaceAvailable", self.send_interface)
+
+    def _set_interface_handler(self, data):
+        self.set_remote_interface(data["api"])
+        self._connection.emit({"type": "interfaceSetAsRemote"})
+
+    def _remote_set_handler(self, data):
+        self._remote_set = True
 
     def _handle_execute(self, data):
         if self.allow_execution:
@@ -291,19 +287,14 @@ class RPC(MessageEmitter):
             except Exception as e:
                 traceback_error = traceback.format_exc()
                 logger.error("error during execution: %s", traceback_error)
-                self._connection.emit(
-                    {"type": "executed", "error": traceback_error}
-                )
+                self._connection.emit({"type": "executed", "error": traceback_error})
         else:
             self._connection.emit(
-                {
-                    "type": "executed",
-                    "error": "execution is not allowed",
-                }
+                {"type": "executed", "error": "execution is not allowed",}
             )
             logger.warn("execution is blocked due to allow_execution=False")
 
-    async def _handle_method(self, data):
+    def _handle_method(self, data):
         interface = self._interface_store[data["pid"]]
         if data["name"] in interface:
             if "promise" in data:
@@ -370,7 +361,6 @@ class RPC(MessageEmitter):
         else:
             try:
                 method = self._store.fetch(data["_rindex"])
-                self._connection.emit({"type": "log", "message": "running callback"})
                 if method is None:
                     raise Exception(
                         "Callback function can only called once, "
@@ -431,7 +421,7 @@ class RPC(MessageEmitter):
 
             a_object["on"]("close", remove_interface)
 
-    def _encode(self, a_object, as_interface):
+    def _encode(self, a_object, as_interface=False):
         """Encode object."""
         if a_object is None:
             return a_object
@@ -458,9 +448,8 @@ class RPC(MessageEmitter):
 
         if as_interface:
             a_object["_rid"] = a_object["_rid"] or str(uuid.uuid4)
-            self._interface_store[a_object["_rid"]] = (
-                self._interface_store[a_object["_rid"]] or {}
-            )
+            if a_object["_rid"] not in self._interface_store:
+                self._interface_store[a_object["_rid"]] = [] if isarray else {}
 
         keys = range(len(a_object)) if isarray else a_object.keys()
         for key in keys:
@@ -490,7 +479,7 @@ class RPC(MessageEmitter):
                         "_rid": a_object["_rid"],
                         "_rvalue": key,
                     }
-                    encoded_interface[k] = val
+                    encoded_interface[key] = val
                     continue
 
                 interface_func_name = None
@@ -511,22 +500,6 @@ class RPC(MessageEmitter):
                         "_rvalue": interface_func_name,
                     }
 
-            # send objects supported by structure clone algorithm
-            # https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
-            # if (
-            #   v !== Object(v) ||
-            #   v instanceof Boolean ||
-            #   v instanceof String ||
-            #   v instanceof Date ||
-            #   v instanceof RegExp ||
-            #   v instanceof Blob ||
-            #   v instanceof File ||
-            #   v instanceof FileList ||
-            #   v instanceof ArrayBuffer ||
-            #   v instanceof ArrayBufferView ||
-            #   v instanceof ImageData
-            # ) {
-            # }
             elif NUMPY and isinstance(val, (NUMPY.ndarray, NUMPY.generic)):
                 v_bytes = val.tobytes()
                 v_obj = {
@@ -539,9 +512,14 @@ class RPC(MessageEmitter):
                 v_obj = val.decode()  # covert python3 bytes to str
             elif isinstance(val, Exception):
                 v_obj = {"_rtype": "error", "_rvalue": str(val)}
-            elif val._rintf:
+            elif hasattr(val, "_rintf") and val._rintf == True:
                 v_obj = self._encode(val, true)
-            elif isinstance(val, (dict, list)):
+            elif isinstance(val, dict):
+                as_interface = as_interface or (
+                    "_rintf" in val and val["_rintf"] == True
+                )
+                v_obj = self._encode(val, as_interface)
+            elif isinstance(val, list):
                 v_obj = self._encode(val, as_interface)
             else:
                 v_obj = {"_rtype": "argument", "_rvalue": val}
