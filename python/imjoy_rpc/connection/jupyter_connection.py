@@ -1,6 +1,7 @@
 import uuid
+
 from ipykernel.comm import Comm
-from imjoy_rpc.utils import MessageEmitter
+from imjoy_rpc.utils import MessageEmitter, dotdict
 
 _comms = {}
 
@@ -13,52 +14,48 @@ class JupyterConnection(MessageEmitter):
         self._event_handlers = {}
         self.comm = None
         self.peer_id = str(uuid.uuid4())
+        self.debug = True
 
     def connect(self):
-        if self.channel not in _comms:
-            _comms[self.channel] = Comm(
-                target_name=self.channel, data={"channel": self.channel},
-            )
-        comm = _comms[self.channel]
+        comm = Comm(target_name=self.channel, data={"channel": self.channel},)
 
         def msg_cb(msg):
             data = msg["content"]["data"]
-            if data.get('peer_id') == self.peer_id:
+            if data.get("peer_id") == self.peer_id:
                 if "type" in data:
                     if "__buffer_paths__" in data:
                         buffer_paths = data["__buffer_paths__"]
                         del data["__buffer_paths__"]
                         put_buffers(data, buffer_paths, msg["buffers"])
-                    self._fire(data.type, data)
-            elif self.config.get('debug'):
-                print(f'connection peer id mismatch {data.peer_id} != {self.peer_id}')
+                    self._fire(data["type"], data)
+            elif self.config.get("debug"):
+                print(f"connection peer id mismatch {data.peer_id} != {self.peer_id}")
 
         comm.on_msg(msg_cb)
 
         def remove_channel():
-            del _comms[self.channel]
             self.comm = None
 
         comm.on_close(remove_channel)
         self.comm = comm
         self.emit(
-            {"type": "initialized", "config": self.config, "peer_id": self.peer_id}
+            {
+                "type": "initialized",
+                "config": dict(self.config),
+                "peer_id": self.peer_id,
+            }
         )
 
     def disconnect(self):
         pass
 
     def emit(self, msg):
-        if self.channel in _comms:
-            comm = _comms[self.channel]
-            msg, buffer_paths, buffers = remove_buffers(msg)
-            if len(buffers) > 0:
-                msg["__buffer_paths__"] = buffer_paths
-                comm.send(msg, buffers=buffers)
-            else:
-                comm.send(msg)
+        msg, buffer_paths, buffers = remove_buffers(msg)
+        if len(buffers) > 0:
+            msg["__buffer_paths__"] = buffer_paths
+            self.comm.send(msg, buffers=buffers)
         else:
-            raise Exception("channel not found: " + self.channel)
+            self.comm.send(msg)
 
 
 # self file is taken from https://github.com/jupyter-widgets/ipywidgets/blob/master/ipywidgets/widgets/widget.py

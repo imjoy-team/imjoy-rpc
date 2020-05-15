@@ -53,12 +53,12 @@ export class Connection extends MessageEmitter {
   }
   connect() {
     this.config.target_origin = this.config.target_origin || "*";
-    this.config.origin = window.location.origin;
     // this will call handleEvent function
     window.addEventListener("message", this);
     this.emit({
       type: "initialized",
       config: this.config,
+      origin: window.location.origin,
       peer_id: this.peer_id
     });
     this._fire("connected");

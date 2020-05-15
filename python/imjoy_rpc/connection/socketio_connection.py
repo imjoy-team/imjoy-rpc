@@ -2,7 +2,7 @@ import uuid
 import socketio
 from imjoy_rpc.utils import MessageEmitter, dotdict
 
-
+# TODO: support SocketioConnection
 class SocketioConnection(MessageEmitter):
     def __init__(self, config):
         self.config = dotdict(config or {})
@@ -14,11 +14,11 @@ class SocketioConnection(MessageEmitter):
 
         @sio.on("imjoy_rpc")
         def on_message(data):
-            if data.get('peer_id') == self.peer_id:
+            if data.get("peer_id") == self.peer_id:
                 if "type" in data:
                     self._fire(data["type"], data)
-            elif self.config.get('debug'):
-                print(f'connection peer id mismatch {data.peer_id} != {self.peer_id}')
+            elif self.config.get("debug"):
+                print(f"connection peer id mismatch {data.peer_id} != {self.peer_id}")
 
         @sio.event
         def connect():

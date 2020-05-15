@@ -129,6 +129,9 @@ export class MessageEmitter {
     this._once_handlers = {};
     this._debug = debug;
   }
+  emit() {
+    throw new Error("emit is not implemented");
+  }
   on(event, handler) {
     if (!this._event_handlers[event]) {
       this._event_handlers[event] = [];

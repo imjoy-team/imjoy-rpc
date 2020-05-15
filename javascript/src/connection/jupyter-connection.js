@@ -29,7 +29,10 @@ function setupMessageForwarding(config) {
         const data = e.data;
         const split = remove_buffers(data);
         split.state.__buffer_paths__ = split.buffer_paths;
-        this.comm.send(data, {}, {}, split.buffers);
+        if (this.comm) this.comm.send(data, {}, {}, split.buffers);
+        else {
+          console.warn("Unhandled message", data);
+        }
       }
     });
 
@@ -56,7 +59,7 @@ function setupMessageForwarding(config) {
     );
 
   const pluginConfig = {
-    allow_execution: true,
+    allow_execution: false,
     version: "0.1.0",
     api_version: "0.2.1",
     dedicated_thread: true,
@@ -64,7 +67,8 @@ function setupMessageForwarding(config) {
     id: "jupyter_" + randId(),
     lang: "python",
     name: "Jupyter Notebook",
-    type: "rpc-window"
+    type: "rpc-window",
+    origin: window.location.origin
   };
   parent.postMessage(
     { type: "initialized", config: pluginConfig, peer_id: peer_id },
