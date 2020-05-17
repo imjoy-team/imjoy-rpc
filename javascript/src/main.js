@@ -113,12 +113,13 @@ export function waitForInitialization(config) {
   const done = () => {
     window.removeEventListener("message", handleEvent);
   };
+  const peer_id = randId();
   const handleEvent = e => {
     if (
       e.type === "message" &&
       (targetOrigin === "*" || e.origin === targetOrigin)
     ) {
-      if (e.data.type === "initialize") {
+      if (e.data.type === "initialize" && e.data.peer_id === peer_id) {
         done();
         const cfg = e.data.config;
         // override the target_origin setting if it's configured by the rpc client
@@ -151,7 +152,10 @@ export function waitForInitialization(config) {
     }
   };
   window.addEventListener("message", handleEvent);
-  parent.postMessage({ type: "imjoyRPCReady", config: config }, "*");
+  parent.postMessage(
+    { type: "imjoyRPCReady", config: config, peer_id: peer_id },
+    "*"
+  );
 }
 
 export function setupRPC(config) {

@@ -21,6 +21,16 @@ def read(name):
 with open(os.path.join(ROOT_DIR, "imjoy_rpc", "VERSION"), "r") as f:
     VERSION = json.load(f)["version"]
 
+if sys.version_info < (3, 5):
+    raise Exception("Python < 3.5 is not supported.")
+
+requirements = read("requirements.txt")
+requirements += '\ncontextvars;python_version<"3.7"'
+requirements += '\naiocontextvars;python_version<"3.7"'
+requirements += "\n"
+
+test_requirements = read("requirements_test.txt")
+
 setup(
     name="imjoy-rpc",
     version=VERSION,
@@ -33,8 +43,8 @@ setup(
     license="MIT",
     packages=find_packages(),
     include_package_data=True,
-    install_requires=read("requirements.txt"),
-    tests_require=read("requirements.txt") + read("requirements_test.txt"),
+    install_requires=requirements,
+    tests_require=requirements + test_requirements,
     extras_require={"jupyter": "ipykernel", "socketio": "python-socketio[client]"},
     zip_safe=False,
 )

@@ -11,52 +11,63 @@
   };
 })(jQuery);
 
+$.getStylesheet(
+  "https://cdn.jsdelivr.net/npm/vue-js-modal@2.0.0-rc.3/dist/styles.css"
+);
+
 function randId() {
   return Math.random()
     .toString(36)
     .substr(2, 10);
 }
 
+let globalComm = null;
+function setupComm() {
+  console.log(Jupyter.notebook.kernel.comm_manager);
+  const comm = Jupyter.notebook.kernel.comm_manager.new_comm("imjoy_rpc", {});
+  comm.on_msg(msg => {
+    const data = msg.content.data;
+    const buffer_paths = data.__buffer_paths__ || [];
+    delete data.__buffer_paths__;
+    put_buffers(data, buffer_paths, msg.buffers || []);
+
+    if (data.type === "log") {
+      console.log(data.message);
+    } else if (data.type === "error") {
+      console.error(data.message);
+    } else {
+      parent.postMessage(data, this.targetOrigin);
+    }
+  });
+  globalComm = comm;
+}
+
+function setupMessageHandler(targetOrigin) {
+  // event listener for the plugin message
+  window.addEventListener("message", e => {
+    if (targetOrigin === "*" || e.origin === targetOrigin) {
+      const data = e.data;
+      const split = remove_buffers(data);
+      split.state.__buffer_paths__ = split.buffer_paths;
+      if (globalComm) globalComm.send(data, {}, {}, split.buffers);
+      else {
+        console.warn("Unhandled message", data);
+      }
+    }
+  });
+}
+
 function setupMessageForwarding(config) {
   this.config = config || {};
   this.targetOrigin = this.config.target_origin || "*";
-  this.comm = null;
   const peer_id = randId();
-  if (config.listen_events)
-    // event listener for the plugin message
-    window.addEventListener("message", e => {
-      if (this.targetOrigin === "*" || e.origin === this.targetOrigin) {
-        const data = e.data;
-        const split = remove_buffers(data);
-        split.state.__buffer_paths__ = split.buffer_paths;
-        if (this.comm) this.comm.send(data, {}, {}, split.buffers);
-        else {
-          console.warn("Unhandled message", data);
-        }
-      }
-    });
+  if (config.listen_events) {
+    setupMessageHandler(this.targetOrigin);
+  }
 
-  if (config.register_comm)
-    Jupyter.notebook.kernel.comm_manager.register_target(
-      "imjoy_rpc",
-      (comm, open_msg) => {
-        this.comm = comm;
-        comm.on_msg(msg => {
-          const data = msg.content.data;
-          const buffer_paths = data.__buffer_paths__ || [];
-          delete data.__buffer_paths__;
-          put_buffers(data, buffer_paths, msg.buffers || []);
-
-          if (data.type === "log") {
-            console.log(data.message);
-          } else if (data.type === "error") {
-            console.error(data.message);
-          } else {
-            parent.postMessage(data, this.targetOrigin);
-          }
-        });
-      }
-    );
+  if (config.register_comm) {
+    setupComm();
+  }
 
   const pluginConfig = {
     allow_execution: false,
@@ -68,7 +79,8 @@ function setupMessageForwarding(config) {
     lang: "python",
     name: "Jupyter Notebook",
     type: "rpc-window",
-    origin: window.location.origin
+    origin: window.location.origin,
+    defaults: { fullscreen: true }
   };
   parent.postMessage(
     { type: "initialized", config: pluginConfig, peer_id: peer_id },
@@ -76,10 +88,49 @@ function setupMessageForwarding(config) {
   );
 }
 
-const IMJOY_LOADER_URL = "https://lib.imjoy.io/imjoy-loader.js";
-$.getScript(IMJOY_LOADER_URL).done(function() {
+const IMJOY_LOADER_URL = "http://127.0.0.1:8080/imjoy-loader.js";
+require.config({
+  baseUrl: "js",
+  paths: {
+    imjoyLoader: "https://lib.imjoy.io/imjoy-loader",
+    vue: "https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min",
+    "vue-js-modal":
+      "https://cdn.jsdelivr.net/npm/vue-js-modal@2.0.0-rc.3/dist/index"
+  },
+  waitSeconds: 10 // optional
+});
+require(["imjoyLoader", "vue", "vue-js-modal"], function(
+  imjoyLoder,
+  Vue,
+  vuejsmodal
+) {
   //notebook view
   if (Jupyter.notebook) {
+    Vue.use(vuejsmodal.default);
+    var elem = document.createElement("div");
+    elem.id = "app";
+    elem.innerHTML = `
+    <button class="btn" @click="show()">Show</button>
+    <modal name="hello-world">
+    hello, world!
+    </modal>
+    `;
+    document.getElementById("maintoolbar").appendChild(elem);
+    var app = new Vue({
+      el: "#app",
+      data: {
+        message: "Hello Vue!"
+      },
+      methods: {
+        show() {
+          this.$modal.show("hello-world");
+        },
+        hide() {
+          this.$modal.hide("hello-world");
+        }
+      }
+    });
+
     // check if it's inside an iframe
     if (window.self !== window.top) {
       setupMessageForwarding({
@@ -87,16 +138,63 @@ $.getScript(IMJOY_LOADER_URL).done(function() {
         listen_events: true
       });
       console.log("ImJoy RPC started.");
-      Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
-        setupMessageForwarding({
-          register_comm: true,
-          listen_events: false
-        });
-        console.log("ImJoy RPC reconnected.");
-      });
+      var elem = document.createElement("div");
+      elem.innerHTML = `
+      <button class="btn" onclick="reloadRPC()">Reload RPC</button>
+      `;
+      document.getElementById("maintoolbar").appendChild(elem);
+      window.reloadRPC = function() {
+        setupComm();
+        console.log("ImJoy RPC reloaded.");
+      };
+      // Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
+      //   setupMessageForwarding({
+      //     register_comm: true,
+      //     listen_events: false
+      //   });
+      //   console.log("ImJoy RPC reconnected.");
+      // });
     } else {
-      imjoyLoader.loadImJoyCore().then(imjoyCore => {
-        api.log("imjoy core loaded");
+      imjoyLoder.loadImJoyCore().then(imjoyCore => {
+        const imjoy = new imjoyCore.ImJoy({
+          imjoy_api: {}
+        });
+        imjoy.event_bus.on("show_message", msg => {
+          console.log(msg);
+        });
+        imjoy.event_bus.on("add_window", async w => {
+          if (w.fullscreen || w.standalone) {
+            document.querySelector(".navbar").style.height = "2px";
+            document.getElementById("logo").style.display = "none";
+            // document.getElementById("windows-menu").style.display = "none";
+          } else {
+            document.querySelector(".navbar").style.height = "32px";
+            document.getElementById("logo").style.display = "flex";
+          }
+          addWindow(w);
+        });
+        const connection = {
+          emit() {},
+          on() {}
+        };
+        // imjoy.pm
+        //   .connectPlugin(connection)
+        //   .then(async plugin => {
+        //     let config = {};
+        //     if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+        //       config = await imjoy.pm.imjoy_api.showDialog(
+        //         plugin,
+        //         plugin.config
+        //       );
+        //     }
+        //     await plugin.api.run({ config: config, data: {} });
+        //     document.getElementById("loading").style.display = "none";
+        //   })
+        //   .catch(e => {
+        //     console.error(e);
+        //     alert(`failed to load the plugin, error: ${e}`);
+        //     document.getElementById("loading").style.display = "none";
+        //   });
       });
     }
   }
