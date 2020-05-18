@@ -7,3 +7,34 @@
 Symmetrical Transparent Remote Procedure Calls
 
 The core library that powers [ImJoy](https://imjoy.io).
+
+## Python
+```bash
+pip install imjoy-rpc
+```
+
+## Javascript
+
+### NPM
+```
+npm install imjoy-rpc
+```
+
+```js
+import * as imjoyRPC from 'imjoy-rpc';
+
+imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
+ // call api.export to expose your plugin api
+})
+```
+
+### Browser
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/imjoy-rpc@latest/dist/imjoy-rpc.min.js"></script>
+<script>
+imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
+ // call api.export to expose your plugin api
+})
+</script>
+```

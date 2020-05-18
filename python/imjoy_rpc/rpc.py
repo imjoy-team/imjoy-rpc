@@ -35,9 +35,8 @@ except:
 
 class RPC(MessageEmitter):
     def __init__(
-        self, connection, local_context=None, config=None,
+        self, connection, rpc_context, export, config=None,
     ):
-
         self.manager_api = {}
         self.services = {}
         self._interface_store = {}
@@ -48,34 +47,15 @@ class RPC(MessageEmitter):
         self.abort = threading.Event()
 
         if config is None:
-            config = dotdict()
-        else:
-            config = dotdict(config)
+            config = {}
+        self.set_config(config)
 
-        super().__init__(config.debug)
+        super().__init__(self.config.debug)
 
-        self.id = config.id or str(uuid.uuid4())
-        self.allow_execution = config.allow_execution or False
-        self.config = {
-            "allow_execution": self.allow_execution,
-            "api_version": API_VERSION,
-            "dedicated_thread": True,
-            "description": config.description or "[TODO]",
-            "id": self.id,
-            "lang": "python",
-            "name": config.name or "ImJoy RPC Python",
-            "type": "rpc-worker",
-            "work_dir": self.work_dir,
-            "version": config.version or "0.1.0",
-        }
+        self.loop = asyncio.get_event_loop()
 
-        self.loop = config.loop or asyncio.get_event_loop()
-
-        if local_context is None:
-            local_context = Local()
-            local_context.api = dotdict()
-        self.local_context = local_context
-        self.export = self.local_context.api.export
+        self.rpc_context = rpc_context
+        self.export = export
 
         if connection is not None:
             self._connection = connection
@@ -105,8 +85,31 @@ class RPC(MessageEmitter):
         self.abort.set()
         # os._exit(0)  # pylint: disable=protected-access
 
-    def set_interface(self, api):
+    def set_config(self, config):
+        if config is not None:
+            config = dotdict(config)
+        else:
+            config = dotdict()
+        self.id = config.id or str(uuid.uuid4())
+        self.allow_execution = config.allow_execution or False
+        self.config = dotdict(
+            {
+                "allow_execution": self.allow_execution,
+                "api_version": API_VERSION,
+                "dedicated_thread": True,
+                "description": config.description or "[TODO]",
+                "id": self.id,
+                "lang": "python",
+                "name": config.name or "ImJoy RPC Python",
+                "type": "rpc-worker",
+                "work_dir": self.work_dir,
+                "version": config.version or "0.1.0",
+            }
+        )
+
+    def set_interface(self, api, config=None):
         """Set interface."""
+        self.set_config(config)
         if isinstance(api, dict):
             api = {a: api[a] for a in api.keys() if not a.startswith("_")}
         elif inspect.isclass(type(api)):
@@ -213,7 +216,7 @@ class RPC(MessageEmitter):
         _remote = self._decode(api, None, False)
         self._interface_store["_rremote"] = _remote
         self._fire("remoteReady")
-        self._set_local_api(_remote)
+        self._run_with_context(self._set_local_api, _remote)
 
     def export(self, interface):
         self.set_interface(interface)
@@ -221,29 +224,45 @@ class RPC(MessageEmitter):
 
     def _set_local_api(self, _remote):
         """Set local API."""
-        _remote["export"] = self.export
-        _remote["utils"] = dotdict()
-        _remote["WORK_DIR"] = self.work_dir
+        self.rpc_context.api = _remote
+        self.rpc_context.api.utils = dotdict()
+        self.rpc_context.api.WORK_DIR = self.work_dir
+        self.rpc_context.api.export = self.export
 
-        self.local_context.api = _remote
-        self.local_context.api.export = self.export
+    def _call_method(self, method, *args, resolve=None, reject=None, method_name=None):
+        try:
+            result = method(*args)
+            if result is not None and inspect.isawaitable(result):
 
-    def _create_waiting_task(self, result, resolve=None, reject=None):
-        async def _wait(result):
-            try:
-                result = await result
-                if resolve is not None:
-                    resolve(result)
-                elif result is not None:
-                    logger.debug("returned value %s", result)
-            except Exception as ex:
-                traceback_error = traceback.format_exc()
-                logger.error("error in method %s", traceback_error)
-                self._connection.emit({"type": "error", "message": traceback_error})
+                async def _wait(result):
+                    try:
+                        result = await result
+                        if resolve is not None:
+                            resolve(result)
+                        elif result is not None:
+                            logger.debug("returned value %s", result)
+                    except Exception as ex:
+                        traceback_error = traceback.format_exc()
+                        logger.error("error in method %s", traceback_error)
+                        self._connection.emit(
+                            {"type": "error", "message": traceback_error}
+                        )
+                        if reject is not None:
+                            reject(Exception(format_traceback(traceback_error)))
+
+                asyncio.ensure_future(_wait(result))
+            else:
                 if reject is not None:
-                    reject(Exception(format_traceback(traceback_error)))
+                    resolve(result)
+        except Exception as e:
+            traceback_error = traceback.format_exc()
+            logger.error("error in method %s: %s", method_name, traceback_error)
+            self._connection.emit({"type": "error", "message": traceback_error})
+            if reject is not None:
+                reject(Exception(format_traceback(traceback_error)))
 
-        self.loop.create_task(_wait(result))
+    def _run_with_context(self, func, *args, **kwargs):
+        self.rpc_context.run_with_context(self.id, func, *args, **kwargs)
 
     def _setup_handlers(self, connection):
         connection.on("init", self.init)
@@ -299,36 +318,24 @@ class RPC(MessageEmitter):
         if data["name"] in interface:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
-                try:
-                    method = interface[data["name"]]
-                    args = self.unwrap(data["args"], True)
-                    # args.append({'id': self.id})
-                    result = method(*args)
-                    if result is not None and inspect.isawaitable(result):
-                        self._create_waiting_task(result, resolve, reject)
-                    else:
-                        resolve(result)
-                except Exception as e:
-                    traceback_error = traceback.format_exc()
-                    logger.error(
-                        "error in method %s: %s", data["name"], traceback_error
-                    )
-                    self._connection.emit({"type": "error", "message": traceback_error})
-                    reject(Exception(format_traceback(traceback_error)))
+                method = interface[data["name"]]
+                args = self.unwrap(data["args"], True)
+                # args.append({'id': self.id})
+                result = self._run_with_context(
+                    self._call_method,
+                    method,
+                    *args,
+                    resolve=resolve,
+                    reject=reject,
+                    method_name=data["name"]
+                )
             else:
-                try:
-                    method = interface[data["name"]]
-                    args = self.unwrap(data["args"], True)
-                    # args.append({'id': self.id})
-                    result = method(*args)
-                    if result is not None and inspect.isawaitable(result):
-                        self._create_waiting_task(result)
-                except Exception:
-                    traceback_error = traceback.format_exc()
-                    self._connection.emit({"type": "error", "message": traceback_error})
-                    logger.error(
-                        "error in method %s: %s", data["name"], traceback_error,
-                    )
+                method = interface[data["name"]]
+                args = self.unwrap(data["args"], True)
+                # args.append({'id': self.id})
+                result = self._run_with_context(
+                    self._call_method, method, *args, method_name=data["name"]
+                )
         else:
             traceback_error = "method " + data["name"] + " is not found."
             self._connection.emit({"type": "error", "message": traceback_error})
@@ -339,43 +346,37 @@ class RPC(MessageEmitter):
     def _handle_callback(self, data):
         if "promise" in data:
             resolve, reject = self.unwrap(data["promise"], False)
-            try:
-                method = self._store.fetch(data["_rindex"])
-                if method is None:
-                    raise Exception(
-                        "Callback function can only called once, "
-                        "if you want to call a function for multiple times, "
-                        "please make it as a plugin api function. "
-                        "See https://imjoy.io/docs for more details."
-                    )
-                args = self.unwrap(data["args"], True)
-                result = method(*args)
-                if result is not None and inspect.isawaitable(result):
-                    self._create_waiting_task(result, resolve, reject)
-                resolve(result)
-            except Exception as e:
-                traceback_error = traceback.format_exc()
-                logger.error("error in method %s: %s", data["_rindex"], traceback_error)
-                reject(Exception(format_traceback(traceback_error)))
-                self._connection.emit({"type": "error", "message": traceback_error})
+            method = self._store.fetch(data["_rindex"])
+            if method is None:
+                raise Exception(
+                    "Callback function can only called once, "
+                    "if you want to call a function for multiple times, "
+                    "please make it as a plugin api function. "
+                    "See https://imjoy.io/docs for more details."
+                )
+            args = self.unwrap(data["args"], True)
+            result = self._run_with_context(
+                self._call_method,
+                method,
+                *args,
+                resolve=resolve,
+                reject=reject,
+                method_name=data["_rindex"]
+            )
+
         else:
-            try:
-                method = self._store.fetch(data["_rindex"])
-                if method is None:
-                    raise Exception(
-                        "Callback function can only called once, "
-                        "if you want to call a function for multiple times, "
-                        "please make it as a plugin api function. "
-                        "See https://imjoy.io/docs for more details."
-                    )
-                args = self.unwrap(data["args"], True)
-                result = method(*args)
-                if result is not None and inspect.isawaitable(result):
-                    self._create_waiting_task(result)
-            except Exception:
-                traceback_error = traceback.format_exc()
-                logger.error("error in method %s: %s", data["_rindex"], traceback_error)
-                self._connection.emit({"type": "error", "message": traceback_error})
+            method = self._store.fetch(data["_rindex"])
+            if method is None:
+                raise Exception(
+                    "Callback function can only called once, "
+                    "if you want to call a function for multiple times, "
+                    "please make it as a plugin api function. "
+                    "See https://imjoy.io/docs for more details."
+                )
+            args = self.unwrap(data["args"], True)
+            result = self._run_with_context(
+                self._call_method, method, *args, method_name=data["_rindex"]
+            )
 
     def wrap(self, args):
         """Wrap arguments."""
@@ -569,7 +570,6 @@ class RPC(MessageEmitter):
             elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
                 try:
-                    np = self.local_context.np  # pylint: disable=invalid-name
                     if isinstance(a_object["_rvalue"], bytes):
                         a_object["_rvalue"] = a_object["_rvalue"]
                     elif isinstance(a_object["_rvalue"], (list, tuple)):

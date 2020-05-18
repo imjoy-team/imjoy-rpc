@@ -1,27 +1,87 @@
 import uuid
+from IPython import get_ipython
 
 from ipykernel.comm import Comm
+from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
+from werkzeug.local import Local
+import contextvars
 
-_comms = {}
+connection_id = contextvars.ContextVar("connection_id")
 
 
-class JupyterConnection(MessageEmitter):
-    def __init__(self, config):
+class JupyterCommManager:
+    def __init__(self, rpc_context, default_config=None):
+        self.default_config = default_config
+        self.clients = {}
+        self.interface = None
+        self.rpc_context = rpc_context
+
+    def get_ident(self):
+        return connection_id.get(default=None)
+
+    def set_interface(self, interface, config=None):
+        config = config or {}
+        config = dotdict(config)
+        config.name = config.name or "Jupyter Notebook"
+        config.allow_execution = config.allow_execution or False
+        config.version = config.version or "0.1.0"
+        config.api_version = config.api_version or "0.2.1"
+        config.description = config.description or "[TODO: add description]"
+        config.id = config.id or str(uuid.uuid4())
+        self.default_config = config
+        self.interface = interface
+        for k in self.clients:
+            self.clients[k].rpc.set_interface(interface, self.default_config)
+
+    def register(self, target="imjoy_rpc"):
+        get_ipython().kernel.comm_manager.register_target(
+            target, self._create_new_connection
+        )
+
+    def _create_new_connection(self, comm, open_msg):
+        connection_id.set(comm.comm_id)
+        connection = JupyterCommConnection(self.default_config, comm, open_msg)
+
+        def initialize(data):
+            self.clients[comm.comm_id] = dotdict()
+            config = self.default_config.copy()
+            cfg = data["config"]
+            if cfg.get("credential_required") is not None:
+                result = config.verify_credential(cfg["credential"])
+                cfg["auth"] = result["auth"]
+            cfg["id"] = cfg.get("id", comm.comm_id)
+            rpc = RPC(
+                connection, self.rpc_context, export=self.set_interface, config=cfg,
+            )
+            rpc.set_interface(self.interface)
+            rpc.init()
+            self.clients[comm.comm_id].rpc = rpc
+
+        connection.once("initialize", initialize)
+        connection.emit(
+            {
+                "type": "imjoyRPCReady",
+                "config": self.default_config,
+                "peer_id": connection.peer_id,
+            }
+        )
+
+
+class JupyterCommConnection(MessageEmitter):
+    def __init__(self, config, comm, open_msg):
         self.config = dotdict(config or {})
         super().__init__(self.config.get("debug"))
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
-        self.comm = None
+        self.comm = comm
         self.peer_id = str(uuid.uuid4())
         self.debug = True
 
-    def connect(self):
-        comm = Comm(target_name=self.channel, data={"channel": self.channel},)
-
         def msg_cb(msg):
             data = msg["content"]["data"]
-            if data.get("peer_id") == self.peer_id:
+            # TODO: remove the exception for "initialize"
+            if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
                 if "type" in data:
                     if "__buffer_paths__" in data:
                         buffer_paths = data["__buffer_paths__"]
@@ -33,18 +93,8 @@ class JupyterConnection(MessageEmitter):
 
         comm.on_msg(msg_cb)
 
-        def remove_channel():
-            self.comm = None
-
-        comm.on_close(remove_channel)
-        self.comm = comm
-        self.emit(
-            {
-                "type": "initialized",
-                "config": dict(self.config),
-                "peer_id": self.peer_id,
-            }
-        )
+    def connect(self):
+        pass
 
     def disconnect(self):
         pass

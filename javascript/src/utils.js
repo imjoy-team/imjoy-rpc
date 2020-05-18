@@ -77,36 +77,35 @@ export async function cacheRequirements(requirements) {
   }
 }
 
-export function setupServiceWorker(targetOrigin, cacheCallback) {
+export function setupServiceWorker(baseUrl, targetOrigin, cacheCallback) {
   // register service worker for offline access
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function() {
-      navigator.serviceWorker.register("/plugin-service-worker.js").then(
-        function(registration) {
-          // Registration was successful
-          console.log(
-            "ServiceWorker registration successful with scope: ",
-            registration.scope
-          );
-        },
-        function(err) {
-          // registration failed :(
-          console.log("ServiceWorker registration failed: ", err);
-        }
-      );
-      targetOrigin = targetOrigin || "*";
-      cacheCallback = cacheCallback || cacheRequirements;
-      if (cacheCallback && typeof cacheCallback !== "function") {
-        throw new Error("config.cache_requirements must be a function");
+    baseUrl = baseUrl || "/";
+    navigator.serviceWorker.register(baseUrl + "plugin-service-worker.js").then(
+      function(registration) {
+        // Registration was successful
+        console.log(
+          "ServiceWorker registration successful with scope: ",
+          registration.scope
+        );
+      },
+      function(err) {
+        // registration failed :(
+        console.log("ServiceWorker registration failed: ", err);
       }
-      window.addEventListener("message", function(e) {
-        if (targetOrigin === "*" || e.origin === targetOrigin) {
-          const m = e.data;
-          if (m.type === "cacheRequirements") {
-            cacheCallback(m.requirements);
-          }
+    );
+    targetOrigin = targetOrigin || "*";
+    cacheCallback = cacheCallback || cacheRequirements;
+    if (cacheCallback && typeof cacheCallback !== "function") {
+      throw new Error("config.cache_requirements must be a function");
+    }
+    window.addEventListener("message", function(e) {
+      if (targetOrigin === "*" || e.origin === targetOrigin) {
+        const m = e.data;
+        if (m.type === "cacheRequirements") {
+          cacheCallback(m.requirements);
         }
-      });
+      }
     });
   }
 }

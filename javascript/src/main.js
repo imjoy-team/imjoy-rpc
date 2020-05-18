@@ -113,12 +113,13 @@ export function waitForInitialization(config) {
   const done = () => {
     window.removeEventListener("message", handleEvent);
   };
+  const peer_id = randId();
   const handleEvent = e => {
     if (
       e.type === "message" &&
       (targetOrigin === "*" || e.origin === targetOrigin)
     ) {
-      if (e.data.type === "initialize") {
+      if (e.data.type === "initialize" && e.data.peer_id === peer_id) {
         done();
         const cfg = e.data.config;
         // override the target_origin setting if it's configured by the rpc client
@@ -151,7 +152,10 @@ export function waitForInitialization(config) {
     }
   };
   window.addEventListener("message", handleEvent);
-  parent.postMessage({ type: "imjoyRPCReady", config: config }, "*");
+  parent.postMessage(
+    { type: "imjoyRPCReady", config: config, peer_id: peer_id },
+    "*"
+  );
 }
 
 export function setupRPC(config) {
@@ -164,7 +168,11 @@ export function setupRPC(config) {
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
   if (config.enable_service_worker) {
-    setupServiceWorker(config.target_origin, config.cache_requirements);
+    setupServiceWorker(
+      config.base_url,
+      config.target_origin,
+      config.cache_requirements
+    );
   }
   if (config.cache_requirements) {
     delete config.cache_requirements;
