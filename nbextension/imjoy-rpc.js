@@ -82,7 +82,7 @@ class MessageEmitter {
   }
 }
 
-function init(config) {
+function initPlugin(config) {
   config = config || {};
   const targetOrigin = config.target_origin || "*";
   const peer_id = randId();
@@ -110,7 +110,7 @@ function init(config) {
   );
 }
 
-const IMJOY_LOADER_URL = "http://127.0.0.1:8080/imjoy-loader.js";
+const IMJOY_LOADER_URL = "https://imjoy.io/imjoy-loader.js";
 require.config({
   baseUrl: "js",
   paths: {
@@ -270,7 +270,7 @@ const APP_TEMPLATE = `
     <li title="Load a new plugin"><a href="#" @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</a></li>
   </ul>
 </button>
-<button class="btn btn-default" onclick="runPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
+<button class="btn btn-default" @click="runNotebookPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
 <div class="btn-group">
   <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
 </div>
@@ -306,14 +306,29 @@ define([
   Jupyter
 ) {
   function load_ipython_extension() {
-    require(["imjoyLoader", "vue", "vue-js-modal"], function (
-      imjoyLoder,
-      Vue,
-      vuejsmodal
-    ) {
-      //notebook view
-      if (Jupyter.notebook) {
-        let imjoy;
+    // check if it's inside an iframe
+    // if yes, initialize the rpc connection
+    if (window.self !== window.top) {
+      initPlugin();
+      window.runPlugin = function () {
+        comm = setupComm("*");
+        setupMessageHandler("*", comm);
+        console.log("ImJoy RPC reloaded.");
+      };
+      var elem = document.createElement("div");
+      elem.id = "app";
+      elem.style.display = "inline-block"
+      elem.innerHTML = `<button class="btn btn-default" onclick="runPlugin()"><i class="fa-play fa"></i>&nbsp;<img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 18px;"></button>`;
+      document.getElementById("maintoolbar-container").appendChild(elem);
+      console.log("ImJoy RPC started.");
+
+      // otherwise, load the imjoy core and run in standalone mode
+    } else {
+      require(["imjoyLoader", "vue", "vue-js-modal"], function (
+        imjoyLoder,
+        Vue,
+        vuejsmodal
+      ) {
         Vue.use(vuejsmodal.default);
         var elem = document.createElement("div");
         elem.id = "app";
@@ -327,8 +342,28 @@ define([
             selected_dialog_window: null,
             plugins: {},
             fullscreen: false,
+            imjoy: null,
+          },
+          mounted() {
+            imjoyLoder.loadImJoyCore({
+              version: '0.13.7'
+            }).then(imjoyCore => {
+              const imjoy = new imjoyCore.ImJoy({
+                imjoy_api: {
+                  async showDialog(_plugin, config) {
+                    config.dialog = true;
+                    return await imjoy.pm.createWindow(_plugin, config)
+                  }
+                }
+              });
+              this.imjoy = imjoy;
+              startImJoy(this, this.imjoy)
+            });
           },
           methods: {
+            runNotebookPlugin() {
+              connectPlugin(this.imjoy)
+            },
             run(p) {
               p.api.run({
                 config: {},
@@ -340,14 +375,14 @@ define([
                 `Please type a ImJoy plugin URL`,
                 ""
               );
-              imjoy.pm
+              this.imjoy.pm
                 .reloadPluginRecursively({
                   uri: p
                 })
                 .then(async plugin => {
                   let config = {};
                   if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
-                    config = await imjoy.pm.imjoy_api.showDialog(
+                    config = await this.imjoy.pm.imjoy_api.showDialog(
                       plugin,
                       plugin.config
                     );
@@ -385,43 +420,13 @@ define([
             }
           }
         });
+        // Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
+        //   window.runPlugin()
+        //   console.log("ImJoy RPC reconnected.");
+        // });
 
-        // check if it's inside an iframe
-        if (window.self !== window.top) {
-          init();
-          console.log("ImJoy RPC started.");
-          window.runPlugin = function () {
-            comm = setupComm("*");
-            setupMessageHandler("*", comm);
-            console.log("ImJoy RPC reloaded.");
-          };
-        } else {
-          imjoyLoder.loadImJoyCore({
-            base_url: 'http://127.0.0.1:8080/',
-            debug: true
-          }).then(imjoyCore => {
-            imjoy = new imjoyCore.ImJoy({
-              imjoy_api: {
-                async showDialog(_plugin, config) {
-                  config.dialog = true;
-
-                  return await imjoy.pm.createWindow(_plugin, config)
-                }
-              }
-            });
-            startImJoy(app, imjoy)
-            window.runPlugin = function () {
-              connectPlugin(imjoy)
-            };
-          });
-        }
-        Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
-          window.runPlugin()
-          console.log("ImJoy RPC reconnected.");
-        });
-      }
-    });
-
+      });
+    }
   }
 
   return {
@@ -451,23 +456,6 @@ if (Jupyter.notebook_list) {
           getSelections
         });
       });
-    });
-  } else {
-    loadImJoyCore({
-      debug: true,
-      version: "latest"
-    }).then(imjoyCore => {
-      const imjoy = new imjoyCore.ImJoy({
-        imjoy_api: {}
-        //imjoy config
-      });
-      imjoy
-        .start({
-          workspace: "default"
-        })
-        .then(() => {
-          console.log("ImJoy Core started successfully!");
-        });
     });
   }
 }
