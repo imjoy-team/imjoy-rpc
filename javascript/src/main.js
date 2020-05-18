@@ -168,7 +168,11 @@ export function setupRPC(config) {
   config.id = config.id || randId();
   config.allow_execution = config.allow_execution || false;
   if (config.enable_service_worker) {
-    setupServiceWorker(config.target_origin, config.cache_requirements);
+    setupServiceWorker(
+      config.base_url,
+      config.target_origin,
+      config.cache_requirements
+    );
   }
   if (config.cache_requirements) {
     delete config.cache_requirements;
