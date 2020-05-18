@@ -1,6 +1,7 @@
 """Set up the ImJoy-Engine imjoy package."""
 import json
 import os
+import sys
 from setuptools import setup, find_packages
 
 
