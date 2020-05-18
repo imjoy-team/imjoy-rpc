@@ -1,5 +1,5 @@
-(function($) {
-  $.getStylesheet = function(href) {
+(function ($) {
+  $.getStylesheet = function (href) {
     var $d = $.Deferred();
     var $link = $("<link/>", {
       rel: "stylesheet",
@@ -97,10 +97,15 @@ function init(config) {
     name: "Jupyter Notebook",
     type: "rpc-window",
     origin: window.location.origin,
-    defaults: { fullscreen: true }
+    defaults: {
+      fullscreen: true
+    }
   };
-  parent.postMessage(
-    { type: "initialized", config: pluginConfig, peer_id: peer_id },
+  parent.postMessage({
+      type: "initialized",
+      config: pluginConfig,
+      peer_id: peer_id
+    },
     targetOrigin
   );
 }
@@ -111,19 +116,168 @@ require.config({
   paths: {
     imjoyLoader: "https://lib.imjoy.io/imjoy-loader",
     vue: "https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min",
-    "vue-js-modal":
-      "https://imjoy-team.github.io/vue-js-modal/index"
+    "vue-js-modal": "https://imjoy-team.github.io/vue-js-modal/index"
   },
-  waitSeconds: 10 // optional
+  waitSeconds: 30 // optional
 });
+
+class Connection extends MessageEmitter {
+  constructor(config) {
+    super(config && config.debug);
+    const comm = Jupyter.notebook.kernel.comm_manager.new_comm("imjoy_rpc", {});
+    comm.on_msg(msg => {
+      const data = msg.content.data;
+      const buffer_paths = data.__buffer_paths__ || [];
+      delete data.__buffer_paths__;
+      put_buffers(data, buffer_paths, msg.buffers || []);
+      if (data.type === "log") {
+        console.log(data.message);
+      } else if (data.type === "error") {
+        console.error(data.message);
+      } else {
+        if (data.peer_id) {
+          this._peer_id = data.peer_id
+        }
+        this._fire(data.type, data);
+      }
+    });
+    this.comm = comm;
+  }
+  connect() {}
+  disconnect() {}
+  emit(data) {
+    data.peer_id = this._peer_id;
+    const split = remove_buffers(data);
+    split.state.__buffer_paths__ = split.buffer_paths;
+    this.comm.send(data, {}, {}, split.buffers);
+  }
+};
+
+function startImJoy(app, imjoy) {
+  imjoy.start().then(() => {
+    imjoy.event_bus.on("show_message", msg => {
+      console.log(msg);
+    });
+
+    imjoy.event_bus.on("add_window", w => {
+      app.dialogWindows.push(w)
+      app.selected_dialog_window = w;
+      app.$modal.show("window-modal-dialog");
+      app.$forceUpdate()
+      w.api.show = w.show = () => {
+        app.selected_dialog_window = w;
+        app.$modal.show("window-modal-dialog");
+        imjoy.wm.selectWindow(w);
+        w.api.emit("show");
+      };
+
+      w.api.hide = w.hide = () => {
+        if (app.selected_dialog_window === w) {
+          app.$modal.hide("window-modal-dialog");
+        }
+        w.api.emit("hide");
+      };
+
+      setTimeout(() => {
+        try {
+          w.show();
+        } catch (e) {
+          console.error(e);
+        }
+      }, 500);
+    });
+  })
+}
+
+function setupComm(targetOrigin) {
+  console.log(Jupyter.notebook.kernel.comm_manager);
+  const comm = Jupyter.notebook.kernel.comm_manager.new_comm("imjoy_rpc", {});
+  comm.on_msg(msg => {
+    const data = msg.content.data;
+    const buffer_paths = data.__buffer_paths__ || [];
+    delete data.__buffer_paths__;
+    put_buffers(data, buffer_paths, msg.buffers || []);
+
+    if (data.type === "log") {
+      console.log(data.message);
+    } else if (data.type === "error") {
+      console.error(data.message);
+    } else {
+      parent.postMessage(data, targetOrigin);
+    }
+  });
+  return comm;
+}
+
+function setupMessageHandler(targetOrigin, comm) {
+  // event listener for the plugin message
+  window.addEventListener("message", e => {
+    if (targetOrigin === "*" || e.origin === targetOrigin) {
+      const data = e.data;
+      const split = remove_buffers(data);
+      split.state.__buffer_paths__ = split.buffer_paths;
+      comm.send(data, {}, {}, split.buffers);
+    }
+  });
+}
+
+function connectPlugin(imjoy) {
+  imjoy.pm
+    .connectPlugin(new Connection())
+    .then(async plugin => {
+      let config = {};
+      if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+        config = await imjoy.pm.imjoy_api.showDialog(
+          plugin,
+          plugin.config
+        );
+      }
+      await plugin.api.run({
+        config: config,
+        data: {}
+      });
+    })
+    .catch(e => {
+      console.error(e);
+      alert(`failed to load the plugin, error: ${e}`);
+    });
+}
+
+const APP_TEMPLATE = `
+<div>
+<button class="btn" onclick="runPlugin()">Run ImJoy Plugin</button>
+<button class="btn" @click="showWindow()" v-if="window_hidden">Show Window</button>
+<modal name="window-modal-dialog" :resizable="true" draggable=".drag-handle" :scrollable="true">
+    <div v-if="selected_dialog_window" class="navbar-collapse collapse drag-handle" style="cursor:move; background-color: #448aff; color: white; text-align: center;">
+      {{ selected_dialog_window.name}}
+      <button @click="closeWindow()" style="border:0px;font-size:1rem;position:absolute;background:#ff0000c4;color:white;top:1px; left:1px;">
+        X
+      </button>
+      <button @click="minimizeWindow()" style="border:0px;font-size:1rem;position:absolute;background:#00cdff61;color:white;top:1px; left:24px;">
+        -
+      </button>
+    </div>
+  <template v-for="wdialog in dialogWindows">
+    <div
+      :key="wdialog.id"
+      v-if="wdialog === selected_dialog_window"
+      :w="wdialog"
+      style="height: calc(100% - 18px);"
+    >
+    <div :id="wdialog.iframe_container" style="width: 100%;height: 100%;"></div>
+    </div>
+  </template>
+</modal>
+</div>
+`
 
 define([
   'base/js/namespace'
-], function(
+], function (
   Jupyter
 ) {
   function load_ipython_extension() {
-    require(["imjoyLoader", "vue", "vue-js-modal"], function(
+    require(["imjoyLoader", "vue", "vue-js-modal"], function (
       imjoyLoder,
       Vue,
       vuejsmodal
@@ -133,193 +287,67 @@ define([
         Vue.use(vuejsmodal.default);
         var elem = document.createElement("div");
         elem.id = "app";
-        elem.innerHTML = `
-        <modal name="window-modal-dialog" :resizable="true" :draggable="true" :scrollable="true">
-          <template v-for="wdialog in dialogWindows">
-            <div
-              :key="wdialog.id"
-              v-if="wdialog === selected_dialog_window"
-              :w="wdialog"
-              :withDragHandle="true"
-              style="height: 100%;"
-            >
-            <div :id="wdialog.iframe_container" style="width: 100%;height: 100%;"></div>
-            </div>
-          </template>
-        </modal>
-        `;
-        document.body.appendChild(elem);
-        var app = new Vue({
+        elem.style.display = "inline-block"
+        elem.innerHTML = APP_TEMPLATE;
+        document.getElementById("maintoolbar-container").appendChild(elem);
+        const app = new Vue({
           el: "#app",
           data: {
             message: "Hello Vue!",
             dialogWindows: [],
-            selected_dialog_window: null
+            selected_dialog_window: null,
+            window_hidden: false,
           },
           methods: {
-            show() {
+            showWindow() {
               this.$modal.show("window-modal-dialog");
+              this.window_hidden = false;
             },
-            hide() {
+            closeWindow() {
+              this.selected_dialog_window = null;
               this.$modal.hide("window-modal-dialog");
+              this.window_hidden = false;
+            },
+            minimizeWindow() {
+              this.$modal.hide("window-modal-dialog");
+              this.window_hidden = true;
             }
           }
         });
-
-        function setupComm(targetOrigin) {
-          console.log(Jupyter.notebook.kernel.comm_manager);
-          const comm = Jupyter.notebook.kernel.comm_manager.new_comm("imjoy_rpc", {});
-          comm.on_msg(msg => {
-            const data = msg.content.data;
-            const buffer_paths = data.__buffer_paths__ || [];
-            delete data.__buffer_paths__;
-            put_buffers(data, buffer_paths, msg.buffers || []);
-
-            if (data.type === "log") {
-              console.log(data.message);
-            } else if (data.type === "error") {
-              console.error(data.message);
-            } else {
-              parent.postMessage(data, targetOrigin);
-            }
-          });
-          return comm;
-        }
-
-        function setupMessageHandler(targetOrigin, comm) {
-          // event listener for the plugin message
-          window.addEventListener("message", e => {
-            if (targetOrigin === "*" || e.origin === targetOrigin) {
-              const data = e.data;
-              const split = remove_buffers(data);
-              split.state.__buffer_paths__ = split.buffer_paths;
-              comm.send(data, {}, {}, split.buffers);
-            }
-          });
-        }
-
-        var elem = document.createElement("div");
-          elem.classList.add('btn-group')
-          elem.innerHTML = `
-          <button class="btn" onclick="reloadRPC()">Reload RPC</button>
-          `;
-          document.getElementById("maintoolbar-container").appendChild(elem);
-          
 
         // check if it's inside an iframe
         if (window.self !== window.top) {
           init();
           console.log("ImJoy RPC started.");
-          window.reloadRPC = function() {
+          window.runPlugin = function () {
             comm = setupComm("*");
             setupMessageHandler("*", comm);
             console.log("ImJoy RPC reloaded.");
           };
-          // Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
-          //   init({
-          //     register_comm: true,
-          //     listen_events: false
-          //   });
-          //   console.log("ImJoy RPC reconnected.");
-          // });
         } else {
-          imjoyLoder.loadImJoyCore({base_url: 'http://127.0.0.1:8080/', debug: true}).then(imjoyCore => {
+          imjoyLoder.loadImJoyCore({
+            base_url: 'http://127.0.0.1:8080/',
+            debug: true
+          }).then(imjoyCore => {
             const imjoy = new imjoyCore.ImJoy({
               imjoy_api: {
                 async showDialog(_plugin, config) {
                   config.dialog = true;
-                  
+
                   return await imjoy.pm.createWindow(_plugin, config)
                 }
               }
             });
-            window.reloadRPC = function() {
-              imjoy.start().then(()=>{
-                imjoy.event_bus.on("show_message", msg => {
-                  console.log(msg);
-                });
-                imjoy.event_bus.on("add_window", async w => {
-                  app.dialogWindows.push(w)
-                  app.selected_dialog_window = w;
-                  app.$modal.show("window-modal-dialog");
-                  app.$forceUpdate()
-                });
-                class Connection extends MessageEmitter {
-                  constructor(config){
-                    super(config && config.debug);
-                    const comm = Jupyter.notebook.kernel.comm_manager.new_comm("imjoy_rpc", {});
-                    comm.on_msg(msg => {
-                      const data = msg.content.data;
-                      const buffer_paths = data.__buffer_paths__ || [];
-                      delete data.__buffer_paths__;
-                      put_buffers(data, buffer_paths, msg.buffers || []);
-                      if (data.type === "log") {
-                        console.log(data.message);
-                      } else if (data.type === "error") {
-                        console.error(data.message);
-                      } else {
-                        if(data.peer_id){
-                          this._peer_id = data.peer_id
-                        }
-                        this._fire(data.type, data);
-                      }
-                    });
-                    this.comm = comm;
-                  }
-                  connect() {
-                  }
-                  disconnect() {}
-                  emit(data) {
-                    data.peer_id = this._peer_id;
-                    const split = remove_buffers(data);
-                    split.state.__buffer_paths__ = split.buffer_paths;
-                    this.comm.send(data, {}, {}, split.buffers);
-                  }
-                };
-                imjoy.event_bus.on("add_window", w => {
-                  w.api.show = w.show = () => {
-                    app.selected_dialog_window = w;
-                    app.$modal.show("window-modal-dialog");
-                    imjoy.wm.selectWindow(w);
-                    w.api.emit("show");
-                  };
-      
-                  w.api.hide = w.hide = () => {
-                    if (app.selected_dialog_window === w) {
-                      app.$modal.hide("window-modal-dialog");
-                    }
-                    w.api.emit("hide");
-                  };
-      
-                  setTimeout(() => {
-                    try {
-                      w.show();
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }, 500);
-                });
-                const connection = new Connection()
-                imjoy.pm
-                  .connectPlugin(connection)
-                  .then(async plugin => {
-                    let config = {};
-                    if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
-                      config = await imjoy.pm.imjoy_api.showDialog(
-                        plugin,
-                        plugin.config
-                      );
-                    }
-                    await plugin.api.run({ config: config, data: {} });
-                  })
-                  .catch(e => {
-                    console.error(e);
-                    alert(`failed to load the plugin, error: ${e}`);
-                  });
-              })
+            startImJoy(app, imjoy)
+            window.runPlugin = function () {
+              connectPlugin(imjoy)
             };
           });
         }
+        Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
+          window.runPlugin()
+          console.log("ImJoy RPC reconnected.");
+        });
       }
     });
 
@@ -336,7 +364,9 @@ if (Jupyter.notebook_list) {
   // if inside an iframe, load imjoy-rpc
   if (window.self !== window.top) {
     loadImJoyRPC().then(imjoyRPC => {
-      imjoyRPC.setupRPC({ name: "Jupyter Content" }).then(api => {
+      imjoyRPC.setupRPC({
+        name: "Jupyter Content"
+      }).then(api => {
         function setup() {
           Jupyter._target = "self";
           api.log("ImJoy plugin initialized.");
