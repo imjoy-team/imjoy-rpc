@@ -158,7 +158,12 @@ function startImJoy(app, imjoy) {
     imjoy.event_bus.on("show_message", msg => {
       console.log(msg);
     });
-
+    imjoy.event_bus.on("close_window", w => {
+      const idx = app.dialogWindows.indexOf(w)
+      if (idx >= 0)
+        app.dialogWindows.splice(idx, 1)
+      app.$forceUpdate()
+    })
     imjoy.event_bus.on("add_window", w => {
       app.dialogWindows.push(w)
       app.selected_dialog_window = w;
@@ -244,13 +249,15 @@ function connectPlugin(imjoy) {
 }
 
 const APP_TEMPLATE = `
-<div>
-<button class="btn" onclick="runPlugin()">Run ImJoy Plugin</button>
-<button class="btn" @click="showWindow()" v-if="window_hidden">Show Window</button>
-<modal name="window-modal-dialog" :resizable="true" draggable=".drag-handle" :scrollable="true">
+<div style="padding-left: 5px;">
+<button class="btn btn-default" onclick="runPlugin()"><img src="https://imjoy.io/static/icons/apple-icon-57x57.png" style="height: 14px;">&nbsp;Run</button>
+<div class="btn-group">
+  <button v-for="wdialog in dialogWindows" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
+</div>
+<modal name="window-modal-dialog" height="500px" :resizable="true" draggable=".drag-handle" :scrollable="true">
     <div v-if="selected_dialog_window" class="navbar-collapse collapse drag-handle" style="cursor:move; background-color: #448aff; color: white; text-align: center;">
       {{ selected_dialog_window.name}}
-      <button @click="closeWindow()" style="border:0px;font-size:1rem;position:absolute;background:#ff0000c4;color:white;top:1px; left:1px;">
+      <button @click="closeWindow(selected_dialog_window)" style="border:0px;font-size:1rem;position:absolute;background:#ff0000c4;color:white;top:1px; left:1px;">
         X
       </button>
       <button @click="minimizeWindow()" style="border:0px;font-size:1rem;position:absolute;background:#00cdff61;color:white;top:1px; left:24px;">
@@ -259,12 +266,11 @@ const APP_TEMPLATE = `
     </div>
   <template v-for="wdialog in dialogWindows">
     <div
-      :key="wdialog.id"
-      v-if="wdialog === selected_dialog_window"
-      :w="wdialog"
+      :key="wdialog.iframe_container"
+      v-show="wdialog === selected_dialog_window"
       style="height: calc(100% - 18px);"
     >
-    <div :id="wdialog.iframe_container" style="width: 100%;height: 100%;"></div>
+      <div :id="wdialog.iframe_container" style="width: 100%;height: 100%;"></div>
     </div>
   </template>
 </modal>
@@ -296,21 +302,21 @@ define([
             message: "Hello Vue!",
             dialogWindows: [],
             selected_dialog_window: null,
-            window_hidden: false,
           },
           methods: {
-            showWindow() {
+            showWindow(w) {
+              if (w) this.selected_dialog_window = w;
               this.$modal.show("window-modal-dialog");
-              this.window_hidden = false;
             },
-            closeWindow() {
+            closeWindow(w) {
               this.selected_dialog_window = null;
               this.$modal.hide("window-modal-dialog");
-              this.window_hidden = false;
+              const idx = this.dialogWindows.indexOf(w)
+              if (idx >= 0)
+                this.dialogWindows.splice(idx, 1)
             },
             minimizeWindow() {
               this.$modal.hide("window-modal-dialog");
-              this.window_hidden = true;
             }
           }
         });
