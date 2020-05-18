@@ -50,7 +50,7 @@ class RPC(MessageEmitter):
             config = {}
         self.set_config(config)
 
-        super().__init__(config.debug)
+        super().__init__(self.config.debug)
 
         self.loop = asyncio.get_event_loop()
 
@@ -92,18 +92,20 @@ class RPC(MessageEmitter):
             config = dotdict()
         self.id = config.id or str(uuid.uuid4())
         self.allow_execution = config.allow_execution or False
-        self.config = {
-            "allow_execution": self.allow_execution,
-            "api_version": API_VERSION,
-            "dedicated_thread": True,
-            "description": config.description or "[TODO]",
-            "id": self.id,
-            "lang": "python",
-            "name": config.name or "ImJoy RPC Python",
-            "type": "rpc-worker",
-            "work_dir": self.work_dir,
-            "version": config.version or "0.1.0",
-        }
+        self.config = dotdict(
+            {
+                "allow_execution": self.allow_execution,
+                "api_version": API_VERSION,
+                "dedicated_thread": True,
+                "description": config.description or "[TODO]",
+                "id": self.id,
+                "lang": "python",
+                "name": config.name or "ImJoy RPC Python",
+                "type": "rpc-worker",
+                "work_dir": self.work_dir,
+                "version": config.version or "0.1.0",
+            }
+        )
 
     def set_interface(self, api, config=None):
         """Set interface."""

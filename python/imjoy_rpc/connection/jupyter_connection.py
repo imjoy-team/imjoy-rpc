@@ -45,15 +45,14 @@ class JupyterCommManager:
 
         def initialize(data):
             self.clients[comm.comm_id] = dotdict()
+            config = self.default_config.copy()
             cfg = data["config"]
             if cfg.get("credential_required") is not None:
-                result = self.default_config.verify_credential(cfg["credential"])
+                result = config.verify_credential(cfg["credential"])
                 cfg["auth"] = result["auth"]
+            cfg["id"] = cfg.get("id", comm.comm_id)
             rpc = RPC(
-                connection,
-                self.rpc_context,
-                export=self.set_interface,
-                config=self.default_config,
+                connection, self.rpc_context, export=self.set_interface, config=cfg,
             )
             rpc.set_interface(self.interface)
             rpc.init()

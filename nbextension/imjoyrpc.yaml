@@ -1,0 +1,7 @@
+Type: IPython Notebook Extension
+Compatibility: 5.x, 6.x
+Name: ImJoy RPC
+Main: imjoy-rpc.js
+Icon: imjoy-icon.png
+Link: README.md
+Description: Supporting running notebook inside ImJoy
