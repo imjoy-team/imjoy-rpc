@@ -13,7 +13,7 @@
 
 
 $.getStylesheet(
-  "https://cdn.jsdelivr.net/npm/vue-js-modal@2.0.0-rc.3/dist/styles.css"
+  "https://imjoy-team.github.io/vue-js-modal/styles.css"
 );
 
 function randId() {
@@ -112,7 +112,7 @@ require.config({
     imjoyLoader: "https://lib.imjoy.io/imjoy-loader",
     vue: "https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min",
     "vue-js-modal":
-      "https://cdn.jsdelivr.net/npm/vue-js-modal@2.0.0-rc.3/dist/index"
+      "https://imjoy-team.github.io/vue-js-modal/index"
   },
   waitSeconds: 10 // optional
 });
