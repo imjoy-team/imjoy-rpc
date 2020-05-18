@@ -164,9 +164,21 @@ function startImJoy(app, imjoy) {
         app.dialogWindows.splice(idx, 1)
       app.$forceUpdate()
     })
+    imjoy.event_bus.on("plugin_loaded", plugin => {
+      app.plugins[plugin.name] = plugin
+      app.$forceUpdate()
+    });
+    imjoy.event_bus.on("plugin_unloaded", plugin => {
+      delete app.plugins[plugin.name]
+      app.$forceUpdate()
+    });
     imjoy.event_bus.on("add_window", w => {
       app.dialogWindows.push(w)
       app.selected_dialog_window = w;
+      if (w.fullscreen || w.standalone)
+        app.fullscreen = true;
+      else
+        app.fullscreen = false;
       app.$modal.show("window-modal-dialog");
       app.$forceUpdate()
       w.api.show = w.show = () => {
@@ -250,18 +262,29 @@ function connectPlugin(imjoy) {
 
 const APP_TEMPLATE = `
 <div style="padding-left: 5px;">
-<button class="btn btn-default" onclick="runPlugin()"><img src="https://imjoy.io/static/icons/apple-icon-57x57.png" style="height: 14px;">&nbsp;Run</button>
+<button class="btn btn-default dropdown">
+  <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 18px;"></a>
+  <ul id="plugin_menu" class="dropdown-menu"><a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
+    <li v-for="(p, name) in plugins" :key="p.id" :title="p.config.description"><a href="#" :style="{color: p.api.run?'#0456ef':'gray'}" @click="run(p)">{{p.name}}</a></li>
+    <ul class="divider"></ul>
+    <li title="Load a new plugin"><a href="#" @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</a></li>
+  </ul>
+</button>
+<button class="btn btn-default" onclick="runPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
 <div class="btn-group">
-  <button v-for="wdialog in dialogWindows" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
+  <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
 </div>
-<modal name="window-modal-dialog" height="500px" :resizable="true" draggable=".drag-handle" :scrollable="true">
+<modal name="window-modal-dialog" height="500px" :fullscreen="fullscreen" :resizable="true" draggable=".drag-handle" :scrollable="true">
     <div v-if="selected_dialog_window" class="navbar-collapse collapse drag-handle" style="cursor:move; background-color: #448aff; color: white; text-align: center;">
       {{ selected_dialog_window.name}}
-      <button @click="closeWindow(selected_dialog_window)" style="border:0px;font-size:1rem;position:absolute;background:#ff0000c4;color:white;top:1px; left:1px;">
+      <button @click="closeWindow(selected_dialog_window)" style="height: 16px;border:0px;font-size:1rem;position:absolute;background:#ff0000c4;color:white;top:1px; left:1px;">
         X
       </button>
-      <button @click="minimizeWindow()" style="border:0px;font-size:1rem;position:absolute;background:#00cdff61;color:white;top:1px; left:24px;">
+      <button @click="minimizeWindow()" style="height: 16px;border:0px;font-size:1rem;position:absolute;background:#00cdff61;color:white;top:1px; left:25px;">
         -
+      </button>
+      <button @click="maximizeWindow()" style="height: 16px;border:0px;font-size:1rem;position:absolute;background:#00cdff61;color:white;top:1px; left:45px;">
+        {{fullscreen?'=': '+'}}
       </button>
     </div>
   <template v-for="wdialog in dialogWindows">
@@ -290,6 +313,7 @@ define([
     ) {
       //notebook view
       if (Jupyter.notebook) {
+        let imjoy;
         Vue.use(vuejsmodal.default);
         var elem = document.createElement("div");
         elem.id = "app";
@@ -299,12 +323,50 @@ define([
         const app = new Vue({
           el: "#app",
           data: {
-            message: "Hello Vue!",
             dialogWindows: [],
             selected_dialog_window: null,
+            plugins: {},
+            fullscreen: false,
           },
           methods: {
+            run(p) {
+              p.api.run({
+                config: {},
+                data: {}
+              })
+            },
+            loadPlugin() {
+              const p = prompt(
+                `Please type a ImJoy plugin URL`,
+                ""
+              );
+              imjoy.pm
+                .reloadPluginRecursively({
+                  uri: p
+                })
+                .then(async plugin => {
+                  let config = {};
+                  if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+                    config = await imjoy.pm.imjoy_api.showDialog(
+                      plugin,
+                      plugin.config
+                    );
+                  }
+                  await plugin.api.run({
+                    config: config,
+                    data: {}
+                  });
+                })
+                .catch(e => {
+                  console.error(e);
+                  alert(`failed to load the plugin, error: ${e}`);
+                });
+            },
             showWindow(w) {
+              if (w.fullscreen || w.standalone)
+                this.fullscreen = true
+              else
+                this.fullscreen = false
               if (w) this.selected_dialog_window = w;
               this.$modal.show("window-modal-dialog");
             },
@@ -317,6 +379,9 @@ define([
             },
             minimizeWindow() {
               this.$modal.hide("window-modal-dialog");
+            },
+            maximizeWindow() {
+              this.fullscreen = !this.fullscreen;
             }
           }
         });
@@ -335,7 +400,7 @@ define([
             base_url: 'http://127.0.0.1:8080/',
             debug: true
           }).then(imjoyCore => {
-            const imjoy = new imjoyCore.ImJoy({
+            imjoy = new imjoyCore.ImJoy({
               imjoy_api: {
                 async showDialog(_plugin, config) {
                   config.dialog = true;
