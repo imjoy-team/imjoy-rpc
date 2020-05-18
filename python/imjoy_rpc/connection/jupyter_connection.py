@@ -93,18 +93,6 @@ class JupyterCommConnection(MessageEmitter):
 
         comm.on_msg(msg_cb)
 
-        # def remove_channel():
-        #     self.comm = None
-
-        # comm.on_close(remove_channel)
-        # self.emit(
-        #     {
-        #         "type": "initialized",
-        #         "config": dict(self.config),
-        #         "peer_id": self.peer_id,
-        #     }
-        # )
-
     def connect(self):
         pass
 
