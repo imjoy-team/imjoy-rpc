@@ -2,9 +2,14 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype, MessageEmitter } from "./utils.js";
+import {
+  randId,
+  typedArrayToDtype,
+  dtypeToTypedArray,
+  MessageEmitter
+} from "./utils.js";
 
-export const API_VERSION = "0.2.1";
+export const API_VERSION = "0.2.2";
 
 const ArrayBufferView = Object.getPrototypeOf(
   Object.getPrototypeOf(new Uint8Array())
@@ -406,7 +411,7 @@ export class RPC extends MessageEmitter {
         };
         encoded_interface[k] = v;
       } else if (Object(v) !== v) {
-        bObject[k] = { _rtype: "argument", _rvalue: v };
+        bObject[k] = { _rtype: "generic", _rvalue: v };
         encoded_interface[k] = v;
       } else if (typeof v === "object") {
         bObject[k] = this._encodeInterface(v);
@@ -558,8 +563,10 @@ export class RPC extends MessageEmitter {
         } else if (typeof File !== "undefined" && v instanceof File) {
           bObject[k] = {
             _rtype: "file",
+            _rname: v.name,
+            _rmime: v.type,
             _rvalue: v,
-            _rrelative_path: v.relativePath || v.webkitRelativePath
+            _rpath: v._path || v.webkitRelativePath
           };
         }
         // send objects supported by structure clone algorithm
@@ -570,23 +577,35 @@ export class RPC extends MessageEmitter {
           v instanceof String ||
           v instanceof Date ||
           v instanceof RegExp ||
-          v instanceof Blob ||
           v instanceof ImageData ||
           (typeof FileList !== "undefined" && v instanceof FileList)
         ) {
-          bObject[k] = { _rtype: "argument", _rvalue: v };
+          bObject[k] = { _rtype: "generic", _rvalue: v };
+        } else if (v instanceof Blob) {
+          bObject[k] = { _rtype: "blob", _rvalue: v };
         } else if (v instanceof ArrayBuffer) {
           if (v._transfer || _transfer) {
             transferables.push(v);
             delete v._transfer;
           }
-          bObject[k] = { _rtype: "argument", _rvalue: v };
+          bObject[k] = { _rtype: "bytes", _rvalue: v };
         } else if (v instanceof ArrayBufferView) {
           if (v._transfer || _transfer) {
             transferables.push(v.buffer);
             delete v._transfer;
           }
-          bObject[k] = { _rtype: "argument", _rvalue: v };
+          const dtype = typedArrayToDtype[v.constructor.name];
+          bObject[k] = {
+            _rtype: "typedarray",
+            _rvalue: v.buffer,
+            _rdtype: dtype
+          };
+        } else if (v instanceof DataView) {
+          if (v._transfer || _transfer) {
+            transferables.push(v.buffer);
+            delete v._transfer;
+          }
+          bObject[k] = { _rtype: "memoryview", _rvalue: v.buffer };
         }
         // TODO: support also Map and Set
         // TODO: avoid object such as DynamicPlugin instance.
@@ -668,10 +687,31 @@ export class RPC extends MessageEmitter {
       } else if (aObject._rtype === "error") {
         bObject = new Error(aObject._rvalue);
       } else if (aObject._rtype === "file") {
+        if (aObject._rvalue instanceof File) {
+          bObject = aObject._rvalue;
+          //patch _path
+          bObject._path = aObject._rpath;
+        } else {
+          bObject = new File([aObject._rvalue], aObject._rname, {
+            type: aObject._rmime
+          });
+          bObject._path = aObject._rpath;
+        }
+      } else if (aObject._rtype === "bytes") {
         bObject = aObject._rvalue;
-        //patch relativePath
-        bObject.relativePath = aObject._rrelative_path;
-      } else if (aObject._rtype === "argument") {
+      } else if (aObject._rtype === "typedarray") {
+        const dtype = eval(dtypeToTypedArray[aObject._rdtype]);
+        if (!dtype) throw new Error("unsupported dtype: " + aObject._rdtype);
+        bObject = new dtype(aObject._rvalue);
+      } else if (aObject._rtype === "memoryview") {
+        bObject = new DataView(aObject._rvalue);
+      } else if (aObject._rtype === "blob") {
+        if (aObject._rvalue instanceof Blob) {
+          bObject = aObject._rvalue;
+        } else {
+          bObject = new Blob([aObject._rvalue], { type: aObject._rmime });
+        }
+      } else if (aObject._rtype === "generic") {
         bObject = aObject._rvalue;
       }
       return bObject;

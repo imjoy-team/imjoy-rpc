@@ -18,7 +18,7 @@ from .utils import (
     MessageEmitter,
 )
 
-API_VERSION = "0.2.1"
+API_VERSION = "0.2.2"
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
@@ -402,7 +402,7 @@ class RPC(MessageEmitter):
                 }
                 encoded_interface[key] = val
             elif type(val) in (int, float, bool, str):
-                v_obj = {"_rtype": "argument", "_rvalue": val}
+                v_obj = {"_rtype": "generic", "_rvalue": val}
                 encoded_interface[key] = val
             elif isinstance(val, (dict, list)):
                 v_obj = self._encode_interface(val)
@@ -509,8 +509,11 @@ class RPC(MessageEmitter):
                     "_rshape": val.shape,
                     "_rdtype": str(val.dtype),
                 }
-            elif not isinstance(val, basestring) and isinstance(val, bytes):
-                v_obj = val.decode()  # covert python3 bytes to str
+            elif isinstance(val, bytes):
+                v_obj = {"_rtype": "bytes", "_rvalue": val}
+            elif isinstance(val, memoryview):
+                v_obj = {"_rtype": "memoryview", "_rvalue": val}
+            # NOTE: "typedarray" is not used
             elif isinstance(val, Exception):
                 v_obj = {"_rtype": "error", "_rvalue": str(val)}
             elif hasattr(val, "_rintf") and val._rintf == True:
@@ -523,7 +526,7 @@ class RPC(MessageEmitter):
             elif isinstance(val, list):
                 v_obj = self._encode(val, as_interface)
             else:
-                v_obj = {"_rtype": "argument", "_rvalue": val}
+                v_obj = {"_rtype": "generic", "_rvalue": val}
 
             if isarray:
                 b_object.append(v_obj)
@@ -594,9 +597,20 @@ class RPC(MessageEmitter):
                     logger.debug("Error in converting: %s", exc)
                     b_object = a_object
                     raise exc
+            elif a_object["_rtype"] == "bytes":
+                b_object = a_object["_rvalue"]
+            elif a_object["_rtype"] == "memoryview":
+                b_object = memoryview(a_object["_rvalue"])
+            elif a_object["_rtype"] == "typedarray":
+                if NUMPY:
+                    b_object = NUMPY.frombuffer(
+                        a_object["_rvalue"], dtype=a_object["_rdtype"]
+                    )
+                else:
+                    b_object = a_object["_rvalue"]
             elif a_object["_rtype"] == "error":
                 b_object = Exception(a_object["_rvalue"])
-            elif a_object["_rtype"] == "argument":
+            elif a_object["_rtype"] == "generic":
                 b_object = a_object["_rvalue"]
             else:
                 b_object = a_object["_rvalue"]

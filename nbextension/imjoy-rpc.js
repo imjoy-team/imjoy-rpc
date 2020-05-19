@@ -532,11 +532,7 @@ function isObject(value) {
 // License: BSD
 function put_buffers(state, buffer_paths, buffers) {
   buffers = buffers.map(b => {
-    if (b instanceof DataView) {
-      return b;
-    } else {
-      return new DataView(b instanceof ArrayBuffer ? b : b.buffer);
-    }
+    return b instanceof ArrayBuffer ? b : b.buffer;
   });
   for (let i = 0; i < buffer_paths.length; i++) {
     const buffer_path = buffer_paths[i];

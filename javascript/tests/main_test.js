@@ -323,6 +323,17 @@ describe("RPC", async () => {
     });
     const blob = new Blob(["hello"], { type: "text/plain" });
     expect(await api.echo(blob)).to.be.an.instanceof(Blob);
+    const array = new ArrayBuffer(16);
+    const uint8 = new Uint8Array(array);
+    uint8[2] = 9;
+    expect(await api.echo(array)).to.be.an.instanceof(ArrayBuffer);
+    expect((await api.echo(uint8))[2]).to.equal(9);
+    expect((await api.echo(array)).byteLength).to.equal(16);
+    expect(await api.echo(new DataView(array))).to.be.an.instanceof(DataView);
+    expect(await api.echo(new Float32Array(array))).to.be.an.instanceof(
+      Float32Array
+    );
+
     const file = new File(["foo"], "foo.txt", {
       type: "text/plain"
     });
