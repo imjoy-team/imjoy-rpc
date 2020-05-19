@@ -389,17 +389,20 @@ define([
             loadImJoyApp() {
               this.imjoy.pm.imjoy_api.showDialog(null, {
                 src: 'https://imjoy.io/#/app',
-                fullscreen: true
+                fullscreen: true,
+                passive: true,
               })
             },
             aboutImJoy() {
               this.imjoy.pm.imjoy_api.showDialog(null, {
-                src: 'https://imjoy.io/#/about'
+                src: 'https://imjoy.io/#/about',
+                passive: true,
               })
             },
             showAPIDocs() {
               this.imjoy.pm.imjoy_api.showDialog(null, {
-                src: 'https://imjoy.io/docs/#/api'
+                src: 'https://imjoy.io/docs/#/api',
+                passive: true,
               })
             },
             async runNotebookPlugin() {
