@@ -16,6 +16,14 @@ $.getStylesheet(
   "https://imjoy-team.github.io/vue-js-modal/styles.css"
 );
 
+$.getStylesheet(
+  "http://fezvrasta.github.io/snackbarjs/themes-css/material.css"
+);
+
+$.getStylesheet(
+  "http://fezvrasta.github.io/snackbarjs/dist/snackbar.min.css"
+);
+
 function randId() {
   return Math.random()
     .toString(36)
@@ -116,7 +124,8 @@ require.config({
   paths: {
     imjoyLoader: "https://lib.imjoy.io/imjoy-loader",
     vue: "https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min",
-    "vue-js-modal": "https://imjoy-team.github.io/vue-js-modal/index"
+    "vue-js-modal": "https://imjoy-team.github.io/vue-js-modal/index",
+    snackbar: "https://cdnjs.cloudflare.com/ajax/libs/snackbarjs/1.1.0/snackbar.min",
   },
   waitSeconds: 30 // optional
 });
@@ -156,7 +165,10 @@ class Connection extends MessageEmitter {
 function startImJoy(app, imjoy) {
   imjoy.start().then(() => {
     imjoy.event_bus.on("show_message", msg => {
-      console.log(msg);
+      $.snackbar({
+        content: msg,
+        timeout: 5000
+      });
     });
     imjoy.event_bus.on("close_window", w => {
       const idx = app.dialogWindows.indexOf(w)
@@ -165,7 +177,9 @@ function startImJoy(app, imjoy) {
       app.$forceUpdate()
     })
     imjoy.event_bus.on("plugin_loaded", plugin => {
+      if (plugin.type === 'rpc-window') return;
       app.plugins[plugin.name] = plugin
+      app.showMessage(`Plugin ${plugin.name} successfully loaded.`, 2)
       app.$forceUpdate()
     });
     imjoy.event_bus.on("plugin_unloaded", plugin => {
@@ -259,6 +273,13 @@ function connectPlugin(imjoy) {
       alert(`failed to load the plugin, error: ${e}`);
     });
 }
+const CSStyle = `
+<style>
+.vm--modal{
+  max-height: 100%!important;
+  max-width: 100%!important;
+}
+</style>`
 
 const APP_TEMPLATE = `
 <div style="padding-left: 5px;">
@@ -274,8 +295,8 @@ const APP_TEMPLATE = `
 <div class="btn-group">
   <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
 </div>
-<modal name="window-modal-dialog" height="500px" :fullscreen="fullscreen" :resizable="true" draggable=".drag-handle" :scrollable="true">
-    <div v-if="selected_dialog_window" class="navbar-collapse collapse drag-handle" style="cursor:move; background-color: #448aff; color: white; text-align: center;">
+<modal name="window-modal-dialog" height="500px" style="max-height: 100%; max-width: 100%" :fullscreen="fullscreen" :resizable="true" draggable=".drag-handle" :scrollable="true">
+    <div v-if="selected_dialog_window" @dblclick="maximizeWindow()" class="navbar-collapse collapse drag-handle" style="cursor:move; background-color: #448aff; color: white; text-align: center;">
       {{ selected_dialog_window.name}}
       <button @click="closeWindow(selected_dialog_window)" style="height: 16px;border:0px;font-size:1rem;position:absolute;background:#ff0000c4;color:white;top:1px; left:1px;">
         X
@@ -301,8 +322,10 @@ const APP_TEMPLATE = `
 `
 
 define([
+  'jquery',
   'base/js/namespace'
 ], function (
+  $,
   Jupyter
 ) {
   function load_ipython_extension() {
@@ -324,10 +347,11 @@ define([
 
       // otherwise, load the imjoy core and run in standalone mode
     } else {
-      require(["imjoyLoader", "vue", "vue-js-modal"], function (
+      require(["imjoyLoader", "vue", "vue-js-modal", "snackbar"], function (
         imjoyLoder,
         Vue,
-        vuejsmodal
+        vuejsmodal,
+        snackbar
       ) {
         Vue.use(vuejsmodal.default);
         var elem = document.createElement("div");
@@ -335,6 +359,7 @@ define([
         elem.style.display = "inline-block"
         elem.innerHTML = APP_TEMPLATE;
         document.getElementById("maintoolbar-container").appendChild(elem);
+        document.head.insertAdjacentHTML("beforeend", CSStyle)
         const app = new Vue({
           el: "#app",
           data: {
@@ -345,11 +370,20 @@ define([
             imjoy: null,
           },
           mounted() {
+            window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-              version: '0.13.7'
+              version: '0.13.8'
             }).then(imjoyCore => {
+              console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
                 imjoy_api: {
+                  async showMessage(_plugin, msg, duration) {
+                    duration = duration || 5
+                    $.snackbar({
+                      content: msg,
+                      timeout: duration * 1000
+                    });
+                  },
                   async showDialog(_plugin, config) {
                     config.dialog = true;
                     return await imjoy.pm.createWindow(_plugin, config)
@@ -364,33 +398,37 @@ define([
             runNotebookPlugin() {
               connectPlugin(this.imjoy)
             },
-            run(p) {
-              p.api.run({
-                config: {},
+            async run(plugin) {
+              let config = {};
+              if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+                config = await this.imjoy.pm.imjoy_api.showDialog(
+                  plugin,
+                  plugin.config
+                );
+              }
+              await plugin.api.run({
+                config: config,
                 data: {}
-              })
+              });
+            },
+            showMessage(msg, duration) {
+              duration = duration || 5
+              $.snackbar({
+                content: msg,
+                timeout: duration * 1000
+              });
             },
             loadPlugin() {
               const p = prompt(
                 `Please type a ImJoy plugin URL`,
-                ""
+                "https://github.com/imjoy-team/imjoy-plugins/blob/master/repository/ImageAnnotator.imjoy.html"
               );
               this.imjoy.pm
                 .reloadPluginRecursively({
                   uri: p
                 })
                 .then(async plugin => {
-                  let config = {};
-                  if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
-                    config = await this.imjoy.pm.imjoy_api.showDialog(
-                      plugin,
-                      plugin.config
-                    );
-                  }
-                  await plugin.api.run({
-                    config: config,
-                    data: {}
-                  });
+                  this.showMessage(`Plugin ${plugin.name} successfully loaded into the workspace.`)
                 })
                 .catch(e => {
                   console.error(e);
