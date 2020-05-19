@@ -38,3 +38,7 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
 })
 </script>
 ```
+
+
+## [Jupyter notebook extension](./nbextension/README.md)
+

@@ -12,7 +12,7 @@ To use it, you need to install the imjoy-rpc library in Python and the notebook 
 
 ### Install ImJoy RPC library
 ```bash
-pip install imjoy-rpc
+pip install -U imjoy-rpc
 ```
 
 ### Install Jupyter notebook extension
@@ -36,9 +36,12 @@ jupyter nbextension enable imjoy-rpc
 ### Use ImJoy plugins inside Jupyter notebooks
 Now you can start a jupyter notebook via for example `jupyter notebook` command, you should be able to see an ImJoy icon in the toolbar if everything goes well.
 
+![imjoy in the notebook toolbar](./imjoy-toolbar.png)
+
 Now run ImJoy plugins in a cell, see an example that uses itk-vtk-viewer to visualize images:
 ```python
 import imageio
+import numpy as np
 from imjoy_rpc import api
 
 class ImJoyPlugin():
@@ -48,13 +51,23 @@ class ImJoyPlugin():
     async def run(self, ctx):
         viewer = await api.showDialog(type="itk-vtk-viewer",
                                       src="https://oeway.github.io/itk-vtk-viewer/?imjoy=1")
-        image_array = imageio.imread('imageio:chelsea.png')
-        viewer.imshow(image_array)
+        # show a 3D volume
+        image_array = np.random.randint(0, 255, [10,10,10], dtype='uint8')
+        
+        # show a 2D image
+        # image_array = imageio.imread('imageio:chelsea.png')
+
+        await viewer.imshow(image_array)
 
 api.export(ImJoyPlugin())
 ```
 
 With the above code, you created an ImJoy plugin. To run it, click the Run button with the ImJoy icon. It will then call the run function of your plugin.
+
+
+ * GIF Demo: [Visualizing 2D image](https://ibb.co/QXR63XM)
+ * GIF Demo: [Visualizing 3D volume](https://ibb.co/XDFF5bQ)
+ * GIF Demo: [Load ImageAnnotator](https://ibb.co/0Zyfxkr)
 
 ### Run Jupyter notebook inside ImJoy
 
