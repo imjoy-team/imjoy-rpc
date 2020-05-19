@@ -176,16 +176,6 @@ function startImJoy(app, imjoy) {
         app.dialogWindows.splice(idx, 1)
       app.$forceUpdate()
     })
-    imjoy.event_bus.on("plugin_loaded", plugin => {
-      if (plugin.type === 'rpc-window') return;
-      app.plugins[plugin.name] = plugin
-      app.showMessage(`Plugin ${plugin.name} successfully loaded.`, 2)
-      app.$forceUpdate()
-    });
-    imjoy.event_bus.on("plugin_unloaded", plugin => {
-      delete app.plugins[plugin.name]
-      app.$forceUpdate()
-    });
     imjoy.event_bus.on("add_window", w => {
       app.dialogWindows.push(w)
       app.selected_dialog_window = w;
@@ -252,26 +242,22 @@ function setupMessageHandler(targetOrigin, comm) {
   });
 }
 
-function connectPlugin(imjoy) {
-  imjoy.pm
+async function connectPlugin(imjoy) {
+  const plugin = await imjoy.pm
     .connectPlugin(new Connection())
-    .then(async plugin => {
-      let config = {};
-      if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
-        config = await imjoy.pm.imjoy_api.showDialog(
-          plugin,
-          plugin.config
-        );
-      }
-      await plugin.api.run({
-        config: config,
-        data: {}
-      });
-    })
-    .catch(e => {
-      console.error(e);
-      alert(`failed to load the plugin, error: ${e}`);
-    });
+  let config = {};
+  if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+    config = await imjoy.pm.imjoy_api.showDialog(
+      plugin,
+      plugin.config
+    );
+  }
+  await plugin.api.run({
+    config: config,
+    data: {}
+  });
+  return plugin
+
 }
 const CSStyle = `
 <style>
@@ -287,7 +273,7 @@ const APP_TEMPLATE = `
   <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 18px;"></a>
   <ul id="plugin_menu" class="dropdown-menu"><a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
     <li v-for="(p, name) in plugins" :key="p.id" :title="p.config.description"><a href="#" :style="{color: p.api.run?'#0456ef':'gray'}" @click="run(p)">{{p.name}}</a></li>
-    <ul class="divider"></ul>
+    <ul class="divider" v-if="plugins&&Object.keys(plugins).length>0"></ul>
     <li title="Load a new plugin"><a href="#" @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</a></li>
   </ul>
 </button>
@@ -395,8 +381,15 @@ define([
             });
           },
           methods: {
-            runNotebookPlugin() {
-              connectPlugin(this.imjoy)
+            async runNotebookPlugin() {
+              try {
+                const plugin = await connectPlugin(this.imjoy)
+                this.plugins[plugin.name] = plugin
+                this.$forceUpdate()
+              } catch (e) {
+                console.error(e);
+                this.showMessage(`Failed to load the plugin, error: ${e}`);
+              }
             },
             async run(plugin) {
               let config = {};
@@ -428,11 +421,13 @@ define([
                   uri: p
                 })
                 .then(async plugin => {
+                  this.plugins[plugin.name] = plugin
                   this.showMessage(`Plugin ${plugin.name} successfully loaded into the workspace.`)
+                  this.$forceUpdate()
                 })
                 .catch(e => {
                   console.error(e);
-                  alert(`failed to load the plugin, error: ${e}`);
+                  this.showMessage(`Failed to load the plugin, error: ${e}`);
                 });
             },
             showWindow(w) {
