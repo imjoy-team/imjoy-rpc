@@ -269,15 +269,17 @@ const CSStyle = `
 
 const APP_TEMPLATE = `
 <div style="padding-left: 5px;">
-<button class="btn btn-default dropdown">
-  <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 18px;"></a>
-  <ul id="plugin_menu" class="dropdown-menu"><a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
-    <li v-for="(p, name) in plugins" :key="p.id" :title="p.config.description"><a href="#" :style="{color: p.api.run?'#0456ef':'gray'}" @click="run(p)">{{p.name}}</a></li>
-    <ul class="divider" v-if="plugins&&Object.keys(plugins).length>0"></ul>
-    <li title="Load a new plugin"><a href="#" @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</a></li>
-  </ul>
-</button>
-<button class="btn btn-default" @click="runNotebookPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
+<div class="btn-group">
+  <button class="btn btn-default dropdown">
+    <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 17px;"></a>
+    <ul id="plugin_menu" class="dropdown-menu"><a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
+      <li v-for="(p, name) in plugins" :key="p.id" :title="p.config.description"><a href="#" :style="{color: p.api.run?'#0456ef':'gray'}" @click="run(p)">{{p.name}}</a></li>
+      <ul class="divider" v-if="plugins&&Object.keys(plugins).length>0"></ul>
+      <li title="Load a new plugin"><a href="#" @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</a></li>
+    </ul>
+  </button>
+  <button class="btn btn-default" @click="runNotebookPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
+</div>
 <div class="btn-group">
   <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
 </div>
