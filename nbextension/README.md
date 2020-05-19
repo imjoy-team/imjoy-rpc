@@ -64,6 +64,11 @@ api.export(ImJoyPlugin())
 
 With the above code, you created an ImJoy plugin. To run it, click the Run button with the ImJoy icon. It will then call the run function of your plugin.
 
+
+ * GIF Demo: [Visualizing 2D image](https://ibb.co/QXR63XM)
+ * GIF Demo: [Visualizing 3D volume](https://ibb.co/XDFF5bQ)
+ * GIF Demo: [Load ImageAnnotator](https://ibb.co/0Zyfxkr)
+
 ### Run Jupyter notebook inside ImJoy
 
 You can also do the reverse by running a notebook inside ImJoy, to do that, please first create an empty jupyter notebook. Then copy and paste the url into the "+ PLUGINS" dialog, press enter and install the plugin. Click the newly installed plugin and you will get a notebook page open in ImJoy. 
