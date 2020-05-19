@@ -36,9 +36,9 @@ jupyter nbextension enable imjoy-rpc
 ### Use ImJoy plugins inside Jupyter notebooks
 Now you can start a jupyter notebook via for example `jupyter notebook` command, you should be able to see an ImJoy icon in the toolbar if everything goes well.
 
-Now run the following code in a cell:
+Now run ImJoy plugins in a cell, see an example that uses itk-vtk-viewer to visualize images:
 ```python
-import asyncio
+import imageio
 from imjoy_rpc import api
 
 class ImJoyPlugin():
@@ -46,7 +46,10 @@ class ImJoyPlugin():
         api.log('plugin initialized')
 
     async def run(self, ctx):
-        api.alert('hello world')
+        viewer = await api.showDialog(type="itk-vtk-viewer",
+                                      src="https://oeway.github.io/itk-vtk-viewer/?imjoy=1")
+        image_array = imageio.imread('imageio:chelsea.png')
+        viewer.imshow(image_array)
 
 api.export(ImJoyPlugin())
 ```
@@ -55,6 +58,6 @@ With the above code, you created an ImJoy plugin. To run it, click the Run butto
 
 ### Run Jupyter notebook inside ImJoy
 
-You can also do the reverse by running a notebook inside ImJoy, to do that, please first create a jupyter notebook with the same code as above. Then copy and paste the url into the "+ PLUGINS" dialog, press enter and install the plugin. Click the newly installed plugin and you will get a notebook page open in ImJoy.
+You can also do the reverse by running a notebook inside ImJoy, to do that, please first create an empty jupyter notebook. Then copy and paste the url into the "+ PLUGINS" dialog, press enter and install the plugin. Click the newly installed plugin and you will get a notebook page open in ImJoy. 
 
-Similarily, if you now click the run ImJoy button, you can interact with ImJoy in the notebook.
+Try to copy and paste the itk-vtk-viewer example to a cell and execute it. Similarily, if you now click the run ImJoy button in the toolbar, you will get the viewer open insided ImJoy.
