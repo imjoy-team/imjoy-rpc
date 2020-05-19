@@ -41,6 +41,7 @@ Now you can start a jupyter notebook via for example `jupyter notebook` command,
 Now run ImJoy plugins in a cell, see an example that uses itk-vtk-viewer to visualize images:
 ```python
 import imageio
+import numpy as np
 from imjoy_rpc import api
 
 class ImJoyPlugin():
@@ -50,8 +51,13 @@ class ImJoyPlugin():
     async def run(self, ctx):
         viewer = await api.showDialog(type="itk-vtk-viewer",
                                       src="https://oeway.github.io/itk-vtk-viewer/?imjoy=1")
-        image_array = imageio.imread('imageio:chelsea.png')
-        viewer.imshow(image_array)
+        # show a 3D volume
+        image_array = np.random.randint(0, 255, [10,10,10], dtype='uint8')
+        
+        # show a 2D image
+        # image_array = imageio.imread('imageio:chelsea.png')
+
+        await viewer.imshow(image_array)
 
 api.export(ImJoyPlugin())
 ```
