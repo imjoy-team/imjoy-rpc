@@ -276,6 +276,9 @@ const APP_TEMPLATE = `
       <li v-for="(p, name) in plugins" :key="p.id" :title="p.config.description"><a href="#" :style="{color: p.api.run?'#0456ef':'gray'}" @click="run(p)">{{p.name}}</a></li>
       <ul class="divider" v-if="plugins&&Object.keys(plugins).length>0"></ul>
       <li title="Load a new plugin"><a href="#" @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</a></li>
+      <li title="Show ImJoy API documentation"><a href="#" @click="loadImJoyApp()"><i class="fa-rocket fa"></i>&nbsp;ImJoy App</a></li>
+      <li title="Show ImJoy API documentation"><a href="#" @click="showAPIDocs()"><i class="fa-book fa"></i>&nbsp;API Docs</a></li>
+      <li title="About ImJoy"><a href="#" @click="aboutImJoy()"><i class="fa-info-circle fa"></i>&nbsp;About ImJoy</a></li>
     </ul>
   </button>
   <button class="btn btn-default" @click="runNotebookPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
@@ -383,6 +386,22 @@ define([
             });
           },
           methods: {
+            loadImJoyApp() {
+              this.imjoy.pm.imjoy_api.showDialog(null, {
+                src: 'https://imjoy.io/#/app',
+                fullscreen: true
+              })
+            },
+            aboutImJoy() {
+              this.imjoy.pm.imjoy_api.showDialog(null, {
+                src: 'https://imjoy.io/#/about'
+              })
+            },
+            showAPIDocs() {
+              this.imjoy.pm.imjoy_api.showDialog(null, {
+                src: 'https://imjoy.io/docs/#/api'
+              })
+            },
             async runNotebookPlugin() {
               try {
                 const plugin = await connectPlugin(this.imjoy)
