@@ -95,6 +95,11 @@ function setupWebWorker(config) {
 }
 
 export function waitForInitialization(config) {
+  if (!_inIframe()) {
+    throw new Error(
+      "waitForInitialization (imjoy-rpc) should only run inside an iframe."
+    );
+  }
   config = config || {};
   const targetOrigin = config.target_origin || "*";
   if (
@@ -119,8 +124,17 @@ export function waitForInitialization(config) {
       e.type === "message" &&
       (targetOrigin === "*" || e.origin === targetOrigin)
     ) {
-      if (e.data.type === "initialize" && e.data.peer_id === peer_id) {
+      if (e.data.type === "initialize") {
         done();
+        if (e.data.peer_id !== peer_id) {
+          // TODO: throw an error when we are sure all the peers will send the peer_id
+          console.warn(
+            `${e.data.config &&
+              e.data.config.name}: connection peer id mismatch ${
+              e.data.peer_id
+            } !== ${peer_id}`
+          );
+        }
         const cfg = e.data.config;
         // override the target_origin setting if it's configured by the rpc client
         // otherwise take the setting from the core
@@ -147,7 +161,7 @@ export function waitForInitialization(config) {
           });
         }
       } else {
-        throw new Error(`invalid command: ${e.data.cmd}`);
+        throw new Error(`unrecognized message: ${e.data}`);
       }
     }
   };
