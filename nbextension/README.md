@@ -12,7 +12,7 @@ To use it, you need to install the imjoy-rpc library in Python and the notebook 
 
 ### Install ImJoy RPC library
 ```bash
-pip install imjoy-rpc
+pip install -U imjoy-rpc
 ```
 
 ### Install Jupyter notebook extension
@@ -35,6 +35,8 @@ jupyter nbextension enable imjoy-rpc
 
 ### Use ImJoy plugins inside Jupyter notebooks
 Now you can start a jupyter notebook via for example `jupyter notebook` command, you should be able to see an ImJoy icon in the toolbar if everything goes well.
+
+![imjoy in the notebook toolbar](./imjoy-toolbar.png)
 
 Now run ImJoy plugins in a cell, see an example that uses itk-vtk-viewer to visualize images:
 ```python
