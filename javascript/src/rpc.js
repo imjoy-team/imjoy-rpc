@@ -275,7 +275,7 @@ export class RPC extends MessageEmitter {
     shape = shape || [typedArray.length];
     return {
       _rtype: "ndarray",
-      _rvalue: typedArray,
+      _rvalue: typedArray.buffer,
       _rshape: shape,
       _rdtype: _dtype
     };
@@ -411,7 +411,7 @@ export class RPC extends MessageEmitter {
         };
         encoded_interface[k] = v;
       } else if (Object(v) !== v) {
-        bObject[k] = { _rtype: "generic", _rvalue: v };
+        bObject[k] = v;
         encoded_interface[k] = v;
       } else if (typeof v === "object") {
         bObject[k] = this._encodeInterface(v);
@@ -461,6 +461,7 @@ export class RPC extends MessageEmitter {
       if (["hasOwnProperty", "constructor"].includes(k)) continue;
       if (isarray || aObject.hasOwnProperty(k)) {
         v = aObject[k];
+
         if (v && typeof this._local_api._rpc_encode === "function") {
           const encoded_obj = this._local_api._rpc_encode(v);
           if (encoded_obj && encoded_obj._ctype) {
@@ -476,6 +477,7 @@ export class RPC extends MessageEmitter {
             v = encoded_obj;
           }
         }
+        
         if (typeof v === "function") {
           if (as_interface) {
             const encoded_interface = this._interface_store[aObject["_rid"]];
@@ -523,20 +525,36 @@ export class RPC extends MessageEmitter {
               _rid: "_rlocal"
             };
           }
+        }
+        // send objects supported by structure clone algorithm
+        // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
+        else if (
+          // primitive types
+          v === undefined ||
+          v === null ||
+          v !== Object(v) ||
+          v instanceof Boolean ||
+          v instanceof String ||
+          v instanceof Date ||
+          v instanceof RegExp ||
+          v instanceof ImageData ||
+          (typeof FileList !== "undefined" && v instanceof FileList)
+        ) {
+          bObject[k] = v;
         } else if (
           /*global tf*/
           typeof tf !== "undefined" &&
           tf.Tensor &&
           v instanceof tf.Tensor
         ) {
-          const v_buffer = v.dataSync();
+          const v_typed = v.dataSync();
           if (v._transfer || _transfer) {
-            transferables.push(v_buffer.buffer);
+            transferables.push(v_typed.buffer);
             delete v._transfer;
           }
           bObject[k] = {
             _rtype: "ndarray",
-            _rvalue: v_buffer,
+            _rvalue: v_typed.buffer,
             _rshape: v.shape,
             _rdtype: v.dtype
           };
@@ -553,7 +571,7 @@ export class RPC extends MessageEmitter {
           }
           bObject[k] = {
             _rtype: "ndarray",
-            _rvalue: v.selection.data,
+            _rvalue: v.selection.data.buffer,
             _rshape: v.shape,
             _rdtype: dtype
           };
@@ -568,19 +586,6 @@ export class RPC extends MessageEmitter {
             _rvalue: v,
             _rpath: v._path || v.webkitRelativePath
           };
-        }
-        // send objects supported by structure clone algorithm
-        // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
-        else if (
-          v !== Object(v) ||
-          v instanceof Boolean ||
-          v instanceof String ||
-          v instanceof Date ||
-          v instanceof RegExp ||
-          v instanceof ImageData ||
-          (typeof FileList !== "undefined" && v instanceof FileList)
-        ) {
-          bObject[k] = { _rtype: "generic", _rvalue: v };
         } else if (v instanceof Blob) {
           bObject[k] = { _rtype: "blob", _rvalue: v };
         } else if (v instanceof ArrayBuffer) {
@@ -607,10 +612,19 @@ export class RPC extends MessageEmitter {
           }
           bObject[k] = { _rtype: "memoryview", _rvalue: v.buffer };
         }
-        // TODO: support also Map and Set
         // TODO: avoid object such as DynamicPlugin instance.
         else if (v._rintf) {
           bObject[k] = this._encode(v, true);
+        } else if (v instanceof Set) {
+          bObject[k] = {
+            _rtype: "set",
+            _rvalue: this._encode(Array.from(v), as_interface)
+          };
+        } else if (v instanceof Map) {
+          bObject[k] = {
+            _rtype: "orderedmap",
+            _rvalue: this._encode(Array.from(v), as_interface)
+          };
         } else if (typeof v === "object") {
           bObject[k] = this._encode(v, as_interface);
           // move transferables to the top level object
@@ -669,14 +683,15 @@ export class RPC extends MessageEmitter {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = nj
-            .array(aObject._rvalue, aObject._rdtype)
+            .array(new Uint8(aObject._rvalue), aObject._rdtype)
             .reshape(aObject._rshape);
         } else if (typeof tf !== "undefined" && tf.Tensor) {
           if (Array.isArray(aObject._rvalue)) {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
+          const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
           bObject = tf.tensor(
-            aObject._rvalue,
+            new arraytype(aObject._rvalue),
             aObject._rshape,
             aObject._rdtype
           );
@@ -700,9 +715,10 @@ export class RPC extends MessageEmitter {
       } else if (aObject._rtype === "bytes") {
         bObject = aObject._rvalue;
       } else if (aObject._rtype === "typedarray") {
-        const dtype = eval(dtypeToTypedArray[aObject._rdtype]);
-        if (!dtype) throw new Error("unsupported dtype: " + aObject._rdtype);
-        bObject = new dtype(aObject._rvalue);
+        const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
+        if (!arraytype)
+          throw new Error("unsupported dtype: " + aObject._rdtype);
+        bObject = new arraytype(aObject._rvalue);
       } else if (aObject._rtype === "memoryview") {
         bObject = new DataView(aObject._rvalue);
       } else if (aObject._rtype === "blob") {
@@ -711,23 +727,32 @@ export class RPC extends MessageEmitter {
         } else {
           bObject = new Blob([aObject._rvalue], { type: aObject._rmime });
         }
-      } else if (aObject._rtype === "generic") {
-        bObject = aObject._rvalue;
-      }
-      return bObject;
-    } else {
-      var isarray = Array.isArray(aObject);
-      bObject = isarray ? [] : {};
-      for (k in aObject) {
-        if (isarray || aObject.hasOwnProperty(k)) {
-          v = aObject[k];
-          if (typeof v === "object" || Array.isArray(v)) {
-            bObject[k] = this._decode(v, callbackId, withPromise);
-          }
-        }
+      } else if (aObject._rtype === "orderedmap") {
+        bObject = new Map(
+          this._decode(aObject._rvalue, callbackId, withPromise)
+        );
+      } else if (aObject._rtype === "set") {
+        bObject = new Set(
+          this._decode(aObject._rvalue, callbackId, withPromise)
+        );
       }
       return bObject;
     }
+
+    if (aObject.constructor === Object || Array.isArray(aObject)) {
+      var isarray = Array.isArray(aObject);
+      bObject = isarray ? [] : {};
+      debugger
+      for (k in aObject) {
+        if (isarray || aObject.hasOwnProperty(k)) {
+          bObject[k] = this._decode(aObject[k], callbackId, withPromise);
+        }
+      }
+    } else {
+      // all other types are not decoded
+      bObject = aObject;
+    }
+    return bObject;
   }
 
   _wrap(args, as_interface) {

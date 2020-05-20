@@ -7,6 +7,7 @@ import threading
 import time
 import traceback
 import uuid
+from collections import OrderedDict
 
 from werkzeug.local import Local
 
@@ -401,8 +402,8 @@ class RPC(MessageEmitter):
                     "_rvalue": key,
                 }
                 encoded_interface[key] = val
-            elif type(val) in (int, float, bool, str):
-                v_obj = {"_rtype": "generic", "_rvalue": val}
+            elif isinstance(val, (int, float, bool, str)):
+                v_obj = val
                 encoded_interface[key] = val
             elif isinstance(val, (dict, list)):
                 v_obj = self._encode_interface(val)
@@ -459,7 +460,8 @@ class RPC(MessageEmitter):
                 basestring
             except NameError:
                 basestring = str
-            if val is not None and callable(self._local_api.get("_rpc_encode")):
+
+            if callable(self._local_api.get("_rpc_encode")):
                 encoded_obj = self._local_api["_rpc_encode"](val)
                 if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
                     b_object[key] = {
@@ -500,7 +502,8 @@ class RPC(MessageEmitter):
                         "_rtype": "interface",
                         "_rvalue": interface_func_name,
                     }
-
+            elif val is None or isinstance(val, (int, float, bool, str)):
+                v_obj = val
             elif NUMPY and isinstance(val, (NUMPY.ndarray, NUMPY.generic)):
                 v_bytes = val.tobytes()
                 v_obj = {
@@ -525,8 +528,12 @@ class RPC(MessageEmitter):
                 v_obj = self._encode(val, as_interface)
             elif isinstance(val, list):
                 v_obj = self._encode(val, as_interface)
+            elif isinstance(val, OrderedDict):
+                v_obj = {"_rtype": "orderedmap", "_rvalue": self._encode(list(val), as_interface)}
+            elif isinstance(val, set):
+                v_obj = {"_rtype": "set", "_rvalue": self._encode(list(val), as_interface)}
             else:
-                v_obj = {"_rtype": "generic", "_rvalue": val}
+                v_obj = val
 
             if isarray:
                 b_object.append(v_obj)
@@ -547,7 +554,8 @@ class RPC(MessageEmitter):
         """Decode object."""
         if a_object is None:
             return a_object
-        if "_rtype" in a_object and "_rvalue" in a_object:
+
+        if isinstance(a_object, dict) and "_rtype" in a_object and "_rvalue" in a_object:
             if a_object["_rtype"] == "custom":
                 if a_object["_rvalue"] and callable(self._local_api.get("_rpc_decode")):
                     b_object = self._local_api["_rpc_decode"](a_object["_rvalue"])
@@ -555,8 +563,7 @@ class RPC(MessageEmitter):
                         b_object = a_object
                 else:
                     b_object = a_object
-
-            if a_object["_rtype"] == "callback":
+            elif a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(
                     callback_id, a_object["_rindex"], with_promise
                 )
@@ -608,25 +615,33 @@ class RPC(MessageEmitter):
                     )
                 else:
                     b_object = a_object["_rvalue"]
+            elif a_object["_rtype"] == "orderedmap":
+                b_object = OrderedDict(self._decode(a_object["_rvalue"], callback_id, with_promise))
+            elif a_object["_rtype"] == "set":
+                b_object = set(self._decode(a_object["_rvalue"], callback_id, with_promise))
             elif a_object["_rtype"] == "error":
                 b_object = Exception(a_object["_rvalue"])
-            elif a_object["_rtype"] == "generic":
-                b_object = a_object["_rvalue"]
             else:
                 b_object = a_object["_rvalue"]
+
             return b_object
 
         if isinstance(a_object, tuple):
             a_object = list(a_object)
-        isarray = isinstance(a_object, list)
-        b_object = [] if isarray else dotdict()
-        keys = range(len(a_object)) if isarray else a_object.keys()
-        for key in keys:
-            if isarray or key in a_object:
-                val = a_object[key]
-                if isinstance(val, (dict, list)):
+
+        if isinstance(a_object, (dict, list)):
+            isarray = isinstance(a_object, list)
+            b_object = [] if isarray else dotdict()
+            keys = range(len(a_object)) if isarray else a_object.keys()
+            for key in keys:
+                if isarray or key in a_object:
+                    val = a_object[key]
                     if isarray:
                         b_object.append(self._decode(val, callback_id, with_promise))
                     else:
                         b_object[key] = self._decode(val, callback_id, with_promise)
+        else:
+            # all other types are not decoded
+            b_object = a_object
+
         return b_object

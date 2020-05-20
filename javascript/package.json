@@ -1,6 +1,6 @@
 {
   "name": "imjoy-rpc",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Remote procedure calls for ImJoy.",
   "module": "index.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "deploy": "npm run build && node deploy-site.js",
     "format": "prettier --write \"{src,tests}/**/**\"",
     "check-format": "prettier --check \"{src,tests}/**/**\"",
+    "debug": "karma start karma.conf.js --browsers=Chrome --single-run=false --debug",
     "test": "karma start --single-run --browsers ChromeHeadless,FirefoxHeadless karma.conf.js",
     "test-watch": "karma start --auto-watch --browsers ChromeHeadless,FirefoxHeadless karma.conf.js"
   },
