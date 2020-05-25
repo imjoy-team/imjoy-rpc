@@ -232,9 +232,9 @@ describe("RPC", async () => {
     );
     expect(await api.testGetPlugin(9, 8)).to.equal(72);
     expect(await api.testGetPlugin(3, 6)).to.equal(18);
-    const count = Object.keys(core._interface_store).length;
+    const count = Object.keys(core._object_store).length;
     await api.closePlugin22();
-    expect(Object.keys(core._interface_store).length).to.equal(count - 1);
+    expect(Object.keys(core._object_store).length).to.equal(count - 1);
   });
 
   it("should encode and decode", async () => {
@@ -310,6 +310,10 @@ describe("RPC", async () => {
     const msg = "this is an messge.";
     expect(await api.echo(msg)).to.equal(msg);
     expect(await api.echo(99)).to.equal(99);
+    expect(
+      (await api.echo(new DataView(new ArrayBuffer(101)))).buffer.byteLength
+    ).to.equal(101);
+    expect((await api.echo(new ArrayBuffer(101))).byteLength).to.equal(101);
     expect(await api.echo(true)).to.equal(true);
     const date = new Date(2018, 11, 24, 10, 33, 30, 0);
     expect((await api.echo(date)).getTime()).to.equal(date.getTime());

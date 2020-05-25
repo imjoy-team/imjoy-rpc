@@ -40,7 +40,7 @@ class RPC(MessageEmitter):
     ):
         self.manager_api = {}
         self.services = {}
-        self._interface_store = {}
+        self._object_store = {}
         self._method_weakmap = weakref.WeakKeyDictionary()
         self._local_api = None
         self._remote_set = False
@@ -216,7 +216,7 @@ class RPC(MessageEmitter):
     def set_remote_interface(self, api):
         """Set remote."""
         _remote = self._decode(api, None, False)
-        self._interface_store["_rremote"] = _remote
+        self._object_store["_rremote"] = _remote
         self._fire("remoteReady")
         self._run_with_context(self._set_local_api, _remote)
 
@@ -316,7 +316,7 @@ class RPC(MessageEmitter):
             logger.warn("execution is blocked due to allow_execution=False")
 
     def _handle_method(self, data):
-        interface = self._interface_store[data["pid"]]
+        interface = self._object_store[data["pid"]]
         if data["name"] in interface:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
@@ -386,7 +386,7 @@ class RPC(MessageEmitter):
         result = {"args": wrapped}
         return result
 
-    def _encode(self, a_object, as_interface=False, interface_id=None):
+    def _encode(self, a_object, as_interface=False, object_id=None):
         """Encode object."""
         if a_object is None:
             return a_object
@@ -417,15 +417,13 @@ class RPC(MessageEmitter):
 
         if callable(a_object):
             if as_interface:
-                if not interface_id:
-                    raise Exception("interface_id is not specified.")
-                encoded_interface = self._interface_store[interface_id]
+                if not object_id:
+                    raise Exception("object_id is not specified.")
                 b_object = {
                     "_rtype": "interface",
-                    "_rintf": interface_id,
+                    "_rintf": object_id,
                     "_rvalue": as_interface,
                 }
-                encoded_interface[as_interface] = a_object
                 self._method_weakmap[a_object] = a_object
             elif a_object in self._method_weakmap:
                 b_object = self._method_weakmap[a_object]
@@ -459,39 +457,44 @@ class RPC(MessageEmitter):
         elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
             b_object = [] if isarray else {}
             if inspect.isclass(type(a_object)):
-                a_object = {
+                a_object_norm = {
                     a: getattr(a_object, a)
                     for a in dir(a_object)
                     if not a.startswith("_")
                 }
-
-            keys = range(len(a_object)) if isarray else a_object.keys()
-            # encode interfaces
-            if as_interface:
-                interface_id = str(uuid.uuid4())
+                # always encode class instance as interface
+                as_interface = True
             else:
-                interface_id = None
+                a_object_norm = a_object
 
-            if (not isarray and a_object.get("_rintf")) or as_interface:
-                if not isarray:
-                    if a_object.get("_rintf") == True:
-                        interface_id = str(uuid.uuid4())
-                    elif a_object.get("_rintf"):
-                        interface_id = a_object.get("_rintf")
+            keys = range(len(a_object_norm)) if isarray else a_object_norm.keys()
+            # encode interfaces
+            if (not isarray and a_object_norm.get("_rintf")) or as_interface:
+                object_id = str(uuid.uuid4())
                 for key in keys:
                     if key.startswith("_"):
                         continue
-                    b_object[key] = self._encode(a_object[key], key, interface_id)
+                    # only encode int, float, bool, str, function, dict, list
+                    if (
+                        callable(a_object_norm[key])
+                        or isinstance(a_object_norm[key], (list, dict))
+                        or inspect.isclass(type(a_object_norm[key]))
+                    ):
+                        b_object[key] = self._encode(a_object_norm[key], key, object_id)
+                    elif isinstance(a_object_norm[key], (int, float, bool, str)):
+                        b_object[key] = a_object_norm[key]
+                b_object["_rintf"] = object_id
+                self._object_store[object_id] = a_object
                 # remove interface when closed
-                if "on" in a_object and callable(a_object["on"]):
+                if "on" in a_object_norm and callable(a_object_norm["on"]):
 
                     def remove_interface():
-                        del self._interface_store[interface_id]
+                        del self._object_store[object_id]
 
-                    a_object["on"]("close", remove_interface)
+                    a_object_norm["on"]("close", remove_interface)
             else:
                 for key in keys:
-                    b_object[key] = self._encode(a_object[key])
+                    b_object[key] = self._encode(a_object_norm[key])
         else:
             raise Exception("imjoy-rpc: Unsupported data type:" + str(aObject))
 
@@ -528,8 +531,8 @@ class RPC(MessageEmitter):
                 intfid = (
                     "_rrmote" if a_object["_rid"] == "_rlocal" else a_object["_rid"]
                 )
-                if intfid in self._interface_store:
-                    b_object = self._interface_store[intfid][name]
+                if intfid in self._object_store:
+                    b_object = self._object_store[intfid][name]
                 else:
                     b_object = self._gen_remote_method(name, rid)
             elif a_object["_rtype"] == "ndarray":

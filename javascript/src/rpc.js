@@ -33,7 +33,7 @@ export class RPC extends MessageEmitter {
     super(config && config.debug);
     this._connection = connection;
     this.config = config || {};
-    this._interface_store = {};
+    this._object_store = {};
     this._method_weakmap = new WeakMap();
     this._local_api = null;
     // make sure there is an execute function
@@ -77,7 +77,7 @@ export class RPC extends MessageEmitter {
    * @returns {Object} set of remote interface methods
    */
   getRemote() {
-    return this._interface_store["_rremote"];
+    return this._object_store["_rremote"];
   }
 
   /**
@@ -89,7 +89,7 @@ export class RPC extends MessageEmitter {
   setInterface(_interface) {
     if (this.config.forwarding_functions) {
       for (let func_name of this.config.forwarding_functions) {
-        const _remote = this._interface_store["_rremote"];
+        const _remote = this._object_store["_rremote"];
         if (_remote[func_name]) {
           if (_interface.constructor === Object) {
             if (!_interface[func_name]) {
@@ -124,6 +124,23 @@ export class RPC extends MessageEmitter {
     this._connection.emit({ type: "setInterface", api: api });
   }
 
+  _disposeObject(object_id) {
+    if (this._object_store[object_id]) {
+      delete this._object_store[object_id];
+    }
+  }
+
+  disposeObject(proxyObj) {
+    if (proxyObj._rintf) {
+      this._connection.emit({
+        type: "disposeObject",
+        object_id: proxyObj._rintf
+      });
+    } else {
+      throw new Error("Invalid object");
+    }
+  }
+
   /**
    * Handles a message from the remote site
    */
@@ -146,8 +163,8 @@ export class RPC extends MessageEmitter {
 
     this._connection.on("method", data => {
       let resolve, reject, method, args, result;
-      let _interface = this._interface_store[data.pid];
-      const _method_context = _interface.__this__ || _interface;
+      let _interface = this._object_store[data.pid];
+      const _method_context = _interface;
       if (!_interface) {
         if (data.promise) {
           [resolve, reject] = this._unwrap(data.promise, false);
@@ -229,6 +246,9 @@ export class RPC extends MessageEmitter {
         }
       }
     });
+    this._connection.on("disposeObject", data => {
+      this._disposeObject(data.object_id);
+    });
     this._connection.on("setInterface", data => {
       this._setRemoteInterface(data.api);
     });
@@ -283,7 +303,7 @@ export class RPC extends MessageEmitter {
    * @param {Array} names list of function names
    */
   _setRemoteInterface(api) {
-    this._interface_store["_rremote"] = this._decode(api);
+    this._object_store["_rremote"] = this._decode(api);
     this._fire("remoteReady");
     this._reportRemoteSet();
   }
@@ -298,15 +318,13 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote method
    */
-  _genRemoteMethod(name, interface_id) {
+  _genRemoteMethod(name, object_id) {
     var me = this;
     var remoteMethod = function() {
       return new Promise((resolve, reject) => {
         let id = null;
         try {
-          id = me._method_refs.put(
-            interface_id ? interface_id + "/" + name : name
-          );
+          id = me._method_refs.put(object_id ? object_id + "/" + name : name);
           var wrapped_resolve = function() {
             if (id !== null) me._method_refs.fetch(id);
             return resolve.apply(this, arguments);
@@ -331,7 +349,7 @@ export class RPC extends MessageEmitter {
             {
               type: "method",
               name: name,
-              pid: interface_id,
+              pid: object_id,
               args: args,
               promise: me._wrap([wrapped_resolve, wrapped_reject])
             },
@@ -340,7 +358,7 @@ export class RPC extends MessageEmitter {
         } catch (e) {
           if (id) me._method_refs.fetch(id);
           reject(
-            `Failed to exectue remote method (interface: ${interface_id ||
+            `Failed to exectue remote method (interface: ${object_id ||
               me.id}, method: ${name}), error: ${e}`
           );
         }
@@ -367,7 +385,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Array} wrapped arguments
    */
-  _encode(aObject, as_interface, interface_id) {
+  _encode(aObject, as_interface, object_id) {
     const transferables = [];
     if (!aObject) {
       return aObject;
@@ -397,14 +415,12 @@ export class RPC extends MessageEmitter {
     }
     if (typeof aObject === "function") {
       if (as_interface) {
-        if (!interface_id) throw new Error("interface_id is not specified.");
-        const encoded_interface = this._interface_store[interface_id];
+        if (!object_id) throw new Error("object_id is not specified.");
         bObject = {
           _rtype: "interface",
-          _rintf: interface_id,
+          _rintf: object_id,
           _rvalue: as_interface
         };
-        encoded_interface[as_interface] = aObject;
         this._method_weakmap.set(aObject, bObject);
       } else if (this._method_weakmap.has(aObject)) {
         bObject = this._method_weakmap.get(aObject);
@@ -506,25 +522,38 @@ export class RPC extends MessageEmitter {
         keys = Object.getOwnPropertyNames(
           Object.getPrototypeOf(aObject)
         ).concat(Object.keys(aObject));
+        // TODO: use a proxy object to represent the actual object
+        // always encode class instance as interface
+        as_interface = true;
       } else {
         throw Error("Unsupported interface type");
       }
       // encode interfaces
       if (aObject._rintf || as_interface) {
-        if (aObject["_rintf"] === true) interface_id = randId();
-        interface_id = interface_id || randId();
-        this._interface_store[interface_id] = {};
+        object_id = randId();
         for (let k of keys) {
           if (k === "constructor") continue;
           if (k.startsWith("_")) {
             continue;
           }
-          bObject[k] = this._encode(aObject[k], k, interface_id);
+          // only encode primitive types, function, object, array
+          if (
+            typeof aObject[k] === "function" ||
+            aObject.constructor instanceof Object ||
+            Array.isArray(aObject)
+          )
+            bObject[k] = this._encode(aObject[k], k, object_id);
+          else if (aObject !== Object(aObject)) {
+            bObject[k] = aObject[k];
+          }
         }
+        // object id, used for dispose the object
+        bObject._rintf = object_id;
+        this._object_store[object_id] = aObject;
         // remove interface when closed
         if (aObject.on && typeof aObject.on === "function") {
           aObject.on("close", () => {
-            delete this._interface_store[interface_id];
+            delete this._object_store[object_id];
           });
         }
       } else {
@@ -533,15 +562,6 @@ export class RPC extends MessageEmitter {
           bObject[k] = this._encode(aObject[k]);
         }
       }
-      // } else if (typeof aObject === "object") {
-      //   bObject = this._encode(aObject, as_interface);
-      //   // move transferables to the top level object
-      //   if (bObject.__transferables__) {
-      //     for (var t = 0; t < bObject.__transferables__.length; t++) {
-      //       transferables.push(bObject.__transferables__[t]);
-      //     }
-      //     delete bObject.__transferables__;
-      //   }
     } else {
       throw "imjoy-rpc: Unsupported data type:" + aObject;
     }
