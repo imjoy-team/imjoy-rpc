@@ -429,183 +429,192 @@ export class RPC extends MessageEmitter {
       return aObject;
     }
     const _transfer = aObject._transfer;
-    let bObject, v, k;
+    let bObject;
     const isarray = Array.isArray(aObject);
     //skip if already encoded
     if (typeof aObject === "object" && aObject._rtype && aObject._rvalue) {
       return aObject;
     }
 
-    //encode interfaces
-    if (
-      typeof aObject === "object" &&
-      !Array.isArray(aObject) &&
-      (aObject._rintf || as_interface)
-    ) {
-      return this._encodeInterface(aObject);
-    }
-
-    if (as_interface) {
-      aObject["_rid"] = aObject["_rid"] || randId();
-      this._interface_store[aObject["_rid"]] =
-        this._interface_store[aObject["_rid"]] || (isarray ? [] : {});
-    }
-
-    bObject = isarray ? [] : {};
-    for (k in aObject) {
-      if (["hasOwnProperty", "constructor"].includes(k)) continue;
-      if (isarray || aObject.hasOwnProperty(k)) {
-        v = aObject[k];
-        if (v && typeof this._local_api._rpc_encode === "function") {
-          const encoded_obj = this._local_api._rpc_encode(v);
-          if (encoded_obj && encoded_obj._ctype) {
-            bObject[k] = {
-              _rtype: "custom",
-              _rvalue: encoded_obj,
-              _rid: aObject["_rid"]
-            };
-            continue;
-          }
-          // if the returned object does not contain _rtype, assuming the object has been transformed
-          else if (encoded_obj !== undefined) {
-            v = encoded_obj;
-          }
-        }
-        if (typeof v === "function") {
-          if (as_interface) {
-            const encoded_interface = this._interface_store[aObject["_rid"]];
-            bObject[k] = {
-              _rtype: "interface",
-              _rid: aObject["_rid"],
-              _rvalue: k
-            };
-            encoded_interface[k] = v;
-            continue;
-          }
-          let interfaceFuncName = null;
-          for (var name in this._local_api) {
-            if (this._local_api.hasOwnProperty(name)) {
-              if (name.startsWith("_")) continue;
-              if (this._local_api[name] === v) {
-                interfaceFuncName = name;
-                break;
-              }
-            }
-          }
-          // search for prototypes
-          var functions = Object.getOwnPropertyNames(
-            Object.getPrototypeOf(this._local_api)
-          );
-          for (var i = 0; i < functions.length; i++) {
-            var name_ = functions[i];
-            if (name_.startsWith("_")) continue;
-            if (this._local_api[name_] === v) {
-              interfaceFuncName = name_;
-              break;
-            }
-          }
-          if (!interfaceFuncName) {
-            var id = this._store.put(v);
-            bObject[k] = {
-              _rtype: "callback",
-              _rvalue: (v.constructor && v.constructor.name) || id,
-              _rindex: id
-            };
-          } else {
-            bObject[k] = {
-              _rtype: "interface",
-              _rvalue: interfaceFuncName,
-              _rid: "_rlocal"
-            };
-          }
-        } else if (
-          /*global tf*/
-          typeof tf !== "undefined" &&
-          tf.Tensor &&
-          v instanceof tf.Tensor
-        ) {
-          const v_buffer = v.dataSync();
-          if (v._transfer || _transfer) {
-            transferables.push(v_buffer.buffer);
-            delete v._transfer;
-          }
-          bObject[k] = {
-            _rtype: "ndarray",
-            _rvalue: v_buffer,
-            _rshape: v.shape,
-            _rdtype: v.dtype
-          };
-        } else if (
-          /*global nj*/
-          typeof nj !== "undefined" &&
-          nj.NdArray &&
-          v instanceof nj.NdArray
-        ) {
-          var dtype = typedArrayToDtype[v.selection.data.constructor.name];
-          if (v._transfer || _transfer) {
-            transferables.push(v.selection.data.buffer);
-            delete v._transfer;
-          }
-          bObject[k] = {
-            _rtype: "ndarray",
-            _rvalue: v.selection.data,
-            _rshape: v.shape,
-            _rdtype: dtype
-          };
-        } else if (v instanceof Error) {
-          console.error(v);
-          bObject[k] = { _rtype: "error", _rvalue: v.toString() };
-        } else if (typeof File !== "undefined" && v instanceof File) {
-          bObject[k] = {
-            _rtype: "file",
-            _rvalue: v,
-            _rrelative_path: v.relativePath || v.webkitRelativePath
-          };
-        }
-        // send objects supported by structure clone algorithm
-        // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
-        else if (
-          v !== Object(v) ||
-          v instanceof Boolean ||
-          v instanceof String ||
-          v instanceof Date ||
-          v instanceof RegExp ||
-          v instanceof Blob ||
-          v instanceof ImageData ||
-          (typeof FileList !== "undefined" && v instanceof FileList)
-        ) {
-          bObject[k] = { _rtype: "argument", _rvalue: v };
-        } else if (v instanceof ArrayBuffer) {
-          if (v._transfer || _transfer) {
-            transferables.push(v);
-            delete v._transfer;
-          }
-          bObject[k] = { _rtype: "argument", _rvalue: v };
-        } else if (v instanceof ArrayBufferView) {
-          if (v._transfer || _transfer) {
-            transferables.push(v.buffer);
-            delete v._transfer;
-          }
-          bObject[k] = { _rtype: "argument", _rvalue: v };
-        }
-        // TODO: support also Map and Set
-        // TODO: avoid object such as DynamicPlugin instance.
-        else if (v._rintf) {
-          bObject[k] = this._encode(v, true);
-        } else if (typeof v === "object") {
-          bObject[k] = this._encode(v, as_interface);
-          // move transferables to the top level object
-          if (bObject[k].__transferables__) {
-            for (var t = 0; t < bObject[k].__transferables__.length; t++) {
-              transferables.push(bObject[k].__transferables__[t]);
-            }
-            delete bObject[k].__transferables__;
-          }
-        } else {
-          throw "imjoy-rpc: Unsupported data type " + k + "," + v;
-        }
+    if (aObject && typeof this._local_api._rpc_encode === "function") {
+      const encoded_obj = this._local_api._rpc_encode(aObject);
+      if (encoded_obj && encoded_obj._ctype) {
+        bObject = {
+          _rtype: "custom",
+          _rvalue: encoded_obj,
+          _rid: aObject["_rid"]
+        };
+        return bObject
+      }
+      // if the returned object does not contain _rtype, assuming the object has been transformed
+      else if (encoded_obj !== undefined) {
+        aObject = encoded_obj;
       }
     }
+    if (typeof aObject === "function") {
+      if (as_interface) {
+        const encoded_interface = this._interface_store[aObject["_rid"]];
+        bObject = {
+          _rtype: "interface",
+          _rid: aObject["_rid"],
+          _rvalue: as_interface
+        };
+        encoded_interface[as_interface] = aObject;
+        return bObject
+      }
+      let interfaceFuncName = null;
+      for (var name in this._local_api) {
+        if (this._local_api.hasOwnProperty(name)) {
+          if (name.startsWith("_")) continue;
+          if (this._local_api[name] === aObject) {
+            interfaceFuncName = name;
+            break;
+          }
+        }
+      }
+      // search for prototypes
+      var functions = Object.getOwnPropertyNames(
+        Object.getPrototypeOf(this._local_api)
+      );
+      for (var i = 0; i < functions.length; i++) {
+        var name_ = functions[i];
+        if (name_.startsWith("_")) continue;
+        if (this._local_api[name_] === aObject) {
+          interfaceFuncName = name_;
+          break;
+        }
+      }
+      if (!interfaceFuncName) {
+        var id = this._store.put(aObject);
+        bObject = {
+          _rtype: "callback",
+          _rvalue: (aObject.constructor && aObject.constructor.name) || id,
+          _rindex: id
+        };
+      } else {
+        bObject = {
+          _rtype: "interface",
+          _rvalue: interfaceFuncName,
+          _rid: "_rlocal"
+        };
+      }
+    } else if (
+      /*global tf*/
+      typeof tf !== "undefined" &&
+      tf.Tensor &&
+      aObject instanceof tf.Tensor
+    ) {
+      const v_buffer = aObject.dataSync();
+      if (aObject._transfer || _transfer) {
+        transferables.push(v_buffer.buffer);
+        delete aObject._transfer;
+      }
+      bObject = {
+        _rtype: "ndarray",
+        _rvalue: v_buffer,
+        _rshape: aObject.shape,
+        _rdtype: aObject.dtype
+      };
+    } else if (
+      /*global nj*/
+      typeof nj !== "undefined" &&
+      nj.NdArray &&
+      aObject instanceof nj.NdArray
+    ) {
+      var dtype = typedArrayToDtype[aObject.selection.data.constructor.name];
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject.selection.data.buffer);
+        delete aObject._transfer;
+      }
+      bObject = {
+        _rtype: "ndarray",
+        _rvalue: aObject.selection.data,
+        _rshape: aObject.shape,
+        _rdtype: dtype
+      };
+    } else if (aObject instanceof Error) {
+      console.error(aObject);
+      bObject = { _rtype: "error", _rvalue: aObject.toString() };
+    } else if (typeof File !== "undefined" && aObject instanceof File) {
+      bObject = {
+        _rtype: "file",
+        _rvalue: aObject,
+        _rrelative_path: aObject.relativePath || aObject.webkitRelativePath
+      };
+    }
+    // send objects supported by structure clone algorithm
+    // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
+    else if (
+      aObject !== Object(aObject) ||
+      aObject instanceof Boolean ||
+      aObject instanceof String ||
+      aObject instanceof Date ||
+      aObject instanceof RegExp ||
+      aObject instanceof Blob ||
+      aObject instanceof ImageData ||
+      (typeof FileList !== "undefined" && aObject instanceof FileList)
+    ) {
+      bObject = { _rtype: "argument", _rvalue: aObject };
+    } else if (aObject instanceof ArrayBuffer) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject);
+        delete aObject._transfer;
+      }
+      bObject = { _rtype: "argument", _rvalue: aObject };
+    } else if (aObject instanceof ArrayBufferView) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject.buffer);
+        delete aObject._transfer;
+      }
+      bObject = { _rtype: "argument", _rvalue: aObject };
+    // TODO: support also Map and Set
+    // TODO: avoid object such as DynamicPlugin instance.
+
+
+    } else if(aObject.constructor instanceof Object || Array.isArray(aObject)){
+      //encode interfaces
+      if (
+        typeof aObject === "object" &&
+        !Array.isArray(aObject) &&
+        (aObject._rintf || as_interface)
+      ) {
+        return this._encodeInterface(aObject);
+      }
+
+      if (as_interface) {
+        aObject["_rid"] = aObject["_rid"] || randId();
+        this._interface_store[aObject["_rid"]] =
+          this._interface_store[aObject["_rid"]] || (isarray ? [] : {});
+      }
+
+      bObject = isarray ? [] : {};
+      as_interface = as_interface || aObject._rintf
+      for (let k of Object.keys(aObject)) {
+        if (["hasOwnProperty", "constructor"].includes(k)) continue;
+        bObject[k] = this._encode(aObject[k], as_interface&&k);
+      }
+    } else if(aObject.constructor.constructor === Function){
+      const _bObj = {}
+      const keys = Object.getOwnPropertyNames(Object.getPrototypeOf(aObject)).concat(
+        Object.keys(aObject)
+      );
+      for(let k of keys){
+        _bObj[k] = aObject[k]
+      }
+      bObject = this._encode(_bObj, as_interface);
+    } else if (typeof aObject === "object") {
+      bObject = this._encode(aObject, as_interface);
+      // move transferables to the top level object
+      if (bObject.__transferables__) {
+        for (var t = 0; t < bObject.__transferables__.length; t++) {
+          transferables.push(bObject.__transferables__[t]);
+        }
+        delete bObject.__transferables__;
+      }
+    } else {
+      throw "imjoy-rpc: Unsupported data type " + k + "," + aObject;
+    }
+ 
     if (transferables.length > 0) {
       bObject.__transferables__ = transferables;
     }
@@ -935,5 +944,42 @@ class ReferenceStore {
       this.fetch(_id);
     }
     return obj;
+  }
+}
+
+
+class InterfaceStore {
+  constructor() {
+    this._store = {}; // stored object
+  }
+
+  set(interface_id, interface_obj){
+    this._store[interface_id] = interface_obj
+    // remove interface when closed
+    if (interface_obj.on && typeof interface_obj.on === "function") {
+      interface_obj.on("close", () => {
+        this._store.remove(interface_obj["_rid"]);
+      });
+    }
+  }
+
+  put(interface_id, obj){
+    if(!this._store[interface_id]){
+      this._store[interface_id] = {}
+    }
+    const method_id = randId()
+    this._store[interface_id][method_id] = obj
+    return method_id
+  }
+
+  remove(interface_id){
+    delete this._store[interface_id]
+  }
+
+  get(interface_id, method_id){
+    if(method_id)
+    return this._store[interface_id] && this._store[interface_id][method_id]
+    else
+    return this._store[interface_id]
   }
 }
