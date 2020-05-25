@@ -7,6 +7,7 @@ import threading
 import time
 import traceback
 import uuid
+import weakref
 
 from werkzeug.local import Local
 
@@ -40,6 +41,7 @@ class RPC(MessageEmitter):
         self.manager_api = {}
         self.services = {}
         self._interface_store = {}
+        self._method_weakmap = weakref.WeakKeyDictionary()
         self._local_api = None
         self._remote_set = False
         self._store = ReferenceStore()
@@ -384,45 +386,7 @@ class RPC(MessageEmitter):
         result = {"args": wrapped}
         return result
 
-    def _encode_interface(self, a_object):
-        encoded_interface = {}
-        a_object["_rid"] = a_object["_rid"] or str(uuid.uuid4())
-        isarray = isinstance(a_object, list)
-        keys = range(len(a_object)) if isarray else a_object.keys()
-        b_object = [] if iisarray else {}
-        for key in keys:
-            val = a_object[key]
-            if key.startswith("_"):
-                continue
-            if callable(val):
-                v_obj = {
-                    "_rtype": "interface",
-                    "_rid": a_object["_rid"],
-                    "_rvalue": key,
-                }
-                encoded_interface[key] = val
-            elif type(val) in (int, float, bool, str):
-                v_obj = {"_rtype": "argument", "_rvalue": val}
-                encoded_interface[key] = val
-            elif isinstance(val, (dict, list)):
-                v_obj = self._encode_interface(val)
-
-            if isarray:
-                b_object.append(v_obj)
-            else:
-                b_object[key] = v_obj
-
-        self._interface_store[a_object["_rid"]] = encoded_interface
-
-        # remove interface when closed
-        if "on" in a_object and callable(a_object["on"]):
-
-            def remove_interface():
-                del self._interface_store[a_object["_rid"]]
-
-            a_object["on"]("close", remove_interface)
-
-    def _encode(self, a_object, as_interface=False):
+    def _encode(self, a_object, as_interface=False, interface_id=None):
         """Encode object."""
         if a_object is None:
             return a_object
@@ -438,97 +402,98 @@ class RPC(MessageEmitter):
         ):
             return a_object
 
-        # encode interfaces
-        if (
-            isinstance(a_object, dict)
-            and "_rid" in a_object
-            and "_rtype" in a_object
-            and (a_object.get("_rintf") or as_interface)
-        ):
-            return self._encode_interface(a_object)
-
-        if as_interface:
-            a_object["_rid"] = a_object["_rid"] or str(uuid.uuid4)
-            if a_object["_rid"] not in self._interface_store:
-                self._interface_store[a_object["_rid"]] = [] if isarray else {}
-
-        keys = range(len(a_object)) if isarray else a_object.keys()
-        for key in keys:
-            val = a_object[key]
-            try:
-                basestring
-            except NameError:
-                basestring = str
-            if val is not None and callable(self._local_api.get("_rpc_encode")):
-                encoded_obj = self._local_api["_rpc_encode"](val)
-                if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
-                    b_object[key] = {
-                        "_rtype": "custom",
-                        "_rvalue": encoded_obj,
-                        "_rid": a_object["_rid"],
-                    }
-                    continue
-                # if the returned object does not contain _rtype, assuming the object has been transformed
-                elif encoded_obj is not None:
-                    val = encoded_obj
-
-            if callable(val):
-                if as_interface:
-                    encoded_interface = self._interface_store[a_object["_rid"]]
-                    b_object[key] = {
-                        "_rtype": "interface",
-                        "_rid": a_object["_rid"],
-                        "_rvalue": key,
-                    }
-                    encoded_interface[key] = val
-                    continue
-
-                interface_func_name = None
-                for name in self._local_api:
-                    if self._local_api[name] == val:
-                        interface_func_name = name
-                        break
-                if interface_func_name is None:
-                    cid = self._store.put(val)
-                    v_obj = {
-                        "_rtype": "callback",
-                        "_rvalue": "f",
-                        "_rindex": cid,
-                    }
-                else:
-                    v_obj = {
-                        "_rtype": "interface",
-                        "_rvalue": interface_func_name,
-                    }
-
-            elif NUMPY and isinstance(val, (NUMPY.ndarray, NUMPY.generic)):
-                v_bytes = val.tobytes()
-                v_obj = {
-                    "_rtype": "ndarray",
-                    "_rvalue": v_bytes,
-                    "_rshape": val.shape,
-                    "_rdtype": str(val.dtype),
+        if a_object is not None and callable(self._local_api.get("_rpc_encode")):
+            encoded_obj = self._local_api["_rpc_encode"](a_object)
+            if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
+                b_object[key] = {
+                    "_rtype": "custom",
+                    "_rvalue": encoded_obj,
+                    "_rid": a_object["_rid"],
                 }
-            elif not isinstance(val, basestring) and isinstance(val, bytes):
-                v_obj = val.decode()  # covert python3 bytes to str
-            elif isinstance(val, Exception):
-                v_obj = {"_rtype": "error", "_rvalue": str(val)}
-            elif hasattr(val, "_rintf") and val._rintf == True:
-                v_obj = self._encode(val, true)
-            elif isinstance(val, dict):
-                as_interface = as_interface or (
-                    "_rintf" in val and val["_rintf"] == True
-                )
-                v_obj = self._encode(val, as_interface)
-            elif isinstance(val, list):
-                v_obj = self._encode(val, as_interface)
-            else:
-                v_obj = {"_rtype": "argument", "_rvalue": val}
+                continue
+            # if the returned object does not contain _rtype, assuming the object has been transformed
+            elif encoded_obj is not None:
+                a_object = encoded_obj
 
-            if isarray:
-                b_object.append(v_obj)
+        if callable(a_object):
+            if as_interface:
+                if not interface_id:
+                    raise Exception("interface_id is not specified.")
+                encoded_interface = self._interface_store[interface_id]
+                b_object = {
+                    "_rtype": "interface",
+                    "_rintf": interface_id,
+                    "_rvalue": as_interface,
+                }
+                encoded_interface[as_interface] = a_object
+                self._method_weakmap[a_object] = a_object
+            elif a_object in self._method_weakmap:
+                b_object = self._method_weakmap[a_object]
             else:
-                b_object[key] = v_obj
+                cid = self._store.put(a_object)
+                b_object = {
+                    "_rtype": "callback",
+                    "_rvalue": a_object.__name__ or cid,
+                    "_rindex": cid,
+                }
+
+        elif NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
+            v_bytes = a_object.tobytes()
+            b_object = {
+                "_rtype": "ndarray",
+                "_rvalue": v_bytes,
+                "_rshape": a_object.shape,
+                "_rdtype": str(a_object.dtype),
+            }
+        elif isinstance(a_object, bytes):
+            b_object = a_object
+        elif isinstance(a_object, Exception):
+            b_object = {"_rtype": "error", "_rvalue": str(a_object)}
+        # TODO: encode file object
+        elif isinstance(val, (int, float, bool, str)):
+            b_object = a_object
+        elif isinstance(a_object, memoryview):
+            b_object = {"_rtype:": "memoryview"}
+        elif hasattr(a_object, "_rintf") and a_object._rintf == True:
+            b_object = self._encode(a_object, true)
+        elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
+            b_object = [] if isarray else {}
+            if inspect.isclass(type(a_object)):
+                a_object = {
+                    a: getattr(a_object, a)
+                    for a in dir(a_object)
+                    if not a.startswith("_")
+                }
+
+            keys = range(len(a_object)) if isarray else a_object.keys()
+            # encode interfaces
+            if as_interface:
+                interface_id = str(uuid.uuid4())
+            else:
+                interface_id = None
+
+            if (not isarray and a_object.get("_rintf")) or as_interface:
+                if not isarray:
+                    if a_object.get("_rintf") == True:
+                        interface_id = str(uuid.uuid4())
+                    elif a_object.get("_rintf"):
+                        interface_id = a_object.get("_rintf")
+                for key in keys:
+                    if key.startswith("_"):
+                        continue
+                    b_object[key] = self._encode(a_object[key], key, interface_id)
+                # remove interface when closed
+                if "on" in a_object and callable(a_object["on"]):
+
+                    def remove_interface():
+                        del self._interface_store[interface_id]
+
+                    a_object["on"]("close", remove_interface)
+            else:
+                for key in keys:
+                    b_object[key] = self._encode(a_object[key])
+        else:
+            raise Exception("imjoy-rpc: Unsupported data type:" + str(aObject))
 
         return b_object
 
@@ -596,23 +561,27 @@ class RPC(MessageEmitter):
                     raise exc
             elif a_object["_rtype"] == "error":
                 b_object = Exception(a_object["_rvalue"])
-            elif a_object["_rtype"] == "argument":
-                b_object = a_object["_rvalue"]
             else:
-                b_object = a_object["_rvalue"]
+                b_object = a_object
             return b_object
 
         if isinstance(a_object, tuple):
             a_object = list(a_object)
-        isarray = isinstance(a_object, list)
-        b_object = [] if isarray else dotdict()
-        keys = range(len(a_object)) if isarray else a_object.keys()
-        for key in keys:
-            if isarray or key in a_object:
-                val = a_object[key]
-                if isinstance(val, (dict, list)):
-                    if isarray:
-                        b_object.append(self._decode(val, callback_id, with_promise))
-                    else:
-                        b_object[key] = self._decode(val, callback_id, with_promise)
-        return b_object
+
+        if isinstance(a_object, (dict, list)):
+            isarray = isinstance(a_object, list)
+            b_object = [] if isarray else dotdict()
+            keys = range(len(a_object)) if isarray else a_object.keys()
+            for key in keys:
+                if isarray or key in a_object:
+                    val = a_object[key]
+                    if isinstance(val, (dict, list)):
+                        if isarray:
+                            b_object.append(
+                                self._decode(val, callback_id, with_promise)
+                            )
+                        else:
+                            b_object[key] = self._decode(val, callback_id, with_promise)
+            return b_object
+        else:
+            return a_object

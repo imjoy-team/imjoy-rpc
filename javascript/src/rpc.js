@@ -34,6 +34,7 @@ export class RPC extends MessageEmitter {
     this._connection = connection;
     this.config = config || {};
     this._interface_store = {};
+    this._method_weakmap = new WeakMap();
     this._local_api = null;
     // make sure there is an execute function
     const name = this.config.name;
@@ -118,7 +119,7 @@ export class RPC extends MessageEmitter {
     if (!this._local_api) {
       throw new Error("interface is not set.");
     }
-    this._local_api._rid = "_rlocal";
+    this._local_api._rintf = "_rlocal";
     const api = this._encode(this._local_api, true);
     this._connection.emit({ type: "setInterface", api: api });
   }
@@ -366,64 +367,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Array} wrapped arguments
    */
-
-  _encodeInterface(aObject) {
-    let v, k, keys;
-    const encoded_interface = {};
-    aObject["_rid"] = aObject["_rid"] || randId();
-    // an object/array
-    if (aObject.constructor === Object || Array.isArray(aObject)) {
-      keys = Object.keys(aObject);
-    }
-    // a class
-    else if (aObject.constructor === Function) {
-      throw new Error("Please instantiate the class before exportting it.");
-    }
-    // instance of a class
-    else if (aObject.constructor.constructor === Function) {
-      keys = Object.getOwnPropertyNames(Object.getPrototypeOf(aObject)).concat(
-        Object.keys(aObject)
-      );
-    } else {
-      throw Error("Unsupported interface type");
-    }
-
-    const bObject = Array.isArray(aObject) ? [] : {};
-
-    for (k of keys) {
-      if (["hasOwnProperty", "constructor"].includes(k)) continue;
-
-      if (k.startsWith("_")) {
-        continue;
-      }
-      v = aObject[k];
-
-      if (typeof v === "function") {
-        bObject[k] = {
-          _rtype: "interface",
-          _rid: aObject["_rid"],
-          _rvalue: k
-        };
-        encoded_interface[k] = v;
-      } else if (Object(v) !== v) {
-        bObject[k] = { _rtype: "argument", _rvalue: v };
-        encoded_interface[k] = v;
-      } else if (typeof v === "object") {
-        bObject[k] = this._encodeInterface(v);
-      }
-    }
-    this._interface_store[aObject["_rid"]] = encoded_interface;
-
-    // remove interface when closed
-    if (aObject.on && typeof aObject.on === "function") {
-      aObject.on("close", () => {
-        delete this._interface_store[aObject["_rid"]];
-      });
-    }
-    return bObject;
-  }
-
-  _encode(aObject, as_interface) {
+  _encode(aObject, as_interface, interface_id) {
     const transferables = [];
     if (!aObject) {
       return aObject;
@@ -444,7 +388,7 @@ export class RPC extends MessageEmitter {
           _rvalue: encoded_obj,
           _rid: aObject["_rid"]
         };
-        return bObject
+        return bObject;
       }
       // if the returned object does not contain _rtype, assuming the object has been transformed
       else if (encoded_obj !== undefined) {
@@ -453,49 +397,23 @@ export class RPC extends MessageEmitter {
     }
     if (typeof aObject === "function") {
       if (as_interface) {
-        const encoded_interface = this._interface_store[aObject["_rid"]];
+        if (!interface_id) throw new Error("interface_id is not specified.");
+        const encoded_interface = this._interface_store[interface_id];
         bObject = {
           _rtype: "interface",
-          _rid: aObject["_rid"],
+          _rintf: interface_id,
           _rvalue: as_interface
         };
         encoded_interface[as_interface] = aObject;
-        return bObject
-      }
-      let interfaceFuncName = null;
-      for (var name in this._local_api) {
-        if (this._local_api.hasOwnProperty(name)) {
-          if (name.startsWith("_")) continue;
-          if (this._local_api[name] === aObject) {
-            interfaceFuncName = name;
-            break;
-          }
-        }
-      }
-      // search for prototypes
-      var functions = Object.getOwnPropertyNames(
-        Object.getPrototypeOf(this._local_api)
-      );
-      for (var i = 0; i < functions.length; i++) {
-        var name_ = functions[i];
-        if (name_.startsWith("_")) continue;
-        if (this._local_api[name_] === aObject) {
-          interfaceFuncName = name_;
-          break;
-        }
-      }
-      if (!interfaceFuncName) {
-        var id = this._store.put(aObject);
+        this._method_weakmap.set(aObject, bObject);
+      } else if (this._method_weakmap.has(aObject)) {
+        bObject = this._method_weakmap.get(aObject);
+      } else {
+        const cid = this._store.put(aObject);
         bObject = {
           _rtype: "callback",
-          _rvalue: (aObject.constructor && aObject.constructor.name) || id,
-          _rindex: id
-        };
-      } else {
-        bObject = {
-          _rtype: "interface",
-          _rvalue: interfaceFuncName,
-          _rid: "_rlocal"
+          _rvalue: (aObject.constructor && aObject.constructor.name) || cid,
+          _rindex: cid
         };
       }
     } else if (
@@ -532,6 +450,12 @@ export class RPC extends MessageEmitter {
         _rshape: aObject.shape,
         _rdtype: dtype
       };
+    } else if (aObject instanceof ArrayBuffer) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject);
+        delete aObject._transfer;
+      }
+      bObject = aObject;
     } else if (aObject instanceof Error) {
       console.error(aObject);
       bObject = { _rtype: "error", _rvalue: aObject.toString() };
@@ -539,7 +463,7 @@ export class RPC extends MessageEmitter {
       bObject = {
         _rtype: "file",
         _rvalue: aObject,
-        _rrelative_path: aObject.relativePath || aObject.webkitRelativePath
+        _rpath: aObject._path || aObject.webkitRelativePath
       };
     }
     // send objects supported by structure clone algorithm
@@ -554,67 +478,74 @@ export class RPC extends MessageEmitter {
       aObject instanceof ImageData ||
       (typeof FileList !== "undefined" && aObject instanceof FileList)
     ) {
-      bObject = { _rtype: "argument", _rvalue: aObject };
-    } else if (aObject instanceof ArrayBuffer) {
-      if (aObject._transfer || _transfer) {
-        transferables.push(aObject);
-        delete aObject._transfer;
-      }
-      bObject = { _rtype: "argument", _rvalue: aObject };
+      bObject = aObject;
     } else if (aObject instanceof ArrayBufferView) {
       if (aObject._transfer || _transfer) {
         transferables.push(aObject.buffer);
         delete aObject._transfer;
       }
-      bObject = { _rtype: "argument", _rvalue: aObject };
-    // TODO: support also Map and Set
-    // TODO: avoid object such as DynamicPlugin instance.
-
-
-    } else if(aObject.constructor instanceof Object || Array.isArray(aObject)){
-      //encode interfaces
-      if (
-        typeof aObject === "object" &&
-        !Array.isArray(aObject) &&
-        (aObject._rintf || as_interface)
-      ) {
-        return this._encodeInterface(aObject);
-      }
-
-      if (as_interface) {
-        aObject["_rid"] = aObject["_rid"] || randId();
-        this._interface_store[aObject["_rid"]] =
-          this._interface_store[aObject["_rid"]] || (isarray ? [] : {});
-      }
-
+      bObject = aObject;
+      // TODO: support also Map and Set
+      // TODO: avoid object such as DynamicPlugin instance.
+    } else if (
+      aObject.constructor instanceof Object ||
+      Array.isArray(aObject)
+    ) {
       bObject = isarray ? [] : {};
-      as_interface = as_interface || aObject._rintf
-      for (let k of Object.keys(aObject)) {
-        if (["hasOwnProperty", "constructor"].includes(k)) continue;
-        bObject[k] = this._encode(aObject[k], as_interface&&k);
+      let keys;
+      // an object/array
+      if (aObject.constructor === Object || Array.isArray(aObject)) {
+        keys = Object.keys(aObject);
       }
-    } else if(aObject.constructor.constructor === Function){
-      const _bObj = {}
-      const keys = Object.getOwnPropertyNames(Object.getPrototypeOf(aObject)).concat(
-        Object.keys(aObject)
-      );
-      for(let k of keys){
-        _bObj[k] = aObject[k]
+      // a class
+      else if (aObject.constructor === Function) {
+        throw new Error("Please instantiate the class before exportting it.");
       }
-      bObject = this._encode(_bObj, as_interface);
-    } else if (typeof aObject === "object") {
-      bObject = this._encode(aObject, as_interface);
-      // move transferables to the top level object
-      if (bObject.__transferables__) {
-        for (var t = 0; t < bObject.__transferables__.length; t++) {
-          transferables.push(bObject.__transferables__[t]);
+      // instance of a class
+      else if (aObject.constructor.constructor === Function) {
+        keys = Object.getOwnPropertyNames(
+          Object.getPrototypeOf(aObject)
+        ).concat(Object.keys(aObject));
+      } else {
+        throw Error("Unsupported interface type");
+      }
+      // encode interfaces
+      if (aObject._rintf || as_interface) {
+        if (aObject["_rintf"] === true) interface_id = randId();
+        interface_id = interface_id || randId();
+        this._interface_store[interface_id] = {};
+        for (let k of keys) {
+          if (k === "constructor") continue;
+          if (k.startsWith("_")) {
+            continue;
+          }
+          bObject[k] = this._encode(aObject[k], k, interface_id);
         }
-        delete bObject.__transferables__;
+        // remove interface when closed
+        if (aObject.on && typeof aObject.on === "function") {
+          aObject.on("close", () => {
+            delete this._interface_store[interface_id];
+          });
+        }
+      } else {
+        for (let k of keys) {
+          if (["hasOwnProperty", "constructor"].includes(k)) continue;
+          bObject[k] = this._encode(aObject[k]);
+        }
       }
+      // } else if (typeof aObject === "object") {
+      //   bObject = this._encode(aObject, as_interface);
+      //   // move transferables to the top level object
+      //   if (bObject.__transferables__) {
+      //     for (var t = 0; t < bObject.__transferables__.length; t++) {
+      //       transferables.push(bObject.__transferables__[t]);
+      //     }
+      //     delete bObject.__transferables__;
+      //   }
     } else {
-      throw "imjoy-rpc: Unsupported data type " + k + "," + aObject;
+      throw "imjoy-rpc: Unsupported data type:" + aObject;
     }
- 
+
     if (transferables.length > 0) {
       bObject.__transferables__ = transferables;
     }
@@ -646,11 +577,7 @@ export class RPC extends MessageEmitter {
           withPromise
         );
       } else if (aObject._rtype === "interface") {
-        const intfid = aObject._rid === "_rlocal" ? "_rrmote" : aObject._rid;
-        bObject =
-          (this._interface_store[intfid] &&
-            this._interface_store[intfid][aObject._rvalue]) ||
-          this._genRemoteMethod(aObject._rvalue, aObject._rid);
+        bObject = this._genRemoteMethod(aObject._rvalue, aObject._rintf);
       } else if (aObject._rtype === "ndarray") {
         /*global nj tf*/
         //create build array/tensor if used in the plugin
@@ -678,24 +605,23 @@ export class RPC extends MessageEmitter {
         bObject = new Error(aObject._rvalue);
       } else if (aObject._rtype === "file") {
         bObject = aObject._rvalue;
-        //patch relativePath
-        bObject.relativePath = aObject._rrelative_path;
-      } else if (aObject._rtype === "argument") {
-        bObject = aObject._rvalue;
+        bObject._path = aObject._rpath;
+      } else {
+        bObject = aObject;
       }
       return bObject;
-    } else {
+    } else if (aObject.constructor === Object || Array.isArray(aObject)) {
       var isarray = Array.isArray(aObject);
       bObject = isarray ? [] : {};
       for (k in aObject) {
         if (isarray || aObject.hasOwnProperty(k)) {
           v = aObject[k];
-          if (typeof v === "object" || Array.isArray(v)) {
-            bObject[k] = this._decode(v, callbackId, withPromise);
-          }
+          bObject[k] = this._decode(v, callbackId, withPromise);
         }
       }
       return bObject;
+    } else {
+      return aObject;
     }
   }
 
@@ -944,42 +870,5 @@ class ReferenceStore {
       this.fetch(_id);
     }
     return obj;
-  }
-}
-
-
-class InterfaceStore {
-  constructor() {
-    this._store = {}; // stored object
-  }
-
-  set(interface_id, interface_obj){
-    this._store[interface_id] = interface_obj
-    // remove interface when closed
-    if (interface_obj.on && typeof interface_obj.on === "function") {
-      interface_obj.on("close", () => {
-        this._store.remove(interface_obj["_rid"]);
-      });
-    }
-  }
-
-  put(interface_id, obj){
-    if(!this._store[interface_id]){
-      this._store[interface_id] = {}
-    }
-    const method_id = randId()
-    this._store[interface_id][method_id] = obj
-    return method_id
-  }
-
-  remove(interface_id){
-    delete this._store[interface_id]
-  }
-
-  get(interface_id, method_id){
-    if(method_id)
-    return this._store[interface_id] && this._store[interface_id][method_id]
-    else
-    return this._store[interface_id]
   }
 }
