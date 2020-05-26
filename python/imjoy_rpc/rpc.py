@@ -144,6 +144,21 @@ class RPC(MessageEmitter):
         api = self._encode(self._local_api, True)
         self._connection.emit({"type": "setInterface", "api": api})
 
+    def _dispose_object(object_id):
+        # TODO: remove object recursively
+        if object_id in self._object_store:
+            del self._object_store[object_id]
+
+    def dispose_object(proxy_obj):
+        if isinstance(proxy_obj, dict) and proxy_obj.get("_rintf"):
+            object_id = proxy_obj["_rintf"]
+        elif getattr(proxy_obj, "_rintf"):
+            object_id = proxy_obj._rintf
+        else:
+            raise Exception("Invalid object")
+
+        self._connection.emit({"type": "disposeObject", "object_id": object_id})
+
     def _gen_remote_method(self, name, plugin_id=None):
         """Return remote method."""
 
@@ -276,6 +291,10 @@ class RPC(MessageEmitter):
         connection.on("getInterface", self._get_interface_handler)
         connection.on("setInterface", self._set_interface_handler)
         connection.on("interfaceSetAsRemote", self._remote_set_handler)
+        connection.on("disposeObject", self._dispose_object_handler)
+
+    def _dispose_object_handler(self, data):
+        self._dispose_object(data["object_id"])
 
     def _disconnected_hanlder(self, data):
         self._connection.disconnect()
