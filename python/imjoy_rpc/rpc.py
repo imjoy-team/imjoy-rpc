@@ -8,6 +8,7 @@ import time
 import traceback
 import uuid
 import weakref
+from collections import OrderedDict
 
 from werkzeug.local import Local
 
@@ -450,8 +451,18 @@ class RPC(MessageEmitter):
         # TODO: encode file object
         elif isinstance(val, (int, float, bool, str)):
             b_object = a_object
-        elif isinstance(a_object, memoryview):
-            b_object = {"_rtype:": "memoryview"}
+        elif isinstance(val, bytes):
+            v_obj = {"_rtype": "bytes", "_rvalue": val}
+        elif isinstance(val, memoryview):
+            v_obj = {"_rtype": "memoryview", "_rvalue": val}
+        # NOTE: "typedarray" is not used
+        elif isinstance(val, OrderedDict):
+            v_obj = {
+                "_rtype": "orderedmap",
+                "_rvalue": self._encode(list(val), as_interface),
+            }
+        elif isinstance(val, set):
+            v_obj = {"_rtype": "set", "_rvalue": self._encode(list(val), as_interface)}
         elif hasattr(a_object, "_rintf") and a_object._rintf == True:
             b_object = self._encode(a_object, true)
         elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
@@ -562,6 +573,25 @@ class RPC(MessageEmitter):
                     logger.debug("Error in converting: %s", exc)
                     b_object = a_object
                     raise exc
+            elif a_object["_rtype"] == "bytes":
+                b_object = a_object["_rvalue"]
+            elif a_object["_rtype"] == "memoryview":
+                b_object = memoryview(a_object["_rvalue"])
+            elif a_object["_rtype"] == "typedarray":
+                if NUMPY:
+                    b_object = NUMPY.frombuffer(
+                        a_object["_rvalue"], dtype=a_object["_rdtype"]
+                    )
+                else:
+                    b_object = a_object["_rvalue"]
+            elif a_object["_rtype"] == "orderedmap":
+                b_object = OrderedDict(
+                    self._decode(a_object["_rvalue"], callback_id, with_promise)
+                )
+            elif a_object["_rtype"] == "set":
+                b_object = set(
+                    self._decode(a_object["_rvalue"], callback_id, with_promise)
+                )
             elif a_object["_rtype"] == "error":
                 b_object = Exception(a_object["_rvalue"])
             else:

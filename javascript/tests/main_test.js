@@ -313,6 +313,14 @@ describe("RPC", async () => {
     expect(
       (await api.echo(new DataView(new ArrayBuffer(101)))).buffer.byteLength
     ).to.equal(101);
+
+    const ret = await api.echo(new Uint16Array(new ArrayBuffer(4)));
+    expect(ret.length).to.equal(2);
+    expect(
+      (await api.echo(new Blob(["133"], { type: "text33" }))).type
+    ).to.equal("text33");
+    expect((await api.echo(new Map([["1", 99]]))).get("1")).to.equal(99);
+    expect((await api.echo(new Set([38, "88", 38]))).size).to.equal(2);
     expect((await api.echo(new ArrayBuffer(101))).byteLength).to.equal(101);
     expect(await api.echo(true)).to.equal(true);
     const date = new Date(2018, 11, 24, 10, 33, 30, 0);
@@ -356,5 +364,5 @@ describe("RPC", async () => {
     expect(await received_itf.add(1, 3)).to.equal(4);
     expect(await received_itf.add(9, 3)).to.equal(12);
     expect(await received_itf.add("12", 2)).to.equal("122");
-  });
+  }).timeout(20000);
 });

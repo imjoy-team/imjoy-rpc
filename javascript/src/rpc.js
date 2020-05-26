@@ -2,7 +2,12 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype, MessageEmitter } from "./utils.js";
+import {
+  randId,
+  typedArrayToDtype,
+  dtypeToTypedArray,
+  MessageEmitter
+} from "./utils.js";
 
 export const API_VERSION = "0.2.1";
 
@@ -291,7 +296,7 @@ export class RPC extends MessageEmitter {
     shape = shape || [typedArray.length];
     return {
       _rtype: "ndarray",
-      _rvalue: typedArray,
+      _rvalue: typedArray.buffer,
       _rshape: shape,
       _rdtype: _dtype
     };
@@ -445,7 +450,7 @@ export class RPC extends MessageEmitter {
       }
       bObject = {
         _rtype: "ndarray",
-        _rvalue: v_buffer,
+        _rvalue: v_buffer.buffer,
         _rshape: aObject.shape,
         _rdtype: aObject.dtype
       };
@@ -462,7 +467,7 @@ export class RPC extends MessageEmitter {
       }
       bObject = {
         _rtype: "ndarray",
-        _rvalue: aObject.selection.data,
+        _rvalue: aObject.selection.data.buffer,
         _rshape: aObject.shape,
         _rdtype: dtype
       };
@@ -495,14 +500,50 @@ export class RPC extends MessageEmitter {
       (typeof FileList !== "undefined" && aObject instanceof FileList)
     ) {
       bObject = aObject;
+      // TODO: avoid object such as DynamicPlugin instance.
+    } else if (typeof File !== "undefined" && aObject instanceof File) {
+      bObject = {
+        _rtype: "file",
+        _rname: aObject.name,
+        _rmime: aObject.type,
+        _rvalue: aObject,
+        _rpath: aObject._path || aObject.webkitRelativePath
+      };
+    } else if (aObject instanceof Blob) {
+      bObject = { _rtype: "blob", _rvalue: aObject };
+    } else if (aObject instanceof ArrayBuffer) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject);
+        delete aObject._transfer;
+      }
+      bObject = { _rtype: "bytes", _rvalue: aObject };
     } else if (aObject instanceof ArrayBufferView) {
       if (aObject._transfer || _transfer) {
         transferables.push(aObject.buffer);
         delete aObject._transfer;
       }
-      bObject = aObject;
-      // TODO: support also Map and Set
-      // TODO: avoid object such as DynamicPlugin instance.
+      const dtype = typedArrayToDtype[aObject.constructor.name];
+      bObject = {
+        _rtype: "typedarray",
+        _rvalue: aObject.buffer,
+        _rdtype: dtype
+      };
+    } else if (aObject instanceof DataView) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject.buffer);
+        delete aObject._transfer;
+      }
+      bObject = { _rtype: "memoryview", _rvalue: aObject.buffer };
+    } else if (aObject instanceof Set) {
+      bObject = {
+        _rtype: "set",
+        _rvalue: this._encode(Array.from(aObject), as_interface)
+      };
+    } else if (aObject instanceof Map) {
+      bObject = {
+        _rtype: "orderedmap",
+        _rvalue: this._encode(Array.from(aObject), as_interface)
+      };
     } else if (
       aObject.constructor instanceof Object ||
       Array.isArray(aObject)
@@ -606,14 +647,15 @@ export class RPC extends MessageEmitter {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = nj
-            .array(aObject._rvalue, aObject._rdtype)
+            .array(new Uint8(aObject._rvalue), aObject._rdtype)
             .reshape(aObject._rshape);
         } else if (typeof tf !== "undefined" && tf.Tensor) {
           if (Array.isArray(aObject._rvalue)) {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
+          const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
           bObject = tf.tensor(
-            aObject._rvalue,
+            new arraytype(aObject._rvalue),
             aObject._rshape,
             aObject._rdtype
           );
@@ -624,8 +666,39 @@ export class RPC extends MessageEmitter {
       } else if (aObject._rtype === "error") {
         bObject = new Error(aObject._rvalue);
       } else if (aObject._rtype === "file") {
+        if (aObject._rvalue instanceof File) {
+          bObject = aObject._rvalue;
+          //patch _path
+          bObject._path = aObject._rpath;
+        } else {
+          bObject = new File([aObject._rvalue], aObject._rname, {
+            type: aObject._rmime
+          });
+          bObject._path = aObject._rpath;
+        }
+      } else if (aObject._rtype === "bytes") {
         bObject = aObject._rvalue;
-        bObject._path = aObject._rpath;
+      } else if (aObject._rtype === "typedarray") {
+        const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
+        if (!arraytype)
+          throw new Error("unsupported dtype: " + aObject._rdtype);
+        bObject = new arraytype(aObject._rvalue);
+      } else if (aObject._rtype === "memoryview") {
+        bObject = new DataView(aObject._rvalue);
+      } else if (aObject._rtype === "blob") {
+        if (aObject._rvalue instanceof Blob) {
+          bObject = aObject._rvalue;
+        } else {
+          bObject = new Blob([aObject._rvalue], { type: aObject._rmime });
+        }
+      } else if (aObject._rtype === "orderedmap") {
+        bObject = new Map(
+          this._decode(aObject._rvalue, callbackId, withPromise)
+        );
+      } else if (aObject._rtype === "set") {
+        bObject = new Set(
+          this._decode(aObject._rvalue, callbackId, withPromise)
+        );
       } else {
         bObject = aObject;
       }
