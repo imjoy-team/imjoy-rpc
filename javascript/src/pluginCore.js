@@ -24,8 +24,8 @@ export function connectRPC(connection, config) {
     if (api.dispose) {
       throw new Error("`dispose` is a reserved function name");
     }
-    api.export = function(_interface) {
-      rpc.setInterface(_interface);
+    api.export = function(_interface, config) {
+      rpc.setInterface(_interface, config);
     };
     api.onLoad = function(handler) {
       handler = checkHandler(handler);

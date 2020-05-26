@@ -46,6 +46,7 @@ class RPC(MessageEmitter):
         self._local_api = None
         self._remote_set = False
         self._store = ReferenceStore()
+        self._remote_interface = None
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
 
@@ -110,8 +111,12 @@ class RPC(MessageEmitter):
             }
         )
 
+    def get_remote(self):
+        return self._remote_interface
+
     def set_interface(self, api, config=None):
         """Set interface."""
+        # TODO: setup forwarding_functions
         self.set_config(config)
         if isinstance(api, dict):
             api = {a: api[a] for a in api.keys() if not a.startswith("_")}
@@ -231,7 +236,7 @@ class RPC(MessageEmitter):
     def set_remote_interface(self, api):
         """Set remote."""
         _remote = self._decode(api, None, False)
-        self._object_store["_rremote"] = _remote
+        self._remote_interface = _remote
         self._fire("remoteReady")
         self._run_with_context(self._set_local_api, _remote)
 

@@ -82,7 +82,7 @@ export class RPC extends MessageEmitter {
    * @returns {Object} set of remote interface methods
    */
   getRemote() {
-    return this._object_store["_rremote"];
+    return this._remote_interface;
   }
 
   /**
@@ -91,10 +91,13 @@ export class RPC extends MessageEmitter {
    *
    * @param {Object} _interface to set
    */
-  setInterface(_interface) {
+  setInterface(_interface, config) {
+    config = config || {};
+    this.config.name = config.name || this.config.name;
+    this.config.description = config.description || this.config.description;
     if (this.config.forwarding_functions) {
       for (let func_name of this.config.forwarding_functions) {
-        const _remote = this._object_store["_rremote"];
+        const _remote = this._remote_interface;
         if (_remote[func_name]) {
           if (_interface.constructor === Object) {
             if (!_interface[func_name]) {
@@ -308,7 +311,7 @@ export class RPC extends MessageEmitter {
    * @param {Array} names list of function names
    */
   _setRemoteInterface(api) {
-    this._object_store["_rremote"] = this._decode(api);
+    this._remote_interface = this._decode(api);
     this._fire("remoteReady");
     this._reportRemoteSet();
   }
