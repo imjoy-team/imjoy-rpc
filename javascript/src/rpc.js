@@ -348,8 +348,8 @@ export class RPC extends MessageEmitter {
           } else {
             args = me._wrap(args);
           }
-          var transferables = args.args.__transferables__;
-          if (transferables) delete args.args.__transferables__;
+          var transferables = args.__transferables__;
+          if (transferables) delete args.__transferables__;
           me._connection.emit(
             {
               type: "method",
@@ -726,8 +726,7 @@ export class RPC extends MessageEmitter {
 
   _wrap(args, as_interface) {
     var wrapped = this._encode(args, as_interface);
-    var result = { args: wrapped };
-    return result;
+    return wrapped;
   }
 
   /**
@@ -742,7 +741,7 @@ export class RPC extends MessageEmitter {
    * @returns {Array} unwrapped args
    */
   _unwrap(args, withPromise) {
-    var result = this._decode(args.args, withPromise);
+    var result = this._decode(args, withPromise);
     return result;
   }
 
@@ -766,8 +765,8 @@ export class RPC extends MessageEmitter {
       remoteCallback = function() {
         return new Promise((resolve, reject) => {
           var args = me._wrap(Array.prototype.slice.call(arguments));
-          var transferables = args.args.__transferables__;
-          if (transferables) delete args.args.__transferables__;
+          var transferables = args.__transferables__;
+          if (transferables) delete args.__transferables__;
           resolve.__jailed_pairs__ = reject;
           reject.__jailed_pairs__ = resolve;
           try {
@@ -790,8 +789,8 @@ export class RPC extends MessageEmitter {
     } else {
       remoteCallback = function() {
         var args = me._wrap(Array.prototype.slice.call(arguments));
-        var transferables = args.args.__transferables__;
-        if (transferables) delete args.args.__transferables__;
+        var transferables = args.__transferables__;
+        if (transferables) delete args.__transferables__;
         return me._connection.emit(
           {
             type: "callback",

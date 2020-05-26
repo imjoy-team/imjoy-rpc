@@ -383,8 +383,7 @@ class RPC(MessageEmitter):
     def wrap(self, args):
         """Wrap arguments."""
         wrapped = self._encode(args)
-        result = {"args": wrapped}
-        return result
+        return wrapped
 
     def _encode(self, a_object, as_interface=False, object_id=None):
         """Encode object."""
@@ -513,7 +512,7 @@ class RPC(MessageEmitter):
     def unwrap(self, args, with_promise):
         """Unwrap arguments."""
         # wraps each callback so that the only one could be called
-        result = self._decode(args["args"], with_promise)
+        result = self._decode(args, with_promise)
         return result
 
     def _decode(self, a_object, with_promise):
