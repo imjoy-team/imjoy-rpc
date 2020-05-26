@@ -25,6 +25,13 @@ function _appendBuffer(buffer1, buffer2) {
 function getKeyByValue(object, value) {
   return Object.keys(object).find(key => object[key] === value);
 }
+
+function indexObject(obj, is) {
+  if (typeof is == "string") return indexObject(obj, is.split("."));
+  else if (is.length == 0) return obj;
+  else return indexObject(obj[is[0]], is.slice(1));
+}
+
 /**
  * RPC object represents a single site in the
  * communication protocol between the application and the plugin
@@ -171,28 +178,15 @@ export class RPC extends MessageEmitter {
 
     this._connection.on("method", data => {
       let resolve, reject, method, args, result;
-      let _interface = this._object_store[data.pid];
-      const _method_context = _interface;
-      if (!_interface) {
+      try {
         if (data.promise) {
           [resolve, reject] = this._unwrap(data.promise, false);
-          reject(
-            `plugin api function is not avaialbe in "${data.pid}", the plugin maybe terminated.`
-          );
-        } else {
-          console.error(
-            `plugin api function is not avaialbe in ${data.pid}, the plugin maybe terminated.`
-          );
         }
-        return;
-      }
-
-      method = _interface[data.name];
-      args = this._unwrap(data.args, true);
-      if (data.promise) {
-        [resolve, reject] = this._unwrap(data.promise, false);
-        try {
-          result = method.apply(_method_context, args);
+        const _interface = this._object_store[data.object_id];
+        method = indexObject(_interface, data.name);
+        args = this._unwrap(data.args, true);
+        if (data.promise) {
+          result = method.apply(_interface, args);
           if (
             result instanceof Promise ||
             (method.constructor && method.constructor.name === "AsyncFunction")
@@ -201,24 +195,24 @@ export class RPC extends MessageEmitter {
           } else {
             resolve(result);
           }
-        } catch (e) {
-          console.error(this.config.name, e, method);
-          reject(e);
+        } else {
+          method.apply(_interface, args);
         }
-      } else {
-        try {
-          method.apply(_method_context, args);
-        } catch (e) {
-          console.error(this.config.name, e, method, args);
+      } catch (err) {
+        console.error(this.config.name, err);
+        if (reject) {
+          reject(err);
         }
       }
     });
 
     this._connection.on("callback", data => {
       let resolve, reject, method, args, result;
-      if (data.promise) {
-        [resolve, reject] = this._unwrap(data.promise, false);
-        try {
+      try {
+        if (data.promise) {
+          [resolve, reject] = this._unwrap(data.promise, false);
+        }
+        if (data.promise) {
           method = this._store.fetch(data.index);
           args = this._unwrap(data.args, true);
           if (!method) {
@@ -235,12 +229,7 @@ export class RPC extends MessageEmitter {
           } else {
             resolve(result);
           }
-        } catch (e) {
-          console.error(this.config.name, e, method);
-          reject(e);
-        }
-      } else {
-        try {
+        } else {
           method = this._store.fetch(data.index);
           args = this._unwrap(data.args, true);
           if (!method) {
@@ -249,8 +238,11 @@ export class RPC extends MessageEmitter {
             );
           }
           method.apply(null, args);
-        } catch (e) {
-          console.error(this.config.name, e, method, args);
+        }
+      } catch (err) {
+        console.error(this.config.name, err);
+        if (reject) {
+          reject(err);
         }
       }
     });
@@ -357,7 +349,7 @@ export class RPC extends MessageEmitter {
             {
               type: "method",
               name: name,
-              pid: object_id,
+              object_id: object_id,
               args: args,
               promise: me._wrap([wrapped_resolve, wrapped_reject])
             },
@@ -574,7 +566,10 @@ export class RPC extends MessageEmitter {
       }
       // encode interfaces
       if (aObject._rintf || as_interface) {
-        object_id = randId();
+        if (!object_id) {
+          object_id = randId();
+          this._object_store[object_id] = aObject;
+        }
         for (let k of keys) {
           if (k === "constructor") continue;
           if (k.startsWith("_")) {
@@ -585,15 +580,19 @@ export class RPC extends MessageEmitter {
             typeof aObject[k] === "function" ||
             aObject.constructor instanceof Object ||
             Array.isArray(aObject)
-          )
-            bObject[k] = this._encode(aObject[k], k, object_id);
-          else if (aObject !== Object(aObject)) {
+          ) {
+            bObject[k] = this._encode(
+              aObject[k],
+              typeof as_interface === "string" ? as_interface + "." + k : k,
+              object_id
+            );
+          } else if (aObject !== Object(aObject)) {
             bObject[k] = aObject[k];
           }
         }
         // object id, used for dispose the object
         bObject._rintf = object_id;
-        this._object_store[object_id] = aObject;
+
         // remove interface when closed
         if (aObject.on && typeof aObject.on === "function") {
           aObject.on("close", () => {
@@ -778,7 +777,7 @@ export class RPC extends MessageEmitter {
                 type: "callback",
                 index: index,
                 args: args,
-                // pid :  me.id,
+                // object_id :  me.id,
                 promise: me._wrap([resolve, reject])
               },
               transferables
@@ -799,7 +798,7 @@ export class RPC extends MessageEmitter {
             type: "callback",
             index: index,
             args: args
-            // pid :  me.id
+            // object_id :  me.id
           },
           transferables
         );

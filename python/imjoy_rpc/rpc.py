@@ -35,6 +35,19 @@ except:
     logger.warn("failed to import numpy, ndarray encoding/decoding will not work")
 
 
+def index_object(obj, ids):
+    if isinstance(ids, str):
+        return index_object(obj, ids.split("."))
+    elif len(ids) == 0:
+        return obj
+    else:
+        if isinstance(obj, dict):
+            _obj = obj[ids[0]]
+        else:
+            _obj = getattr(obj, ids[0])
+        return index_object(_obj, ids[1:])
+
+
 class RPC(MessageEmitter):
     def __init__(
         self, connection, rpc_context, export, config=None,
@@ -145,7 +158,6 @@ class RPC(MessageEmitter):
         """Send interface."""
         if self._local_api is None:
             raise Exception("interface is not set.")
-        self._local_api["_rid"] = "_rlocal"
         api = self._encode(self._local_api, True)
         self._connection.emit({"type": "setInterface", "api": api})
 
@@ -179,7 +191,7 @@ class RPC(MessageEmitter):
                 call_func = {
                     "type": "method",
                     "name": name,
-                    "pid": plugin_id,
+                    "object_id": plugin_id,
                     "args": self.wrap(arguments),
                     "promise": self.wrap([resolve, reject]),
                 }
@@ -207,7 +219,7 @@ class RPC(MessageEmitter):
                         {
                             "type": "callback",
                             "index": index,
-                            # 'pid'  : self.id,
+                            # 'object_id'  : self.id,
                             "args": self.wrap(arguments),
                             "promise": self.wrap([resolve, reject]),
                         }
@@ -226,7 +238,7 @@ class RPC(MessageEmitter):
                         "type": "callback",
                         "id": id_,
                         "index": index,
-                        # 'pid'  : self.id,
+                        # 'object_id'  : self.id,
                         "args": self.wrap(arguments),
                     }
                 )
@@ -340,11 +352,13 @@ class RPC(MessageEmitter):
             logger.warn("execution is blocked due to allow_execution=False")
 
     def _handle_method(self, data):
-        interface = self._object_store[data["pid"]]
-        if data["name"] in interface:
+        reject = None
+        try:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
-                method = interface[data["name"]]
+            _interface = self._object_store[data["object_id"]]
+            method = index_object(_interface, data["name"])
+            if "promise" in data:
                 args = self.unwrap(data["args"], True)
                 # args.append({'id': self.id})
                 result = self._run_with_context(
@@ -356,53 +370,60 @@ class RPC(MessageEmitter):
                     method_name=data["name"]
                 )
             else:
-                method = interface[data["name"]]
                 args = self.unwrap(data["args"], True)
                 # args.append({'id': self.id})
                 result = self._run_with_context(
                     self._call_method, method, *args, method_name=data["name"]
                 )
-        else:
-            traceback_error = "method " + data["name"] + " is not found."
+        except Exception as e:
+            traceback_error = traceback.format_exc()
+            logger.error("error during calling method: %s", traceback_error)
             self._connection.emit({"type": "error", "message": traceback_error})
-            logger.error(
-                "error in method %s: %s", data["name"], traceback_error,
-            )
+            if reject:
+                reject(traceback_error)
 
     def _handle_callback(self, data):
-        if "promise" in data:
-            resolve, reject = self.unwrap(data["promise"], False)
-            method = self._store.fetch(data["index"])
-            if method is None:
-                raise Exception(
-                    "Callback function can only called once, "
-                    "if you want to call a function for multiple times, "
-                    "please make it as a plugin api function. "
-                    "See https://imjoy.io/docs for more details."
+        reject = None
+        try:
+            if "promise" in data:
+                resolve, reject = self.unwrap(data["promise"], False)
+                method = self._store.fetch(data["index"])
+                if method is None:
+                    raise Exception(
+                        "Callback function can only called once, "
+                        "if you want to call a function for multiple times, "
+                        "please make it as a plugin api function. "
+                        "See https://imjoy.io/docs for more details."
+                    )
+                args = self.unwrap(data["args"], True)
+                result = self._run_with_context(
+                    self._call_method,
+                    method,
+                    *args,
+                    resolve=resolve,
+                    reject=reject,
+                    method_name=data["index"]
                 )
-            args = self.unwrap(data["args"], True)
-            result = self._run_with_context(
-                self._call_method,
-                method,
-                *args,
-                resolve=resolve,
-                reject=reject,
-                method_name=data["index"]
-            )
 
-        else:
-            method = self._store.fetch(data["index"])
-            if method is None:
-                raise Exception(
-                    "Callback function can only called once, "
-                    "if you want to call a function for multiple times, "
-                    "please make it as a plugin api function. "
-                    "See https://imjoy.io/docs for more details."
+            else:
+                method = self._store.fetch(data["index"])
+                if method is None:
+                    raise Exception(
+                        "Callback function can only called once, "
+                        "if you want to call a function for multiple times, "
+                        "please make it as a plugin api function. "
+                        "See https://imjoy.io/docs for more details."
+                    )
+                args = self.unwrap(data["args"], True)
+                result = self._run_with_context(
+                    self._call_method, method, *args, method_name=data["index"]
                 )
-            args = self.unwrap(data["args"], True)
-            result = self._run_with_context(
-                self._call_method, method, *args, method_name=data["index"]
-            )
+        except Exception as e:
+            traceback_error = traceback.format_exc()
+            logger.error("error when calling callback function: %s", traceback_error)
+            self._connection.emit({"type": "error", "message": traceback_error})
+            if reject:
+                reject(traceback_error)
 
     def wrap(self, args):
         """Wrap arguments."""
@@ -513,7 +534,13 @@ class RPC(MessageEmitter):
                         or isinstance(a_object_norm[key], (list, dict))
                         or inspect.isclass(type(a_object_norm[key]))
                     ):
-                        b_object[key] = self._encode(a_object_norm[key], key, object_id)
+                        b_object[key] = self._encode(
+                            a_object_norm[key],
+                            as_interface + "." + key
+                            if isinstance(as_interface, str)
+                            else key,
+                            object_id,
+                        )
                     elif isinstance(a_object_norm[key], (int, float, bool, str)):
                         b_object[key] = a_object_norm[key]
                 b_object["_rintf"] = object_id
@@ -555,15 +582,9 @@ class RPC(MessageEmitter):
             if a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(a_object["_rindex"], with_promise)
             elif a_object["_rtype"] == "interface":
-                name = a_object["_rvalue"]
-                rid = a_object["_rid"]
-                intfid = (
-                    "_rrmote" if a_object["_rid"] == "_rlocal" else a_object["_rid"]
+                b_object = self._gen_remote_method(
+                    a_object["_rvalue"], a_object["_rintf"]
                 )
-                if intfid in self._object_store:
-                    b_object = self._object_store[intfid][name]
-                else:
-                    b_object = self._gen_remote_method(name, rid)
             elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
                 try:

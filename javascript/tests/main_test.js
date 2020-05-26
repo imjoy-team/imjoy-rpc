@@ -295,6 +295,15 @@ describe("RPC", async () => {
 
   it("should encode/decode data", async () => {
     const plugin_interface = {
+      embed: {
+        embed: {
+          value: 8873,
+          sayHello: () => {
+            console.log("hello");
+            return true;
+          }
+        }
+      },
       echo: msg => {
         return msg;
       }
@@ -308,6 +317,9 @@ describe("RPC", async () => {
     );
 
     const msg = "this is an messge.";
+    expect(api.embed.embed).to.include.all.keys("value", "sayHello");
+    expect(api.embed.embed.value).to.equal(8873);
+    expect(await api.embed.embed.sayHello()).to.equal(true);
     expect(await api.echo(msg)).to.equal(msg);
     expect(await api.echo(99)).to.equal(99);
     expect(
