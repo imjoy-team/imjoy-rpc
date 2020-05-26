@@ -603,6 +603,20 @@ export class RPC extends MessageEmitter {
           bObject[k] = this._encode(aObject[k]);
         }
       }
+      // for example, browserFS object
+    } else if (typeof aObject === "object") {
+      const keys = Object.getOwnPropertyNames(
+        Object.getPrototypeOf(aObject)
+      ).concat(Object.keys(aObject));
+      const object_id = randId();
+
+      for (let k of keys) {
+        if (["hasOwnProperty", "constructor"].includes(k)) continue;
+        // encode as interface
+        bObject[k] = this._encode(aObject[k], k, bObject);
+      }
+      // object id, used for dispose the object
+      bObject._rintf = object_id;
     } else {
       throw "imjoy-rpc: Unsupported data type:" + aObject;
     }
