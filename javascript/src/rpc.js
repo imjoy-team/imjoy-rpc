@@ -216,7 +216,7 @@ export class RPC extends MessageEmitter {
       if (data.promise) {
         [resolve, reject] = this._unwrap(data.promise, false);
         try {
-          method = this._store.fetch(data._rindex);
+          method = this._store.fetch(data.index);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -238,7 +238,7 @@ export class RPC extends MessageEmitter {
         }
       } else {
         try {
-          method = this._store.fetch(data._rindex);
+          method = this._store.fetch(data.index);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -627,7 +627,7 @@ export class RPC extends MessageEmitter {
     return bObject;
   }
 
-  _decode(aObject, callbackId, withPromise) {
+  _decode(aObject, withPromise) {
     if (!aObject) {
       return aObject;
     }
@@ -646,11 +646,7 @@ export class RPC extends MessageEmitter {
           bObject = aObject;
         }
       } else if (aObject._rtype === "callback") {
-        bObject = this._genRemoteCallback(
-          callbackId,
-          aObject._rindex,
-          withPromise
-        );
+        bObject = this._genRemoteCallback(aObject._rindex, withPromise);
       } else if (aObject._rtype === "interface") {
         bObject = this._genRemoteMethod(aObject._rvalue, aObject._rintf);
       } else if (aObject._rtype === "ndarray") {
@@ -706,13 +702,9 @@ export class RPC extends MessageEmitter {
           bObject = new Blob([aObject._rvalue], { type: aObject._rmime });
         }
       } else if (aObject._rtype === "orderedmap") {
-        bObject = new Map(
-          this._decode(aObject._rvalue, callbackId, withPromise)
-        );
+        bObject = new Map(this._decode(aObject._rvalue, withPromise));
       } else if (aObject._rtype === "set") {
-        bObject = new Set(
-          this._decode(aObject._rvalue, callbackId, withPromise)
-        );
+        bObject = new Set(this._decode(aObject._rvalue, withPromise));
       } else {
         bObject = aObject;
       }
@@ -723,7 +715,7 @@ export class RPC extends MessageEmitter {
       for (k in aObject) {
         if (isarray || aObject.hasOwnProperty(k)) {
           v = aObject[k];
-          bObject[k] = this._decode(v, callbackId, withPromise);
+          bObject[k] = this._decode(v, withPromise);
         }
       }
       return bObject;
@@ -750,22 +742,7 @@ export class RPC extends MessageEmitter {
    * @returns {Array} unwrapped args
    */
   _unwrap(args, withPromise) {
-    // var called = false;
-
-    // wraps each callback so that the only one could be called
-    // var once(cb) {
-    //     return function() {
-    //         if (!called) {
-    //             called = true;
-    //             return cb.apply(this, arguments);
-    //         } else {
-    //             var msg =
-    //               'A callback from this set has already been executed';
-    //             throw new Error(msg);
-    //         }
-    //     };
-    // }
-    var result = this._decode(args.args, args.callbackId, withPromise);
+    var result = this._decode(args.args, withPromise);
     return result;
   }
 
@@ -782,7 +759,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote callback
    */
-  _genRemoteCallback(id, argNum, withPromise) {
+  _genRemoteCallback(index, withPromise) {
     var me = this;
     var remoteCallback;
     if (withPromise) {
@@ -797,8 +774,7 @@ export class RPC extends MessageEmitter {
             me._connection.emit(
               {
                 type: "callback",
-                id: id,
-                _rindex: argNum,
+                index: index,
                 args: args,
                 // pid :  me.id,
                 promise: me._wrap([resolve, reject])
@@ -806,9 +782,7 @@ export class RPC extends MessageEmitter {
               transferables
             );
           } catch (e) {
-            reject(
-              `Failed to exectue remote callback (id: ${id}, argNum: ${argNum}).`
-            );
+            reject(`Failed to exectue remote callback ( index: ${index}).`);
           }
         });
       };
@@ -821,8 +795,7 @@ export class RPC extends MessageEmitter {
         return me._connection.emit(
           {
             type: "callback",
-            id: id,
-            _rindex: argNum,
+            index: index,
             args: args
             // pid :  me.id
           },

@@ -170,7 +170,7 @@ class RPC(MessageEmitter):
         remote_method.__remote_method = True  # pylint: disable=protected-access
         return remote_method
 
-    def _gen_remote_callback(self, id_, arg_num, with_promise):
+    def _gen_remote_callback(self, index, with_promise):
         """Return remote callback."""
         if with_promise:
 
@@ -186,8 +186,7 @@ class RPC(MessageEmitter):
                     self._connection.emit(
                         {
                             "type": "callback",
-                            "id": id_,
-                            "_rindex": arg_num,
+                            "index": index,
                             # 'pid'  : self.id,
                             "args": self.wrap(arguments),
                             "promise": self.wrap([resolve, reject]),
@@ -206,7 +205,7 @@ class RPC(MessageEmitter):
                     {
                         "type": "callback",
                         "id": id_,
-                        "_rindex": arg_num,
+                        "index": index,
                         # 'pid'  : self.id,
                         "args": self.wrap(arguments),
                     }
@@ -349,7 +348,7 @@ class RPC(MessageEmitter):
     def _handle_callback(self, data):
         if "promise" in data:
             resolve, reject = self.unwrap(data["promise"], False)
-            method = self._store.fetch(data["_rindex"])
+            method = self._store.fetch(data["index"])
             if method is None:
                 raise Exception(
                     "Callback function can only called once, "
@@ -364,11 +363,11 @@ class RPC(MessageEmitter):
                 *args,
                 resolve=resolve,
                 reject=reject,
-                method_name=data["_rindex"]
+                method_name=data["index"]
             )
 
         else:
-            method = self._store.fetch(data["_rindex"])
+            method = self._store.fetch(data["index"])
             if method is None:
                 raise Exception(
                     "Callback function can only called once, "
@@ -378,7 +377,7 @@ class RPC(MessageEmitter):
                 )
             args = self.unwrap(data["args"], True)
             result = self._run_with_context(
-                self._call_method, method, *args, method_name=data["_rindex"]
+                self._call_method, method, *args, method_name=data["index"]
             )
 
     def wrap(self, args):
@@ -513,13 +512,11 @@ class RPC(MessageEmitter):
 
     def unwrap(self, args, with_promise):
         """Unwrap arguments."""
-        if "callbackId" not in args:
-            args["callbackId"] = None
         # wraps each callback so that the only one could be called
-        result = self._decode(args["args"], args["callbackId"], with_promise)
+        result = self._decode(args["args"], with_promise)
         return result
 
-    def _decode(self, a_object, callback_id, with_promise):
+    def _decode(self, a_object, with_promise):
         """Decode object."""
         if a_object is None:
             return a_object
@@ -533,9 +530,7 @@ class RPC(MessageEmitter):
                     b_object = a_object
 
             if a_object["_rtype"] == "callback":
-                b_object = self._gen_remote_callback(
-                    callback_id, a_object["_rindex"], with_promise
-                )
+                b_object = self._gen_remote_callback(a_object["_rindex"], with_promise)
             elif a_object["_rtype"] == "interface":
                 name = a_object["_rvalue"]
                 rid = a_object["_rid"]
@@ -585,13 +580,9 @@ class RPC(MessageEmitter):
                 else:
                     b_object = a_object["_rvalue"]
             elif a_object["_rtype"] == "orderedmap":
-                b_object = OrderedDict(
-                    self._decode(a_object["_rvalue"], callback_id, with_promise)
-                )
+                b_object = OrderedDict(self._decode(a_object["_rvalue"], with_promise))
             elif a_object["_rtype"] == "set":
-                b_object = set(
-                    self._decode(a_object["_rvalue"], callback_id, with_promise)
-                )
+                b_object = set(self._decode(a_object["_rvalue"], with_promise))
             elif a_object["_rtype"] == "error":
                 b_object = Exception(a_object["_rvalue"])
             else:
@@ -610,11 +601,9 @@ class RPC(MessageEmitter):
                     val = a_object[key]
                     if isinstance(val, (dict, list)):
                         if isarray:
-                            b_object.append(
-                                self._decode(val, callback_id, with_promise)
-                            )
+                            b_object.append(self._decode(val, with_promise))
                         else:
-                            b_object[key] = self._decode(val, callback_id, with_promise)
+                            b_object[key] = self._decode(val, with_promise)
             return b_object
         else:
             return a_object
