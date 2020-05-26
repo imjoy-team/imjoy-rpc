@@ -97,7 +97,7 @@ function initPlugin(config) {
   const pluginConfig = {
     allow_execution: false,
     version: "0.1.0",
-    api_version: "0.2.1",
+    api_version: "0.2.2",
     dedicated_thread: true,
     description: "Jupyter notebook",
     id: "jupyter_" + randId(),

@@ -20,7 +20,7 @@ from .utils import (
     MessageEmitter,
 )
 
-API_VERSION = "0.2.1"
+API_VERSION = "0.2.2"
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
