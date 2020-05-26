@@ -56,6 +56,7 @@ class RPC(MessageEmitter):
         self.services = {}
         self._object_store = {}
         self._method_weakmap = weakref.WeakKeyDictionary()
+        self._object_weakmap = weakref.WeakKeyDictionary()
         self._local_api = None
         self._remote_set = False
         self._store = ReferenceStore()
@@ -150,7 +151,8 @@ class RPC(MessageEmitter):
             api["exit"] = exit_wrapper
         else:
             api["exit"] = self.default_exit
-        self._local_api = api
+        # store it in a docdict such that the methods are hashable
+        self._local_api = dotdict(api)
 
         self._fire("interfaceAvailable")
 
@@ -166,11 +168,9 @@ class RPC(MessageEmitter):
         if object_id in self._object_store:
             del self._object_store[object_id]
 
-    def dispose_object(proxy_obj):
-        if isinstance(proxy_obj, dict) and proxy_obj.get("_rintf"):
-            object_id = proxy_obj["_rintf"]
-        elif getattr(proxy_obj, "_rintf"):
-            object_id = proxy_obj._rintf
+    def dispose_object(obj):
+        if obj in self._object_weakmap:
+            object_id = self._object_weakmap[obj]
         else:
             raise Exception("Invalid object")
 
@@ -210,7 +210,6 @@ class RPC(MessageEmitter):
                 # wrap keywords to a dictionary and pass to the first argument
                 if not arguments and kwargs:
                     arguments = [kwargs]
-                self._connection.emit({"type": "log", "message": str(arguments)})
 
                 def pfunc(resolve, reject):
                     resolve.__jailed_pairs__ = reject
@@ -236,7 +235,6 @@ class RPC(MessageEmitter):
                 self._connection.emit(
                     {
                         "type": "callback",
-                        "id": id_,
                         "index": index,
                         # 'object_id'  : self.id,
                         "args": self.wrap(arguments),
@@ -247,7 +245,7 @@ class RPC(MessageEmitter):
 
     def set_remote_interface(self, api):
         """Set remote."""
-        _remote = self._decode(api, None, False)
+        _remote = self._decode(api, False)
         self._remote_interface = _remote
         self._fire("remoteReady")
         self._run_with_context(self._set_local_api, _remote)
@@ -262,6 +260,7 @@ class RPC(MessageEmitter):
         self.rpc_context.api.utils = dotdict()
         self.rpc_context.api.WORK_DIR = self.work_dir
         self.rpc_context.api.export = self.export
+        self.rpc_context.api.disposeObject = self.dispose_object
 
     def _call_method(self, method, *args, resolve=None, reject=None, method_name=None):
         try:
@@ -286,7 +285,7 @@ class RPC(MessageEmitter):
 
                 asyncio.ensure_future(_wait(result))
             else:
-                if reject is not None:
+                if resolve is not None:
                     resolve(result)
         except Exception as e:
             traceback_error = traceback.format_exc()
@@ -361,7 +360,7 @@ class RPC(MessageEmitter):
             if "promise" in data:
                 args = self.unwrap(data["args"], True)
                 # args.append({'id': self.id})
-                result = self._run_with_context(
+                self._run_with_context(
                     self._call_method,
                     method,
                     *args,
@@ -372,7 +371,7 @@ class RPC(MessageEmitter):
             else:
                 args = self.unwrap(data["args"], True)
                 # args.append({'id': self.id})
-                result = self._run_with_context(
+                self._run_with_context(
                     self._call_method, method, *args, method_name=data["name"]
                 )
         except Exception as e:
@@ -396,7 +395,7 @@ class RPC(MessageEmitter):
                         "See https://imjoy.io/docs for more details."
                     )
                 args = self.unwrap(data["args"], True)
-                result = self._run_with_context(
+                self._run_with_context(
                     self._call_method,
                     method,
                     *args,
@@ -415,7 +414,7 @@ class RPC(MessageEmitter):
                         "See https://imjoy.io/docs for more details."
                     )
                 args = self.unwrap(data["args"], True)
-                result = self._run_with_context(
+                self._run_with_context(
                     self._call_method, method, *args, method_name=data["index"]
                 )
         except Exception as e:
@@ -449,12 +448,12 @@ class RPC(MessageEmitter):
         if a_object is not None and callable(self._local_api.get("_rpc_encode")):
             encoded_obj = self._local_api["_rpc_encode"](a_object)
             if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
-                b_object[key] = {
+                b_object = {
                     "_rtype": "custom",
                     "_rvalue": encoded_obj,
                     "_rid": a_object["_rid"],
                 }
-                continue
+                return b_object
             # if the returned object does not contain _rtype, assuming the object has been transformed
             elif encoded_obj is not None:
                 a_object = encoded_obj
@@ -468,7 +467,7 @@ class RPC(MessageEmitter):
                     "_rintf": object_id,
                     "_rvalue": as_interface,
                 }
-                self._method_weakmap[a_object] = a_object
+                self._method_weakmap[a_object] = b_object
             elif a_object in self._method_weakmap:
                 b_object = self._method_weakmap[a_object]
             else:
@@ -492,25 +491,32 @@ class RPC(MessageEmitter):
         elif isinstance(a_object, Exception):
             b_object = {"_rtype": "error", "_rvalue": str(a_object)}
         # TODO: encode file object
-        elif isinstance(val, (int, float, bool, str)):
+        elif isinstance(a_object, (int, float, bool, str)):
             b_object = a_object
-        elif isinstance(val, bytes):
-            v_obj = {"_rtype": "bytes", "_rvalue": val}
-        elif isinstance(val, memoryview):
-            v_obj = {"_rtype": "memoryview", "_rvalue": val}
+        elif isinstance(a_object, bytes):
+            v_obj = {"_rtype": "bytes", "_rvalue": a_object}
+        elif isinstance(a_object, memoryview):
+            v_obj = {"_rtype": "memoryview", "_rvalue": a_object}
         # NOTE: "typedarray" is not used
-        elif isinstance(val, OrderedDict):
+        elif isinstance(a_object, OrderedDict):
             v_obj = {
                 "_rtype": "orderedmap",
-                "_rvalue": self._encode(list(val), as_interface),
+                "_rvalue": self._encode(list(a_object), as_interface),
             }
-        elif isinstance(val, set):
-            v_obj = {"_rtype": "set", "_rvalue": self._encode(list(val), as_interface)}
+        elif isinstance(a_object, set):
+            v_obj = {
+                "_rtype": "set",
+                "_rvalue": self._encode(list(a_object), as_interface),
+            }
         elif hasattr(a_object, "_rintf") and a_object._rintf == True:
             b_object = self._encode(a_object, true)
-        elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
+        elif isinstance(a_object, (list, dict, dotdict)) or inspect.isclass(
+            type(a_object)
+        ):
             b_object = [] if isarray else {}
-            if inspect.isclass(type(a_object)):
+            if not isinstance(a_object, (list, dict, dotdict)) and inspect.isclass(
+                type(a_object)
+            ):
                 a_object_norm = {
                     a: getattr(a_object, a)
                     for a in dir(a_object)
@@ -526,7 +532,7 @@ class RPC(MessageEmitter):
             if (not isarray and a_object_norm.get("_rintf")) or as_interface:
                 object_id = str(uuid.uuid4())
                 for key in keys:
-                    if key.startswith("_"):
+                    if isinstance(key, str) and key.startswith("_"):
                         continue
                     # only encode int, float, bool, str, function, dict, list
                     if (
@@ -534,16 +540,26 @@ class RPC(MessageEmitter):
                         or isinstance(a_object_norm[key], (list, dict))
                         or inspect.isclass(type(a_object_norm[key]))
                     ):
-                        b_object[key] = self._encode(
+
+                        encoded = self._encode(
                             a_object_norm[key],
                             as_interface + "." + key
                             if isinstance(as_interface, str)
                             else key,
                             object_id,
                         )
+                        if isarray:
+                            b_object.append(encoded)
+                        else:
+                            b_object[key] = encoded
                     elif isinstance(a_object_norm[key], (int, float, bool, str)):
-                        b_object[key] = a_object_norm[key]
-                b_object["_rintf"] = object_id
+                        if isarray:
+                            b_object.append(a_object_norm[key])
+                        else:
+                            b_object[key] = a_object_norm[key]
+                # TODO: how to despose list object? create a wrapper for list?
+                if not isarray:
+                    b_object["_rintf"] = object_id
                 self._object_store[object_id] = a_object
                 # remove interface when closed
                 if "on" in a_object_norm and callable(a_object_norm["on"]):
@@ -554,7 +570,10 @@ class RPC(MessageEmitter):
                     a_object_norm["on"]("close", remove_interface)
             else:
                 for key in keys:
-                    b_object[key] = self._encode(a_object_norm[key])
+                    if isarray:
+                        b_object.append(self._encode(a_object_norm[key]))
+                    else:
+                        b_object[key] = self._encode(a_object_norm[key])
         else:
             raise Exception("imjoy-rpc: Unsupported data type:" + str(aObject))
 
@@ -631,12 +650,10 @@ class RPC(MessageEmitter):
                 b_object = Exception(a_object["_rvalue"])
             else:
                 b_object = a_object
-            return b_object
 
-        if isinstance(a_object, tuple):
-            a_object = list(a_object)
-
-        if isinstance(a_object, (dict, list)):
+        elif isinstance(a_object, (dict, list, tuple)):
+            if isinstance(a_object, tuple):
+                a_object = list(a_object)
             isarray = isinstance(a_object, list)
             b_object = [] if isarray else dotdict()
             keys = range(len(a_object)) if isarray else a_object.keys()
@@ -648,6 +665,12 @@ class RPC(MessageEmitter):
                             b_object.append(self._decode(val, with_promise))
                         else:
                             b_object[key] = self._decode(val, with_promise)
-            return b_object
-        else:
-            return a_object
+
+        # object id, used for dispose the object
+        if isinstance(a_object, dict) and a_object.get("_rintf"):
+            # make the dict hashable
+            if isinstance(b_object, dict) and not isinstance(b_object, dotdict):
+                b_object = dotdict(b_object)
+            self._object_weakmap[b_object] = a_object.get("_rintf")
+
+        return b_object

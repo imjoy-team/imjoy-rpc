@@ -24,6 +24,9 @@ export function connectRPC(connection, config) {
     if (api.dispose) {
       throw new Error("`dispose` is a reserved function name");
     }
+    api.disposeObject = function(obj) {
+      rpc.disposeObject(obj);
+    };
     api.export = function(_interface, config) {
       rpc.setInterface(_interface, config);
     };

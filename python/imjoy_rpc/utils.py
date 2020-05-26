@@ -12,6 +12,9 @@ class dotdict(dict):  # pylint: disable=invalid-name
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
+    def __hash__(self):
+        return hash(tuple(sorted(self.items())))
+
     def __deepcopy__(self, memo=None):
         """Make a deep copy."""
         return dotdict(copy.deepcopy(dict(self), memo=memo))

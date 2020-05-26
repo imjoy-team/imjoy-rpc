@@ -47,6 +47,7 @@ export class RPC extends MessageEmitter {
     this.config = config || {};
     this._object_store = {};
     this._method_weakmap = new WeakMap();
+    this._object_weakmap = new WeakMap();
     this._local_api = null;
     // make sure there is an execute function
     const name = this.config.name;
@@ -145,11 +146,12 @@ export class RPC extends MessageEmitter {
     }
   }
 
-  disposeObject(proxyObj) {
-    if (proxyObj._rintf) {
+  disposeObject(obj) {
+    if (this._object_weakmap.has(obj)) {
+      const object_id = this._object_weakmap.get(obj);
       this._connection.emit({
         type: "disposeObject",
-        object_id: proxyObj._rintf
+        object_id: object_id
       });
     } else {
       throw new Error("Invalid object");
@@ -177,6 +179,7 @@ export class RPC extends MessageEmitter {
     });
 
     this._connection.on("method", data => {
+      debugger;
       let resolve, reject, method, args, result;
       try {
         if (data.promise) {
@@ -590,9 +593,9 @@ export class RPC extends MessageEmitter {
             bObject[k] = aObject[k];
           }
         }
-        // object id, used for dispose the object
+        // object id for dispose the object remotely
         bObject._rintf = object_id;
-
+        this._method_weakmap.set(aObject, bObject);
         // remove interface when closed
         if (aObject.on && typeof aObject.on === "function") {
           aObject.on("close", () => {
@@ -710,7 +713,6 @@ export class RPC extends MessageEmitter {
       } else {
         bObject = aObject;
       }
-      return bObject;
     } else if (aObject.constructor === Object || Array.isArray(aObject)) {
       var isarray = Array.isArray(aObject);
       bObject = isarray ? [] : {};
@@ -720,10 +722,14 @@ export class RPC extends MessageEmitter {
           bObject[k] = this._decode(v, withPromise);
         }
       }
-      return bObject;
     } else {
-      return aObject;
+      bObject = aObject;
     }
+    // store the object id for dispose
+    if (aObject._rintf) {
+      this._object_weakmap.set(bObject, aObject._rintf);
+    }
+    return bObject;
   }
 
   _wrap(args, as_interface) {
