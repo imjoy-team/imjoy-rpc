@@ -68,6 +68,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | Map | OrderedDict  |{_rtype: "orderedmap", _rvalue: _encode(Array.from(v))} |
 | Error | Exception | { _rtype: "error", _rvalue: v.toString() } |
 | ArrayBuffer | bytes  | { _rtype: "bytes", _rvalue: v } |
+| Blob | BytesIO/StringIO  | { _rtype: "blob", _rvalue: v, _rmime: v.type } |
 | DataView | memoryview  |  { _rtype: "memoryview", _rvalue: v.buffer }|
 | TypedArray | 1-D numpy array*  |{_rtype: "typedarray", _rvalue: v.buffer, _rdtype: dtype} |
 | tf.Tensor/nj.array | numpy array  |{_rtype: "ndarray", _rvalue: v.buffer, _rshape: shape, _rdtype: _dtype} |

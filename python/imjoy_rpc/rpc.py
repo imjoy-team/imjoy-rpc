@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import logging
 import os
+import io
 import sys
 import threading
 import time
@@ -513,6 +514,14 @@ class RPC(MessageEmitter):
             v_obj = {"_rtype": "bytes", "_rvalue": a_object}
         elif isinstance(a_object, memoryview):
             v_obj = {"_rtype": "memoryview", "_rvalue": a_object}
+        elif isinstance(
+            a_object, (io.IOBase, io.TextIOBase, io.BufferedIOBase, io.RawIOBase)
+        ):
+            v_obj = {
+                "_rtype": "blob",
+                "_rvalue": a_object.read(),
+                "_rmime": "application/octet-stream",
+            }
         # NOTE: "typedarray" is not used
         elif isinstance(a_object, OrderedDict):
             v_obj = {
@@ -651,6 +660,15 @@ class RPC(MessageEmitter):
                 b_object = a_object["_rvalue"]
             elif a_object["_rtype"] == "memoryview":
                 b_object = memoryview(a_object["_rvalue"])
+            elif a_object["_rtype"] == "blob":
+                if isinstance(a_object["_rvalue"], str):
+                    b_object = io.StringIO(a_object["_rvalue"])
+                elif isinstance(a_object["_rvalue"], bytes):
+                    b_object = io.BytesIO(a_object["_rvalue"])
+                else:
+                    raise Exception(
+                        "Unsupported blob value type: " + str(type(a_object["_rvalue"]))
+                    )
             elif a_object["_rtype"] == "typedarray":
                 if NUMPY:
                     b_object = NUMPY.frombuffer(
