@@ -214,7 +214,7 @@ class RPC(MessageEmitter):
         remote_method.__remote_method = True  # pylint: disable=protected-access
         return remote_method
 
-    def _gen_remote_callback(self, index, with_promise):
+    def _gen_remote_callback(self, cid, with_promise):
         """Return remote callback."""
         if with_promise:
 
@@ -229,7 +229,7 @@ class RPC(MessageEmitter):
                     self._connection.emit(
                         {
                             "type": "callback",
-                            "index": index,
+                            "id": cid,
                             # 'object_id'  : self.id,
                             "args": self.wrap(arguments),
                             "promise": self.wrap([resolve, reject]),
@@ -247,7 +247,7 @@ class RPC(MessageEmitter):
                 self._connection.emit(
                     {
                         "type": "callback",
-                        "index": index,
+                        "id": cid,
                         # 'object_id'  : self.id,
                         "args": self.wrap(arguments),
                     }
@@ -403,7 +403,7 @@ class RPC(MessageEmitter):
         try:
             if "promise" in data:
                 resolve, reject = self.unwrap(data["promise"], False)
-                method = self._store.fetch(data["index"])
+                method = self._store.fetch(data["id"])
                 if method is None:
                     raise Exception(
                         "Callback function can only called once, "
@@ -418,11 +418,11 @@ class RPC(MessageEmitter):
                     *args,
                     resolve=resolve,
                     reject=reject,
-                    method_name=data["index"]
+                    method_name=data["id"]
                 )
 
             else:
-                method = self._store.fetch(data["index"])
+                method = self._store.fetch(data["id"])
                 if method is None:
                     raise Exception(
                         "Callback function can only called once, "
@@ -432,7 +432,7 @@ class RPC(MessageEmitter):
                     )
                 args = self.unwrap(data["args"], True)
                 self._run_with_context(
-                    self._call_method, method, *args, method_name=data["index"]
+                    self._call_method, method, *args, method_name=data["id"]
                 )
         except Exception as e:
             traceback_error = traceback.format_exc()
@@ -491,8 +491,7 @@ class RPC(MessageEmitter):
                 cid = self._store.put(a_object)
                 b_object = {
                     "_rtype": "callback",
-                    "_rvalue": a_object.__name__ or cid,
-                    "_rindex": cid,
+                    "_rvalue": cid,
                 }
 
         elif NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
@@ -624,7 +623,7 @@ class RPC(MessageEmitter):
                     b_object = a_object
 
             if a_object["_rtype"] == "callback":
-                b_object = self._gen_remote_callback(a_object["_rindex"], with_promise)
+                b_object = self._gen_remote_callback(a_object["_rvalue"], with_promise)
             elif a_object["_rtype"] == "interface":
                 b_object = self._gen_remote_method(
                     a_object["_rvalue"], a_object["_rintf"]
@@ -632,17 +631,13 @@ class RPC(MessageEmitter):
             elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
                 try:
-                    if isinstance(a_object["_rvalue"], bytes):
-                        a_object["_rvalue"] = a_object["_rvalue"]
-                    elif isinstance(a_object["_rvalue"], (list, tuple)):
+                    if isinstance(a_object["_rvalue"], (list, tuple)):
                         a_object["_rvalue"] = reduce(
                             (lambda x, y: x + y), a_object["_rvalue"]
                         )
-                    else:
+                    elif not isinstance(a_object["_rvalue"], bytes):
                         raise Exception(
-                            "Unsupported data type: ",
-                            type(a_object["_rvalue"]),
-                            a_object["_rvalue"],
+                            "Unsupported data type: " + str(type(a_object["_rvalue"]))
                         )
                     if NUMPY:
                         b_object = NUMPY.frombuffer(

@@ -224,7 +224,7 @@ export class RPC extends MessageEmitter {
           [resolve, reject] = this._unwrap(data.promise, false);
         }
         if (data.promise) {
-          method = this._store.fetch(data.index);
+          method = this._store.fetch(data.id);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -241,7 +241,7 @@ export class RPC extends MessageEmitter {
             resolve(result);
           }
         } else {
-          method = this._store.fetch(data.index);
+          method = this._store.fetch(data.id);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -450,8 +450,8 @@ export class RPC extends MessageEmitter {
         const cid = this._store.put(aObject);
         bObject = {
           _rtype: "callback",
-          _rvalue: (aObject.constructor && aObject.constructor.name) || cid,
-          _rindex: cid
+          _rname: (aObject.constructor && aObject.constructor.name) || cid,
+          _rvalue: cid
         };
       }
     } else if (
@@ -669,7 +669,7 @@ export class RPC extends MessageEmitter {
           bObject = aObject;
         }
       } else if (aObject._rtype === "callback") {
-        bObject = this._genRemoteCallback(aObject._rindex, withPromise);
+        bObject = this._genRemoteCallback(aObject._rvalue, withPromise);
       } else if (aObject._rtype === "interface") {
         bObject = this._genRemoteMethod(aObject._rvalue, aObject._rintf);
       } else if (aObject._rtype === "ndarray") {
@@ -784,7 +784,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote callback
    */
-  _genRemoteCallback(index, withPromise) {
+  _genRemoteCallback(cid, withPromise) {
     var me = this;
     var remoteCallback;
     if (withPromise) {
@@ -799,7 +799,7 @@ export class RPC extends MessageEmitter {
             me._connection.emit(
               {
                 type: "callback",
-                index: index,
+                id: cid,
                 args: args,
                 // object_id :  me.id,
                 promise: me._wrap([resolve, reject])
@@ -807,7 +807,7 @@ export class RPC extends MessageEmitter {
               transferables
             );
           } catch (e) {
-            reject(`Failed to exectue remote callback ( index: ${index}).`);
+            reject(`Failed to exectue remote callback ( id: ${cid}).`);
           }
         });
       };
@@ -820,7 +820,7 @@ export class RPC extends MessageEmitter {
         return me._connection.emit(
           {
             type: "callback",
-            index: index,
+            id: cid,
             args: args
             // object_id :  me.id
           },
