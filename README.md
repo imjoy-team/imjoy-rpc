@@ -131,3 +131,18 @@ Notes:
     };
     api.export(new Plugin())
     ```
+## Remote Object
+
+When sending a object (a JS `Object`, `Class` or Python `dict`, `class`) remotely via imjoy-rpc, a proxy object will be created on the other side. The object can contain supported data types which will be send directly to remote locations.
+
+Specifically for the methods contained in the object, there are two types of encoding modes (`interface` and `callback`). The difference is that a remote method encoded as `callback` can only be called once and will be destroied after calling, and `interface` mode can be used without this limitation. 
+
+The two types can be switched automatically or manually:
+ * if the object contains a key or property: `_rintf` and the value is true, then all the member function will be treated as `interface` recursively.
+ * if the object is not a basic `Object`/`array` or `dict`/`list` but other general class, then it will be treated as `interface`.
+
+Note: if a method's name starts with `_`, it will not be sent and mapped remotely.
+
+Importantly, When an object is sent to remote location, the object will be stored in an internal object store. Because of the object store will always hold object, it will not be possible for the gabage collector to recycle the resources. To get rid of this issue, you need to dispose the remote object manually by calling `api.disposeObject(obj)` function. This will notify the remote peer to remote the object from the object store, such that the gababe collector can then collect the occupied resources.
+
+**Therefore, please always call `api.disposeObject(obj)` when you don't need a remote object anymore.** This is necessary only for those object encoded as `interface` mode.
