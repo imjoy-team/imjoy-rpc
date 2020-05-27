@@ -2,9 +2,14 @@
  * Contains the RPC object used both by the application
  * site, and by each plugin
  */
-import { randId, typedArrayToDtype, MessageEmitter } from "./utils.js";
+import {
+  randId,
+  typedArrayToDtype,
+  dtypeToTypedArray,
+  MessageEmitter
+} from "./utils.js";
 
-export const API_VERSION = "0.2.1";
+export const API_VERSION = "0.2.2";
 
 const ArrayBufferView = Object.getPrototypeOf(
   Object.getPrototypeOf(new Uint8Array())
@@ -20,6 +25,13 @@ function _appendBuffer(buffer1, buffer2) {
 function getKeyByValue(object, value) {
   return Object.keys(object).find(key => object[key] === value);
 }
+
+function indexObject(obj, is) {
+  if (typeof is == "string") return indexObject(obj, is.split("."));
+  else if (is.length == 0) return obj;
+  else return indexObject(obj[is[0]], is.slice(1));
+}
+
 /**
  * RPC object represents a single site in the
  * communication protocol between the application and the plugin
@@ -33,7 +45,9 @@ export class RPC extends MessageEmitter {
     super(config && config.debug);
     this._connection = connection;
     this.config = config || {};
-    this._interface_store = {};
+    this._object_store = {};
+    this._method_weakmap = new WeakMap();
+    this._object_weakmap = new WeakMap();
     this._local_api = null;
     // make sure there is an execute function
     const name = this.config.name;
@@ -76,7 +90,7 @@ export class RPC extends MessageEmitter {
    * @returns {Object} set of remote interface methods
    */
   getRemote() {
-    return this._interface_store["_rremote"];
+    return this._remote_interface;
   }
 
   /**
@@ -85,10 +99,13 @@ export class RPC extends MessageEmitter {
    *
    * @param {Object} _interface to set
    */
-  setInterface(_interface) {
+  setInterface(_interface, config) {
+    config = config || {};
+    this.config.name = config.name || this.config.name;
+    this.config.description = config.description || this.config.description;
     if (this.config.forwarding_functions) {
       for (let func_name of this.config.forwarding_functions) {
-        const _remote = this._interface_store["_rremote"];
+        const _remote = this._remote_interface;
         if (_remote[func_name]) {
           if (_interface.constructor === Object) {
             if (!_interface[func_name]) {
@@ -118,9 +135,35 @@ export class RPC extends MessageEmitter {
     if (!this._local_api) {
       throw new Error("interface is not set.");
     }
-    this._local_api._rid = "_rlocal";
+    this._local_api._rintf = "_rlocal";
     const api = this._encode(this._local_api, true);
     this._connection.emit({ type: "setInterface", api: api });
+  }
+
+  _disposeObject(object_id) {
+    if (this._object_store[object_id]) {
+      delete this._object_store[object_id];
+    } else {
+      throw new Error(`Object (id=${object_id}) not found.`);
+    }
+  }
+
+  disposeObject(obj) {
+    return new Promise((resolve, reject) => {
+      if (this._object_weakmap.has(obj)) {
+        const object_id = this._object_weakmap.get(obj);
+        this._connection.once("disposed", data => {
+          if (data.error) reject(new Error(data.error));
+          else resolve();
+        });
+        this._connection.emit({
+          type: "disposeObject",
+          object_id: object_id
+        });
+      } else {
+        throw new Error("Invalid object");
+      }
+    });
   }
 
   /**
@@ -138,35 +181,23 @@ export class RPC extends MessageEmitter {
           console.error(e);
           this._connection.emit({
             type: "executed",
-            error: e
+            error: String(e)
           });
         });
     });
 
     this._connection.on("method", data => {
+      debugger;
       let resolve, reject, method, args, result;
-      let _interface = this._interface_store[data.pid];
-      const _method_context = _interface.__this__ || _interface;
-      if (!_interface) {
+      try {
         if (data.promise) {
           [resolve, reject] = this._unwrap(data.promise, false);
-          reject(
-            `plugin api function is not avaialbe in "${data.pid}", the plugin maybe terminated.`
-          );
-        } else {
-          console.error(
-            `plugin api function is not avaialbe in ${data.pid}, the plugin maybe terminated.`
-          );
         }
-        return;
-      }
-
-      method = _interface[data.name];
-      args = this._unwrap(data.args, true);
-      if (data.promise) {
-        [resolve, reject] = this._unwrap(data.promise, false);
-        try {
-          result = method.apply(_method_context, args);
+        const _interface = this._object_store[data.object_id];
+        method = indexObject(_interface, data.name);
+        args = this._unwrap(data.args, true);
+        if (data.promise) {
+          result = method.apply(_interface, args);
           if (
             result instanceof Promise ||
             (method.constructor && method.constructor.name === "AsyncFunction")
@@ -175,25 +206,25 @@ export class RPC extends MessageEmitter {
           } else {
             resolve(result);
           }
-        } catch (e) {
-          console.error(this.config.name, e, method);
-          reject(e);
+        } else {
+          method.apply(_interface, args);
         }
-      } else {
-        try {
-          method.apply(_method_context, args);
-        } catch (e) {
-          console.error(this.config.name, e, method, args);
+      } catch (err) {
+        console.error(this.config.name, err);
+        if (reject) {
+          reject(err);
         }
       }
     });
 
     this._connection.on("callback", data => {
       let resolve, reject, method, args, result;
-      if (data.promise) {
-        [resolve, reject] = this._unwrap(data.promise, false);
-        try {
-          method = this._store.fetch(data._rindex);
+      try {
+        if (data.promise) {
+          [resolve, reject] = this._unwrap(data.promise, false);
+        }
+        if (data.promise) {
+          method = this._store.fetch(data.id);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -209,13 +240,8 @@ export class RPC extends MessageEmitter {
           } else {
             resolve(result);
           }
-        } catch (e) {
-          console.error(this.config.name, e, method);
-          reject(e);
-        }
-      } else {
-        try {
-          method = this._store.fetch(data._rindex);
+        } else {
+          method = this._store.fetch(data.id);
           args = this._unwrap(data.args, true);
           if (!method) {
             throw new Error(
@@ -223,9 +249,26 @@ export class RPC extends MessageEmitter {
             );
           }
           method.apply(null, args);
-        } catch (e) {
-          console.error(this.config.name, e, method, args);
         }
+      } catch (err) {
+        console.error(this.config.name, err);
+        if (reject) {
+          reject(err);
+        }
+      }
+    });
+    this._connection.on("disposeObject", data => {
+      try {
+        this._disposeObject(data.object_id);
+        this._connection.emit({
+          type: "disposed"
+        });
+      } catch (e) {
+        console.error(e);
+        this._connection.emit({
+          type: "disposed",
+          error: String(e)
+        });
       }
     });
     this._connection.on("setInterface", data => {
@@ -270,7 +313,7 @@ export class RPC extends MessageEmitter {
     shape = shape || [typedArray.length];
     return {
       _rtype: "ndarray",
-      _rvalue: typedArray,
+      _rvalue: typedArray.buffer,
       _rshape: shape,
       _rdtype: _dtype
     };
@@ -282,7 +325,7 @@ export class RPC extends MessageEmitter {
    * @param {Array} names list of function names
    */
   _setRemoteInterface(api) {
-    this._interface_store["_rremote"] = this._decode(api);
+    this._remote_interface = this._decode(api);
     this._fire("remoteReady");
     this._reportRemoteSet();
   }
@@ -297,15 +340,13 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote method
    */
-  _genRemoteMethod(name, interface_id) {
+  _genRemoteMethod(name, object_id) {
     var me = this;
     var remoteMethod = function() {
       return new Promise((resolve, reject) => {
         let id = null;
         try {
-          id = me._method_refs.put(
-            interface_id ? interface_id + "/" + name : name
-          );
+          id = me._method_refs.put(object_id ? object_id + "/" + name : name);
           var wrapped_resolve = function() {
             if (id !== null) me._method_refs.fetch(id);
             return resolve.apply(this, arguments);
@@ -324,13 +365,13 @@ export class RPC extends MessageEmitter {
           } else {
             args = me._wrap(args);
           }
-          var transferables = args.args.__transferables__;
-          if (transferables) delete args.args.__transferables__;
+          var transferables = args.__transferables__;
+          if (transferables) delete args.__transferables__;
           me._connection.emit(
             {
               type: "method",
               name: name,
-              pid: interface_id,
+              object_id: object_id,
               args: args,
               promise: me._wrap([wrapped_resolve, wrapped_reject])
             },
@@ -339,7 +380,7 @@ export class RPC extends MessageEmitter {
         } catch (e) {
           if (id) me._method_refs.fetch(id);
           reject(
-            `Failed to exectue remote method (interface: ${interface_id ||
+            `Failed to exectue remote method (interface: ${object_id ||
               me.id}, method: ${name}), error: ${e}`
           );
         }
@@ -366,253 +407,250 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Array} wrapped arguments
    */
-
-  _encodeInterface(aObject) {
-    let v, k, keys;
-    const encoded_interface = {};
-    aObject["_rid"] = aObject["_rid"] || randId();
-    // an object/array
-    if (aObject.constructor === Object || Array.isArray(aObject)) {
-      keys = Object.keys(aObject);
-    }
-    // a class
-    else if (aObject.constructor === Function) {
-      throw new Error("Please instantiate the class before exportting it.");
-    }
-    // instance of a class
-    else if (aObject.constructor.constructor === Function) {
-      keys = Object.getOwnPropertyNames(Object.getPrototypeOf(aObject)).concat(
-        Object.keys(aObject)
-      );
-    } else {
-      throw Error("Unsupported interface type");
-    }
-
-    const bObject = Array.isArray(aObject) ? [] : {};
-
-    for (k of keys) {
-      if (["hasOwnProperty", "constructor"].includes(k)) continue;
-
-      if (k.startsWith("_")) {
-        continue;
-      }
-      v = aObject[k];
-
-      if (typeof v === "function") {
-        bObject[k] = {
-          _rtype: "interface",
-          _rid: aObject["_rid"],
-          _rvalue: k
-        };
-        encoded_interface[k] = v;
-      } else if (Object(v) !== v) {
-        bObject[k] = { _rtype: "argument", _rvalue: v };
-        encoded_interface[k] = v;
-      } else if (typeof v === "object") {
-        bObject[k] = this._encodeInterface(v);
-      }
-    }
-    this._interface_store[aObject["_rid"]] = encoded_interface;
-
-    // remove interface when closed
-    if (aObject.on && typeof aObject.on === "function") {
-      aObject.on("close", () => {
-        delete this._interface_store[aObject["_rid"]];
-      });
-    }
-    return bObject;
-  }
-
-  _encode(aObject, as_interface) {
+  _encode(aObject, as_interface, object_id) {
     const transferables = [];
     if (!aObject) {
       return aObject;
     }
     const _transfer = aObject._transfer;
-    let bObject, v, k;
+    let bObject;
     const isarray = Array.isArray(aObject);
     //skip if already encoded
     if (typeof aObject === "object" && aObject._rtype && aObject._rvalue) {
       return aObject;
     }
 
-    //encode interfaces
-    if (
-      typeof aObject === "object" &&
-      !Array.isArray(aObject) &&
-      (aObject._rintf || as_interface)
-    ) {
-      return this._encodeInterface(aObject);
-    }
-
-    if (as_interface) {
-      aObject["_rid"] = aObject["_rid"] || randId();
-      this._interface_store[aObject["_rid"]] =
-        this._interface_store[aObject["_rid"]] || (isarray ? [] : {});
-    }
-
-    bObject = isarray ? [] : {};
-    for (k in aObject) {
-      if (["hasOwnProperty", "constructor"].includes(k)) continue;
-      if (isarray || aObject.hasOwnProperty(k)) {
-        v = aObject[k];
-        if (v && typeof this._local_api._rpc_encode === "function") {
-          const encoded_obj = this._local_api._rpc_encode(v);
-          if (encoded_obj && encoded_obj._ctype) {
-            bObject[k] = {
-              _rtype: "custom",
-              _rvalue: encoded_obj,
-              _rid: aObject["_rid"]
-            };
-            continue;
-          }
-          // if the returned object does not contain _rtype, assuming the object has been transformed
-          else if (encoded_obj !== undefined) {
-            v = encoded_obj;
-          }
-        }
-        if (typeof v === "function") {
-          if (as_interface) {
-            const encoded_interface = this._interface_store[aObject["_rid"]];
-            bObject[k] = {
-              _rtype: "interface",
-              _rid: aObject["_rid"],
-              _rvalue: k
-            };
-            encoded_interface[k] = v;
-            continue;
-          }
-          let interfaceFuncName = null;
-          for (var name in this._local_api) {
-            if (this._local_api.hasOwnProperty(name)) {
-              if (name.startsWith("_")) continue;
-              if (this._local_api[name] === v) {
-                interfaceFuncName = name;
-                break;
-              }
-            }
-          }
-          // search for prototypes
-          var functions = Object.getOwnPropertyNames(
-            Object.getPrototypeOf(this._local_api)
-          );
-          for (var i = 0; i < functions.length; i++) {
-            var name_ = functions[i];
-            if (name_.startsWith("_")) continue;
-            if (this._local_api[name_] === v) {
-              interfaceFuncName = name_;
-              break;
-            }
-          }
-          if (!interfaceFuncName) {
-            var id = this._store.put(v);
-            bObject[k] = {
-              _rtype: "callback",
-              _rvalue: (v.constructor && v.constructor.name) || id,
-              _rindex: id
-            };
-          } else {
-            bObject[k] = {
-              _rtype: "interface",
-              _rvalue: interfaceFuncName,
-              _rid: "_rlocal"
-            };
-          }
-        } else if (
-          /*global tf*/
-          typeof tf !== "undefined" &&
-          tf.Tensor &&
-          v instanceof tf.Tensor
-        ) {
-          const v_buffer = v.dataSync();
-          if (v._transfer || _transfer) {
-            transferables.push(v_buffer.buffer);
-            delete v._transfer;
-          }
-          bObject[k] = {
-            _rtype: "ndarray",
-            _rvalue: v_buffer,
-            _rshape: v.shape,
-            _rdtype: v.dtype
-          };
-        } else if (
-          /*global nj*/
-          typeof nj !== "undefined" &&
-          nj.NdArray &&
-          v instanceof nj.NdArray
-        ) {
-          var dtype = typedArrayToDtype[v.selection.data.constructor.name];
-          if (v._transfer || _transfer) {
-            transferables.push(v.selection.data.buffer);
-            delete v._transfer;
-          }
-          bObject[k] = {
-            _rtype: "ndarray",
-            _rvalue: v.selection.data,
-            _rshape: v.shape,
-            _rdtype: dtype
-          };
-        } else if (v instanceof Error) {
-          console.error(v);
-          bObject[k] = { _rtype: "error", _rvalue: v.toString() };
-        } else if (typeof File !== "undefined" && v instanceof File) {
-          bObject[k] = {
-            _rtype: "file",
-            _rvalue: v,
-            _rrelative_path: v.relativePath || v.webkitRelativePath
-          };
-        }
-        // send objects supported by structure clone algorithm
-        // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
-        else if (
-          v !== Object(v) ||
-          v instanceof Boolean ||
-          v instanceof String ||
-          v instanceof Date ||
-          v instanceof RegExp ||
-          v instanceof Blob ||
-          v instanceof ImageData ||
-          (typeof FileList !== "undefined" && v instanceof FileList)
-        ) {
-          bObject[k] = { _rtype: "argument", _rvalue: v };
-        } else if (v instanceof ArrayBuffer) {
-          if (v._transfer || _transfer) {
-            transferables.push(v);
-            delete v._transfer;
-          }
-          bObject[k] = { _rtype: "argument", _rvalue: v };
-        } else if (v instanceof ArrayBufferView) {
-          if (v._transfer || _transfer) {
-            transferables.push(v.buffer);
-            delete v._transfer;
-          }
-          bObject[k] = { _rtype: "argument", _rvalue: v };
-        }
-        // TODO: support also Map and Set
-        // TODO: avoid object such as DynamicPlugin instance.
-        else if (v._rintf) {
-          bObject[k] = this._encode(v, true);
-        } else if (typeof v === "object") {
-          bObject[k] = this._encode(v, as_interface);
-          // move transferables to the top level object
-          if (bObject[k].__transferables__) {
-            for (var t = 0; t < bObject[k].__transferables__.length; t++) {
-              transferables.push(bObject[k].__transferables__[t]);
-            }
-            delete bObject[k].__transferables__;
-          }
-        } else {
-          throw "imjoy-rpc: Unsupported data type " + k + "," + v;
-        }
+    if (aObject && typeof this._local_api._rpc_encode === "function") {
+      const encoded_obj = this._local_api._rpc_encode(aObject);
+      if (encoded_obj && encoded_obj._ctype) {
+        bObject = {
+          _rtype: "custom",
+          _rvalue: encoded_obj,
+          _rid: aObject["_rid"]
+        };
+        return bObject;
+      }
+      // if the returned object does not contain _rtype, assuming the object has been transformed
+      else if (encoded_obj !== undefined) {
+        aObject = encoded_obj;
       }
     }
+    if (typeof aObject === "function") {
+      if (as_interface) {
+        if (!object_id) throw new Error("object_id is not specified.");
+        bObject = {
+          _rtype: "interface",
+          _rintf: object_id,
+          _rvalue: as_interface
+        };
+        this._method_weakmap.set(aObject, bObject);
+      } else if (this._method_weakmap.has(aObject)) {
+        bObject = this._method_weakmap.get(aObject);
+      } else {
+        const cid = this._store.put(aObject);
+        bObject = {
+          _rtype: "callback",
+          _rname: (aObject.constructor && aObject.constructor.name) || cid,
+          _rvalue: cid
+        };
+      }
+    } else if (
+      /*global tf*/
+      typeof tf !== "undefined" &&
+      tf.Tensor &&
+      aObject instanceof tf.Tensor
+    ) {
+      const v_buffer = aObject.dataSync();
+      if (aObject._transfer || _transfer) {
+        transferables.push(v_buffer.buffer);
+        delete aObject._transfer;
+      }
+      bObject = {
+        _rtype: "ndarray",
+        _rvalue: v_buffer.buffer,
+        _rshape: aObject.shape,
+        _rdtype: aObject.dtype
+      };
+    } else if (
+      /*global nj*/
+      typeof nj !== "undefined" &&
+      nj.NdArray &&
+      aObject instanceof nj.NdArray
+    ) {
+      var dtype = typedArrayToDtype[aObject.selection.data.constructor.name];
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject.selection.data.buffer);
+        delete aObject._transfer;
+      }
+      bObject = {
+        _rtype: "ndarray",
+        _rvalue: aObject.selection.data.buffer,
+        _rshape: aObject.shape,
+        _rdtype: dtype
+      };
+    } else if (aObject instanceof ArrayBuffer) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject);
+        delete aObject._transfer;
+      }
+      bObject = aObject;
+    } else if (aObject instanceof Error) {
+      console.error(aObject);
+      bObject = { _rtype: "error", _rvalue: aObject.toString() };
+    } else if (typeof File !== "undefined" && aObject instanceof File) {
+      bObject = {
+        _rtype: "file",
+        _rvalue: aObject,
+        _rpath: aObject._path || aObject.webkitRelativePath
+      };
+    }
+    // send objects supported by structure clone algorithm
+    // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
+    else if (
+      aObject !== Object(aObject) ||
+      aObject instanceof Boolean ||
+      aObject instanceof String ||
+      aObject instanceof Date ||
+      aObject instanceof RegExp ||
+      aObject instanceof ImageData ||
+      (typeof FileList !== "undefined" && aObject instanceof FileList)
+    ) {
+      bObject = aObject;
+      // TODO: avoid object such as DynamicPlugin instance.
+    } else if (typeof File !== "undefined" && aObject instanceof File) {
+      bObject = {
+        _rtype: "file",
+        _rname: aObject.name,
+        _rmime: aObject.type,
+        _rvalue: aObject,
+        _rpath: aObject._path || aObject.webkitRelativePath
+      };
+    } else if (aObject instanceof Blob) {
+      bObject = { _rtype: "blob", _rvalue: aObject };
+    } else if (aObject instanceof ArrayBuffer) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject);
+        delete aObject._transfer;
+      }
+      bObject = { _rtype: "bytes", _rvalue: aObject };
+    } else if (aObject instanceof ArrayBufferView) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject.buffer);
+        delete aObject._transfer;
+      }
+      const dtype = typedArrayToDtype[aObject.constructor.name];
+      bObject = {
+        _rtype: "typedarray",
+        _rvalue: aObject.buffer,
+        _rdtype: dtype
+      };
+    } else if (aObject instanceof DataView) {
+      if (aObject._transfer || _transfer) {
+        transferables.push(aObject.buffer);
+        delete aObject._transfer;
+      }
+      bObject = { _rtype: "memoryview", _rvalue: aObject.buffer };
+    } else if (aObject instanceof Set) {
+      bObject = {
+        _rtype: "set",
+        _rvalue: this._encode(Array.from(aObject), as_interface)
+      };
+    } else if (aObject instanceof Map) {
+      bObject = {
+        _rtype: "orderedmap",
+        _rvalue: this._encode(Array.from(aObject), as_interface)
+      };
+    } else if (
+      aObject.constructor instanceof Object ||
+      Array.isArray(aObject)
+    ) {
+      bObject = isarray ? [] : {};
+      let keys;
+      // an object/array
+      if (aObject.constructor === Object || Array.isArray(aObject)) {
+        keys = Object.keys(aObject);
+      }
+      // a class
+      else if (aObject.constructor === Function) {
+        throw new Error("Please instantiate the class before exportting it.");
+      }
+      // instance of a class
+      else if (aObject.constructor.constructor === Function) {
+        keys = Object.getOwnPropertyNames(
+          Object.getPrototypeOf(aObject)
+        ).concat(Object.keys(aObject));
+        // TODO: use a proxy object to represent the actual object
+        // always encode class instance as interface
+        as_interface = true;
+      } else {
+        throw Error("Unsupported interface type");
+      }
+      // encode interfaces
+      if (aObject._rintf || as_interface) {
+        if (!object_id) {
+          object_id = randId();
+          this._object_store[object_id] = aObject;
+        }
+        for (let k of keys) {
+          if (k === "constructor") continue;
+          if (k.startsWith("_")) {
+            continue;
+          }
+          // only encode primitive types, function, object, array
+          if (
+            typeof aObject[k] === "function" ||
+            aObject.constructor instanceof Object ||
+            Array.isArray(aObject)
+          ) {
+            bObject[k] = this._encode(
+              aObject[k],
+              typeof as_interface === "string" ? as_interface + "." + k : k,
+              object_id
+            );
+          } else if (aObject !== Object(aObject)) {
+            bObject[k] = aObject[k];
+          }
+        }
+        // object id for dispose the object remotely
+        bObject._rintf = object_id;
+        this._method_weakmap.set(aObject, bObject);
+        // remove interface when closed
+        if (aObject.on && typeof aObject.on === "function") {
+          aObject.on("close", () => {
+            delete this._object_store[object_id];
+          });
+        }
+      } else {
+        for (let k of keys) {
+          if (["hasOwnProperty", "constructor"].includes(k)) continue;
+          bObject[k] = this._encode(aObject[k]);
+        }
+      }
+      // for example, browserFS object
+    } else if (typeof aObject === "object") {
+      const keys = Object.getOwnPropertyNames(
+        Object.getPrototypeOf(aObject)
+      ).concat(Object.keys(aObject));
+      const object_id = randId();
+
+      for (let k of keys) {
+        if (["hasOwnProperty", "constructor"].includes(k)) continue;
+        // encode as interface
+        bObject[k] = this._encode(aObject[k], k, bObject);
+      }
+      // object id, used for dispose the object
+      bObject._rintf = object_id;
+    } else {
+      throw "imjoy-rpc: Unsupported data type:" + aObject;
+    }
+
     if (transferables.length > 0) {
       bObject.__transferables__ = transferables;
     }
     return bObject;
   }
 
-  _decode(aObject, callbackId, withPromise) {
+  _decode(aObject, withPromise) {
     if (!aObject) {
       return aObject;
     }
@@ -631,17 +669,9 @@ export class RPC extends MessageEmitter {
           bObject = aObject;
         }
       } else if (aObject._rtype === "callback") {
-        bObject = this._genRemoteCallback(
-          callbackId,
-          aObject._rindex,
-          withPromise
-        );
+        bObject = this._genRemoteCallback(aObject._rvalue, withPromise);
       } else if (aObject._rtype === "interface") {
-        const intfid = aObject._rid === "_rlocal" ? "_rrmote" : aObject._rid;
-        bObject =
-          (this._interface_store[intfid] &&
-            this._interface_store[intfid][aObject._rvalue]) ||
-          this._genRemoteMethod(aObject._rvalue, aObject._rid);
+        bObject = this._genRemoteMethod(aObject._rvalue, aObject._rintf);
       } else if (aObject._rtype === "ndarray") {
         /*global nj tf*/
         //create build array/tensor if used in the plugin
@@ -650,14 +680,15 @@ export class RPC extends MessageEmitter {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
           bObject = nj
-            .array(aObject._rvalue, aObject._rdtype)
+            .array(new Uint8(aObject._rvalue), aObject._rdtype)
             .reshape(aObject._rshape);
         } else if (typeof tf !== "undefined" && tf.Tensor) {
           if (Array.isArray(aObject._rvalue)) {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
+          const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
           bObject = tf.tensor(
-            aObject._rvalue,
+            new arraytype(aObject._rvalue),
             aObject._rshape,
             aObject._rdtype
           );
@@ -668,32 +699,60 @@ export class RPC extends MessageEmitter {
       } else if (aObject._rtype === "error") {
         bObject = new Error(aObject._rvalue);
       } else if (aObject._rtype === "file") {
+        if (aObject._rvalue instanceof File) {
+          bObject = aObject._rvalue;
+          //patch _path
+          bObject._path = aObject._rpath;
+        } else {
+          bObject = new File([aObject._rvalue], aObject._rname, {
+            type: aObject._rmime
+          });
+          bObject._path = aObject._rpath;
+        }
+      } else if (aObject._rtype === "bytes") {
         bObject = aObject._rvalue;
-        //patch relativePath
-        bObject.relativePath = aObject._rrelative_path;
-      } else if (aObject._rtype === "argument") {
-        bObject = aObject._rvalue;
+      } else if (aObject._rtype === "typedarray") {
+        const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
+        if (!arraytype)
+          throw new Error("unsupported dtype: " + aObject._rdtype);
+        bObject = new arraytype(aObject._rvalue);
+      } else if (aObject._rtype === "memoryview") {
+        bObject = new DataView(aObject._rvalue);
+      } else if (aObject._rtype === "blob") {
+        if (aObject._rvalue instanceof Blob) {
+          bObject = aObject._rvalue;
+        } else {
+          bObject = new Blob([aObject._rvalue], { type: aObject._rmime });
+        }
+      } else if (aObject._rtype === "orderedmap") {
+        bObject = new Map(this._decode(aObject._rvalue, withPromise));
+      } else if (aObject._rtype === "set") {
+        bObject = new Set(this._decode(aObject._rvalue, withPromise));
+      } else {
+        bObject = aObject;
       }
-      return bObject;
-    } else {
+    } else if (aObject.constructor === Object || Array.isArray(aObject)) {
       var isarray = Array.isArray(aObject);
       bObject = isarray ? [] : {};
       for (k in aObject) {
         if (isarray || aObject.hasOwnProperty(k)) {
           v = aObject[k];
-          if (typeof v === "object" || Array.isArray(v)) {
-            bObject[k] = this._decode(v, callbackId, withPromise);
-          }
+          bObject[k] = this._decode(v, withPromise);
         }
       }
-      return bObject;
+    } else {
+      bObject = aObject;
     }
+    // store the object id for dispose
+    if (aObject._rintf) {
+      this._object_weakmap.set(bObject, aObject._rintf);
+    }
+    return bObject;
   }
 
   _wrap(args, as_interface) {
     var wrapped = this._encode(args, as_interface);
-    var result = { args: wrapped };
-    return result;
+    return wrapped;
   }
 
   /**
@@ -708,22 +767,7 @@ export class RPC extends MessageEmitter {
    * @returns {Array} unwrapped args
    */
   _unwrap(args, withPromise) {
-    // var called = false;
-
-    // wraps each callback so that the only one could be called
-    // var once(cb) {
-    //     return function() {
-    //         if (!called) {
-    //             called = true;
-    //             return cb.apply(this, arguments);
-    //         } else {
-    //             var msg =
-    //               'A callback from this set has already been executed';
-    //             throw new Error(msg);
-    //         }
-    //     };
-    // }
-    var result = this._decode(args.args, args.callbackId, withPromise);
+    var result = this._decode(args, withPromise);
     return result;
   }
 
@@ -740,33 +784,30 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote callback
    */
-  _genRemoteCallback(id, argNum, withPromise) {
+  _genRemoteCallback(cid, withPromise) {
     var me = this;
     var remoteCallback;
     if (withPromise) {
       remoteCallback = function() {
         return new Promise((resolve, reject) => {
           var args = me._wrap(Array.prototype.slice.call(arguments));
-          var transferables = args.args.__transferables__;
-          if (transferables) delete args.args.__transferables__;
+          var transferables = args.__transferables__;
+          if (transferables) delete args.__transferables__;
           resolve.__jailed_pairs__ = reject;
           reject.__jailed_pairs__ = resolve;
           try {
             me._connection.emit(
               {
                 type: "callback",
-                id: id,
-                _rindex: argNum,
+                id: cid,
                 args: args,
-                // pid :  me.id,
+                // object_id :  me.id,
                 promise: me._wrap([resolve, reject])
               },
               transferables
             );
           } catch (e) {
-            reject(
-              `Failed to exectue remote callback (id: ${id}, argNum: ${argNum}).`
-            );
+            reject(`Failed to exectue remote callback ( id: ${cid}).`);
           }
         });
       };
@@ -774,15 +815,14 @@ export class RPC extends MessageEmitter {
     } else {
       remoteCallback = function() {
         var args = me._wrap(Array.prototype.slice.call(arguments));
-        var transferables = args.args.__transferables__;
-        if (transferables) delete args.args.__transferables__;
+        var transferables = args.__transferables__;
+        if (transferables) delete args.__transferables__;
         return me._connection.emit(
           {
             type: "callback",
-            id: id,
-            _rindex: argNum,
+            id: cid,
             args: args
-            // pid :  me.id
+            // object_id :  me.id
           },
           transferables
         );

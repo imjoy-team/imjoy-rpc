@@ -96,8 +96,8 @@ function initPlugin(config) {
   const peer_id = randId();
   const pluginConfig = {
     allow_execution: false,
-    version: "0.1.0",
-    api_version: "0.2.1",
+    version: "0.1.1",
+    api_version: "0.2.2",
     dedicated_thread: true,
     description: "Jupyter notebook",
     id: "jupyter_" + randId(),
@@ -301,11 +301,11 @@ const APP_TEMPLATE = `
     </div>
   <template v-for="wdialog in dialogWindows">
     <div
-      :key="wdialog.iframe_container"
+      :key="wdialog.window_id"
       v-show="wdialog === selected_dialog_window"
       style="height: calc(100% - 18px);"
     >
-      <div :id="wdialog.iframe_container" style="width: 100%;height: 100%;"></div>
+      <div :id="wdialog.window_id" style="width: 100%;height: 100%;"></div>
     </div>
   </template>
 </modal>
@@ -363,7 +363,7 @@ define([
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-              version: '0.13.8'
+              version: '0.13.10'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
