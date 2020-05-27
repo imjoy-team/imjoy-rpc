@@ -58,6 +58,9 @@ function runPlugin(config, plugin_interface, code) {
       on: function(event, handler) {
         coreConnection._messageHandler[event] = handler;
       },
+      once: function(event, handler) {
+        coreConnection._messageHandler[event] = handler;
+      },
       _messageHandler: {},
       async execute(code) {
         coreConnection.emit({ type: "execute", code: code });
@@ -100,6 +103,9 @@ function runPlugin(config, plugin_interface, code) {
         }, 30);
       },
       on: function(event, handler) {
+        pluginConnection._messageHandler[event] = handler;
+      },
+      once: function(event, handler) {
         pluginConnection._messageHandler[event] = handler;
       },
       _messageHandler: {},
@@ -150,7 +156,7 @@ function runPlugin(config, plugin_interface, code) {
         if (code) {
           coreConnection.on("executed", data => {
             if (data.error) {
-              reject(data.error);
+              reject(new Error(data.error));
             }
           });
           coreConnection.execute({
@@ -161,6 +167,9 @@ function runPlugin(config, plugin_interface, code) {
 
         core.on("remoteReady", async () => {
           const api = core.getRemote();
+          api.disposeObject = async function(obj) {
+            await core.disposeObject(obj);
+          };
           resolve({ api, plugin, core });
         });
         core.requestRemote();
@@ -235,6 +244,30 @@ describe("RPC", async () => {
     const count = Object.keys(core._object_store).length;
     await api.closePlugin22();
     expect(Object.keys(core._object_store).length).to.equal(count - 1);
+  });
+
+  it("should dispose object", async () => {
+    const plugin_interface = {
+      echo: obj => {
+        return obj;
+      }
+    };
+    const { api, plugin, core } = await runPlugin(
+      {
+        name: "test plugin",
+        allow_execution: false
+      },
+      plugin_interface
+    );
+    const count = Object.keys(core._object_store).length;
+    const pcount = Object.keys(plugin._object_store).length;
+    const obj = await api.echo({ _rintf: true, foo: "bar" });
+    expect(Object.keys(core._object_store).length).to.equal(count + 1);
+    expect(Object.keys(plugin._object_store).length).to.equal(pcount + 1);
+    await api.disposeObject(obj);
+    setTimeout(() => {
+      expect(Object.keys(plugin._object_store).length).to.equal(pcount);
+    }, 200);
   });
 
   it("should encode and decode", async () => {

@@ -143,19 +143,27 @@ export class RPC extends MessageEmitter {
   _disposeObject(object_id) {
     if (this._object_store[object_id]) {
       delete this._object_store[object_id];
+    } else {
+      throw new Error(`Object (id=${object_id}) not found.`);
     }
   }
 
   disposeObject(obj) {
-    if (this._object_weakmap.has(obj)) {
-      const object_id = this._object_weakmap.get(obj);
-      this._connection.emit({
-        type: "disposeObject",
-        object_id: object_id
-      });
-    } else {
-      throw new Error("Invalid object");
-    }
+    return new Promise((resolve, reject) => {
+      if (this._object_weakmap.has(obj)) {
+        const object_id = this._object_weakmap.get(obj);
+        this._connection.once("disposed", data => {
+          if (data.error) reject(new Error(data.error));
+          else resolve();
+        });
+        this._connection.emit({
+          type: "disposeObject",
+          object_id: object_id
+        });
+      } else {
+        throw new Error("Invalid object");
+      }
+    });
   }
 
   /**
@@ -173,7 +181,7 @@ export class RPC extends MessageEmitter {
           console.error(e);
           this._connection.emit({
             type: "executed",
-            error: e
+            error: String(e)
           });
         });
     });
@@ -250,7 +258,18 @@ export class RPC extends MessageEmitter {
       }
     });
     this._connection.on("disposeObject", data => {
-      this._disposeObject(data.object_id);
+      try {
+        this._disposeObject(data.object_id);
+        this._connection.emit({
+          type: "disposed"
+        });
+      } catch (e) {
+        console.error(e);
+        this._connection.emit({
+          type: "disposed",
+          error: String(e)
+        });
+      }
     });
     this._connection.on("setInterface", data => {
       this._setRemoteInterface(data.api);

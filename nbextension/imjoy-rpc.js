@@ -301,11 +301,11 @@ const APP_TEMPLATE = `
     </div>
   <template v-for="wdialog in dialogWindows">
     <div
-      :key="wdialog.iframe_container"
+      :key="wdialog.window_id"
       v-show="wdialog === selected_dialog_window"
       style="height: calc(100% - 18px);"
     >
-      <div :id="wdialog.iframe_container" style="width: 100%;height: 100%;"></div>
+      <div :id="wdialog.window_id" style="width: 100%;height: 100%;"></div>
     </div>
   </template>
 </modal>

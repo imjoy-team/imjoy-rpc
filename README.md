@@ -61,6 +61,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | String   | str        | v |
 | Number   | int/float | v |
 | Boolean  |  bool     | v |
+| null/undefined  | None    | v |
 | Array([])   | list/tuple |[_encode(v)] |
 | Object({})  | dict  | {_encode(v)} |
 | Set | Set | {_rtype: "set", _rvalue: _encode(Array.from(v))} |
@@ -71,7 +72,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | TypedArray | 1-D numpy array*  |{_rtype: "typedarray", _rvalue: v.buffer, _rdtype: dtype} |
 | tf.Tensor/nj.array | numpy array  |{_rtype: "ndarray", _rvalue: v.buffer, _rshape: shape, _rdtype: _dtype} |
 | Function* | function/callable* | {_rtype: "interface", _rid: _rid, _rvalue: name} <br> {_rtype: "callback", _rvalue: name, _rindex: id} |
-| Class | dotdict()* | {...} |
+| Class | class/dotdict()* | {...} |
 | custom | custom | {_rtype: "custom", _rvalue: _rpc_encode(v), _rid: _rid}
 
 Notes:

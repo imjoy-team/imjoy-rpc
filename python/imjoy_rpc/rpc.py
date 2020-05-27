@@ -163,18 +163,29 @@ class RPC(MessageEmitter):
         api = self._encode(self._local_api, True)
         self._connection.emit({"type": "setInterface", "api": api})
 
-    def _dispose_object(object_id):
-        # TODO: remove object recursively
+    def _dispose_object(self, object_id):
         if object_id in self._object_store:
             del self._object_store[object_id]
+        else:
+            raise Exception("Object (id={}) not found.".format(object_id))
 
-    def dispose_object(obj):
+    def dispose_object(self, obj):
         if obj in self._object_weakmap:
             object_id = self._object_weakmap[obj]
         else:
             raise Exception("Invalid object")
 
-        self._connection.emit({"type": "disposeObject", "object_id": object_id})
+        def pfunc(resolve, reject):
+            def handle_disposed(data):
+                if "error" in data:
+                    reject(data["error"])
+                else:
+                    resolve()
+
+            self._connection.once("disposed", handle_disposed)
+            self._connection.emit({"type": "disposeObject", "object_id": object_id})
+
+        return FuturePromise(pfunc, self.loop)
 
     def _gen_remote_method(self, name, plugin_id=None):
         """Return remote method."""
@@ -310,7 +321,12 @@ class RPC(MessageEmitter):
         connection.on("disposeObject", self._dispose_object_handler)
 
     def _dispose_object_handler(self, data):
-        self._dispose_object(data["object_id"])
+        try:
+            self._dispose_object(data["object_id"])
+            self._connection.emit({"type": "disposed"})
+        except Exception as e:
+            logger.error("failed to dispose object: %s", e)
+            self._connection.emit({"type": "disposed", "error": str(e)})
 
     def _disconnected_hanlder(self, data):
         self._connection.disconnect()
@@ -658,13 +674,13 @@ class RPC(MessageEmitter):
             b_object = [] if isarray else dotdict()
             keys = range(len(a_object)) if isarray else a_object.keys()
             for key in keys:
-                if isarray or key in a_object:
-                    val = a_object[key]
-                    if isinstance(val, (dict, list)):
-                        if isarray:
-                            b_object.append(self._decode(val, with_promise))
-                        else:
-                            b_object[key] = self._decode(val, with_promise)
+                val = a_object[key]
+                if isarray:
+                    b_object.append(self._decode(val, with_promise))
+                else:
+                    b_object[key] = self._decode(val, with_promise)
+        else:
+            b_object = a_object
 
         # object id, used for dispose the object
         if isinstance(a_object, dict) and a_object.get("_rintf"):

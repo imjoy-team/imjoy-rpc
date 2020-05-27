@@ -89,7 +89,7 @@ function setupCore(socket, code) {
         if (code) {
           coreConnection.on("executed", data => {
             if (data.error) {
-              reject(data.error);
+              reject(new Error(data.error));
             }
           });
           coreConnection.execute({
