@@ -613,7 +613,11 @@ class RPC(MessageEmitter):
         """Decode object."""
         if a_object is None:
             return a_object
-        if "_rtype" in a_object and "_rvalue" in a_object:
+        if (
+            isinstance(a_object, dict)
+            and "_rtype" in a_object
+            and "_rvalue" in a_object
+        ):
             if a_object["_rtype"] == "custom":
                 if a_object["_rvalue"] and callable(self._local_api.get("_rpc_decode")):
                     b_object = self._local_api["_rpc_decode"](a_object["_rvalue"])
