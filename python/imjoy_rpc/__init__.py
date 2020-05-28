@@ -25,23 +25,28 @@ def type_of_script():
 class ContextLocal(Local):
     def __init__(self):
         object.__setattr__(
-            self, "__context_id__", contextvars.ContextVar("context_id", default="_")
+            self, "__context_id__", contextvars.ContextVar("context_id", default=None)
         )
         object.__setattr__(self, "__thread_lock__", threading.Lock())
         object.__setattr__(self, "__storage__", {})
         object.__setattr__(self, "__ident_func__", self.__get_ident)
+        object.__setattr__(self, "__default_context_id__", "_")
+
+    def set_default_context(self, context_id):
+        object.__setattr__(self, "__default_context_id__", context_id)
 
     def run_with_context(self, context_id, func, *args, **kwargs):
         # make sure we obtain the context with the correct context_id
         with object.__getattribute__(self, "__thread_lock__"):
             object.__getattribute__(self, "__context_id__").set(context_id)
+            object.__setattr__(self, "__default_context_id__", context_id)
             ctx = contextvars.copy_context()
         ctx.run(func, *args, **kwargs)
 
     def __get_ident(self):
         ident = object.__getattribute__(self, "__context_id__").get()
         if ident is None:
-            return "_"
+            return object.__getattribute__(self, "__default_context_id__")
         if not isinstance(ident, str):
             raise ValueError("Context value must be a string.")
         return ident

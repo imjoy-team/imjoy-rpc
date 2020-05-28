@@ -1,5 +1,6 @@
 import uuid
 from IPython import get_ipython
+from IPython.display import display, HTML, Javascript
 
 from ipykernel.comm import Comm
 from imjoy_rpc.rpc import RPC
@@ -33,6 +34,8 @@ class JupyterCommManager:
         self.interface = interface
         for k in self.clients:
             self.clients[k].rpc.set_interface(interface, self.default_config)
+        display(Javascript("window.connectPlugin && window.connectPlugin()"))
+        display(HTML('<div id="{}"></div>'.format(config.id)))
 
     def register(self, target="imjoy_rpc"):
         get_ipython().kernel.comm_manager.register_target(
@@ -50,7 +53,7 @@ class JupyterCommManager:
             if cfg.get("credential_required") is not None:
                 result = config.verify_credential(cfg["credential"])
                 cfg["auth"] = result["auth"]
-            cfg["id"] = cfg.get("id", comm.comm_id)
+            cfg["id"] = config["id"]
             rpc = RPC(
                 connection, self.rpc_context, export=self.set_interface, config=cfg,
             )
@@ -100,6 +103,16 @@ class JupyterCommConnection(MessageEmitter):
         pass
 
     def emit(self, msg):
+        if msg["type"] == "method" and msg["name"] == "createWindow":
+            # create a div for displaying window
+            window_id = "imjoy_window_" + str(uuid.uuid4())
+            msg["args"][0]["window_id"] = window_id
+            display(
+                HTML(
+                    '<div id="{}" class="imjoy-inline-window"></div>'.format(window_id)
+                )
+            )
+
         msg, buffer_paths, buffers = remove_buffers(msg)
         if len(buffers) > 0:
             msg["__buffer_paths__"] = buffer_paths

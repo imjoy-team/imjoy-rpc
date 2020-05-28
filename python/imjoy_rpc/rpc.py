@@ -65,6 +65,9 @@ class RPC(MessageEmitter):
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
 
+        self.rpc_context = rpc_context
+        self.export = export
+
         if config is None:
             config = {}
         self.set_config(config)
@@ -72,9 +75,6 @@ class RPC(MessageEmitter):
         super().__init__(self.config.debug)
 
         self.loop = asyncio.get_event_loop()
-
-        self.rpc_context = rpc_context
-        self.export = export
 
         if connection is not None:
             self._connection = connection
@@ -109,7 +109,7 @@ class RPC(MessageEmitter):
             config = dotdict(config)
         else:
             config = dotdict()
-        self.id = config.id or str(uuid.uuid4())
+        self.id = config.id or self.id or str(uuid.uuid4())
         self.allow_execution = config.allow_execution or False
         self.config = dotdict(
             {
@@ -261,10 +261,6 @@ class RPC(MessageEmitter):
         self._remote_interface = _remote
         self._fire("remoteReady")
         self._run_with_context(self._set_local_api, _remote)
-
-    def export(self, interface):
-        self.set_interface(interface)
-        self.init()
 
     def _set_local_api(self, _remote):
         """Set local API."""
