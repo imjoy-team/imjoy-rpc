@@ -13,6 +13,7 @@ class dotdict(dict):  # pylint: disable=invalid-name
     __delattr__ = dict.__delitem__
 
     def __hash__(self):
+        # TODO: is there any performance impact?
         return hash(tuple(sorted(self.items())))
 
     def __deepcopy__(self, memo=None):
