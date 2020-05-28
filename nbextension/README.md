@@ -19,15 +19,15 @@ pip install -U imjoy-rpc
 
 ```bash
 # install the extension
-jupyter nbextension install https://raw.githubusercontent.com/imjoy-team/imjoy-rpc/master/nbextension/imjoy-rpc.js
+jupyter nbextension install https://raw.githubusercontent.com/imjoy-team/imjoy-rpc/master/nbextension/imjoy-rpc.js --user
 
 # for development, you can clone this repo and add --symlink
 # git clone https://github.com/imjoy-team/imjoy-rpc.git
 # cd imjoy-rpc
-# jupyter nbextension install nbextension/imjoy-rpc.js --symlink
+# jupyter nbextension install nbextension/imjoy-rpc.js --user --symlink
 
 # enable the extension
-jupyter nbextension enable imjoy-rpc
+jupyter nbextension enable imjoy-rpc --user
 
 # you can also disabled it if you don't need it anymore
 # jupyter nbextension disable imjoy-rpc
@@ -50,7 +50,7 @@ class ImJoyPlugin():
 
     async def run(self, ctx):
         viewer = await api.showDialog(type="itk-vtk-viewer",
-                                      src="https://oeway.github.io/itk-vtk-viewer/?imjoy=1")
+                                      src="https://oeway.github.io/itk-vtk-viewer/")
         # show a 3D volume
         image_array = np.random.randint(0, 255, [10,10,10], dtype='uint8')
         
@@ -65,8 +65,8 @@ api.export(ImJoyPlugin())
 With the above code, you created an ImJoy plugin. To run it, click the Run button with the ImJoy icon. It will then call the run function of your plugin.
 
 
- * GIF Demo: [Visualizing 2D image](https://ibb.co/QXR63XM)
- * GIF Demo: [Visualizing 3D volume](https://ibb.co/XDFF5bQ)
+ * GIF Demo: [Visualizing 2D image](https://ibb.co/XDFF5bQ)
+ * GIF Demo: [Visualizing 3D volume](https://ibb.co/QXR63XM)
  * GIF Demo: [Load ImageAnnotator](https://ibb.co/0Zyfxkr)
 
 ### Run Jupyter notebook inside ImJoy
