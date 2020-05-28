@@ -177,6 +177,16 @@ function startImJoy(app, imjoy) {
       app.$forceUpdate()
     })
     imjoy.event_bus.on("add_window", w => {
+      if (document.getElementById(w.window_id)) return;
+      if (!w.dialog) {
+        if (document.getElementById(app.active_plugin.id)) {
+          const elem = document.createElement("div");
+          elem.id = w.window_id;
+          elem.classList.add("imjoy-inline-window")
+          document.getElementById(app.active_plugin.id).appendChild(elem)
+          return
+        }
+      }
       app.dialogWindows.push(w)
       app.selected_dialog_window = w;
       if (w.fullscreen || w.standalone)
@@ -242,28 +252,15 @@ function setupMessageHandler(targetOrigin, comm) {
   });
 }
 
-async function connectPlugin(imjoy) {
-  const plugin = await imjoy.pm
-    .connectPlugin(new Connection())
-  let config = {};
-  if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
-    config = await imjoy.pm.imjoy_api.showDialog(
-      plugin,
-      plugin.config
-    );
-  }
-  await plugin.api.run({
-    config: config,
-    data: {}
-  });
-  return plugin
-
-}
 const CSStyle = `
 <style>
 .vm--modal{
   max-height: 100%!important;
   max-width: 100%!important;
+}
+.imjoy-inline-window{
+  width: 100%;
+  height: 600px;
 }
 </style>`
 
@@ -359,11 +356,12 @@ define([
             plugins: {},
             fullscreen: false,
             imjoy: null,
+            active_plugin: null,
           },
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-              version: '0.13.10'
+              version: '0.13.11'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
@@ -405,11 +403,32 @@ define([
                 passive: true,
               })
             },
+            async connectPlugin() {
+              const plugin = await this.imjoy.pm
+                .connectPlugin(new Connection())
+              this.plugins[plugin.name] = plugin
+              this.active_plugin = plugin;
+              this.$forceUpdate()
+            },
             async runNotebookPlugin() {
               try {
-                const plugin = await connectPlugin(this.imjoy)
-                this.plugins[plugin.name] = plugin
-                this.$forceUpdate()
+                if (!this.active_plugin) {
+                  await this.connectPlugin()
+                }
+                const plugin = this.active_plugin;
+                if (plugin.api.run) {
+                  let config = {};
+                  if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+                    config = await this.imjoy.pm.imjoy_api.showDialog(
+                      plugin,
+                      plugin.config
+                    );
+                  }
+                  await plugin.api.run({
+                    config: config,
+                    data: {}
+                  });
+                }
               } catch (e) {
                 console.error(e);
                 this.showMessage(`Failed to load the plugin, error: ${e}`);
@@ -477,11 +496,10 @@ define([
             }
           }
         });
-        // Jupyter.notebook.kernel.events.on("kernel_connected.Kernel", e => {
-        //   window.runPlugin()
-        //   console.log("ImJoy RPC reconnected.");
-        // });
-
+        window.connectPlugin = async function () {
+          await app.connectPlugin()
+          await app.runNotebookPlugin()
+        }
       });
     }
   }
