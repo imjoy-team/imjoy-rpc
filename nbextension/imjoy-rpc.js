@@ -139,7 +139,7 @@ class Connection extends MessageEmitter {
       const buffer_paths = data.__buffer_paths__ || [];
       delete data.__buffer_paths__;
       put_buffers(data, buffer_paths, msg.buffers || []);
-      if (data.type === "log") {
+      if (data.type === "log" || data.type === "info") {
         console.log(data.message);
       } else if (data.type === "error") {
         console.error(data.message);
@@ -229,7 +229,7 @@ function setupComm(targetOrigin) {
     delete data.__buffer_paths__;
     put_buffers(data, buffer_paths, msg.buffers || []);
 
-    if (data.type === "log") {
+    if (data.type === "log" || data.type === "info") {
       console.log(data.message);
     } else if (data.type === "error") {
       console.error(data.message);
