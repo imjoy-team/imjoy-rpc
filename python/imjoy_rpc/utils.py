@@ -210,5 +210,5 @@ class MessageEmitter:
                     if hasattr(handler, "___event_run_once"):
                         self._event_handlers[event].remove(handler)
         else:
-            if self._logger:
-                self._logger.info("Unhandled event: {}, data: {}".format(event, data))
+            if self._logger and hasattr(self._logger, "debug"):
+                self._logger.debug("Unhandled event: {}, data: {}".format(event, data))
