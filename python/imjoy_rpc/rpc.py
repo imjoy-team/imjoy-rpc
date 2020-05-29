@@ -72,7 +72,8 @@ class RPC(MessageEmitter):
             config = {}
         self.set_config(config)
 
-        super().__init__(self.config.debug)
+        self._remote_logger = dotdict({"info": self._log, "error": self._error})
+        super().__init__(self._remote_logger)
 
         self.loop = asyncio.get_event_loop()
 
@@ -186,7 +187,7 @@ class RPC(MessageEmitter):
             self._connection.once("disposed", handle_disposed)
             self._connection.emit({"type": "disposeObject", "object_id": object_id})
 
-        return FuturePromise(pfunc, self.loop)
+        return FuturePromise(pfunc, self._remote_logger)
 
     def _gen_remote_method(self, name, plugin_id=None):
         """Return remote method."""
@@ -209,7 +210,7 @@ class RPC(MessageEmitter):
                 }
                 self._connection.emit(call_func)
 
-            return FuturePromise(pfunc, self.loop)
+            return FuturePromise(pfunc, self._remote_logger)
 
         remote_method.__remote_method = True  # pylint: disable=protected-access
         return remote_method
@@ -236,7 +237,7 @@ class RPC(MessageEmitter):
                         }
                     )
 
-                return FuturePromise(pfunc, self.loop)
+                return FuturePromise(pfunc, self._remote_logger)
 
         else:
 
@@ -269,6 +270,12 @@ class RPC(MessageEmitter):
         self.rpc_context.api.WORK_DIR = self.work_dir
         self.rpc_context.api.export = self.export
         self.rpc_context.api.disposeObject = self.dispose_object
+
+    def _log(self, info):
+        self._connection.emit({"type": "log", "message": info})
+
+    def _error(self, error):
+        self._connection.emit({"type": "error", "message": error})
 
     def _call_method(self, method, *args, resolve=None, reject=None, method_name=None):
         try:

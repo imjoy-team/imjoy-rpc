@@ -76,11 +76,12 @@ class ReferenceStore:
 class Promise(object):  # pylint: disable=useless-object-inheritance
     """Represent a promise."""
 
-    def __init__(self, pfunc):
+    def __init__(self, pfunc, logger=None):
         """Set up promise."""
         self._resolve_handler = None
         self._finally_handler = None
         self._catch_handler = None
+        self._logger = logger
 
         def resolve(*args, **kwargs):
             self.resolve(*args, **kwargs)
@@ -99,7 +100,8 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
             if self._catch_handler:
                 self._catch_handler(exc)
             elif not self._finally_handler:
-                print("Uncaught Exception: {}".format(exc))
+                if self._logger:
+                    self._logger.error("Uncaught Exception: {}".format(exc))
         finally:
             if self._finally_handler:
                 self._finally_handler()
@@ -110,7 +112,8 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
             if self._catch_handler:
                 self._catch_handler(error)
             elif not self._finally_handler:
-                print("Uncaught Exception: {}".format(error))
+                if self._logger:
+                    self._logger.error("Uncaught Exception: {}".format(error))
         finally:
             if self._finally_handler:
                 self._finally_handler()
@@ -143,10 +146,9 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
 class FuturePromise(Promise, asyncio.Future):
     """Represent a promise as a future."""
 
-    def __init__(self, pfunc, loop):
+    def __init__(self, pfunc, logger=None):
         """Set up promise."""
-        self.loop = loop
-        Promise.__init__(self, pfunc)
+        Promise.__init__(self, pfunc, logger)
         asyncio.Future.__init__(self)
 
     def resolve(self, result):
@@ -168,9 +170,9 @@ class FuturePromise(Promise, asyncio.Future):
 
 
 class MessageEmitter:
-    def __init__(self, debug):
-        self._debug = debug
+    def __init__(self, logger=None):
         self._event_handlers = {}
+        self._logger = logger
 
     def on(self, event, handler):
         if event not in self._event_handlers:
@@ -201,12 +203,12 @@ class MessageEmitter:
                     handler(data)
                 except Exception as e:
                     traceback_error = traceback.format_exc()
-                    if self._debug:
-                        print(traceback_error)
+                    if self._logger:
+                        self._logger.error(traceback_error)
                     self.emit({"type": "error", "message": traceback_error})
                 finally:
                     if hasattr(handler, "___event_run_once"):
                         self._event_handlers[event].remove(handler)
         else:
-            if self._debug:
-                print("Unhandled event", event, data)
+            if self._logger and self._logger.debug:
+                self._logger.debug("Unhandled event: {}, data: {}".format(event, data))
