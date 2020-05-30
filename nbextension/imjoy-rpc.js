@@ -158,7 +158,7 @@ class Connection extends MessageEmitter {
     data.peer_id = this._peer_id;
     const split = remove_buffers(data);
     split.state.__buffer_paths__ = split.buffer_paths;
-    this.comm.send(data, {}, {}, split.buffers);
+    this.comm.send(split.state, {}, {}, split.buffers);
   }
 };
 
@@ -247,7 +247,7 @@ function setupMessageHandler(targetOrigin, comm) {
       const data = e.data;
       const split = remove_buffers(data);
       split.state.__buffer_paths__ = split.buffer_paths;
-      comm.send(data, {}, {}, split.buffers);
+      comm.send(split.state, {}, {}, split.buffers);
     }
   });
 }
@@ -361,10 +361,13 @@ define([
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
+              base_url: 'http://localhost:8080/dist/',
+              debug: true,
               version: '0.13.11'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
+                default_rpc_base_url: 'http://localhost:8080/dist/',
                 imjoy_api: {
                   async showMessage(_plugin, msg, duration) {
                     duration = duration || 5
@@ -499,6 +502,9 @@ define([
         window.connectPlugin = async function () {
           await app.connectPlugin()
           await app.runNotebookPlugin()
+        }
+        window.loadImJoyPlugin = async function(){
+
         }
       });
     }
