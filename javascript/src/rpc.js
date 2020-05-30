@@ -421,18 +421,19 @@ export class RPC extends MessageEmitter {
     }
 
     if (aObject && typeof this._local_api._rpc_encode === "function") {
-      const encoded_obj = this._local_api._rpc_encode(aObject);
-      if (encoded_obj && encoded_obj._ctype) {
+      const transformed_obj = this._local_api._rpc_encode(aObject);
+      // if _ctype exist, means it has been encoded
+      if (transformed_obj && transformed_obj._ctype) {
         bObject = {
           _rtype: "custom",
-          _rvalue: encoded_obj,
+          _rvalue: transformed_obj,
           _rid: aObject["_rid"]
         };
         return bObject;
       }
       // if the returned object does not contain _rtype, assuming the object has been transformed
-      else if (encoded_obj !== undefined) {
-        aObject = encoded_obj;
+      else if (transformed_obj !== undefined) {
+        aObject = transformed_obj;
       }
     }
     if (typeof aObject === "function") {
@@ -654,20 +655,36 @@ export class RPC extends MessageEmitter {
     if (!aObject) {
       return aObject;
     }
-    var bObject, v, k;
+    var bObject, transformedObject, v, k;
     if (aObject.hasOwnProperty("_rtype") && aObject.hasOwnProperty("_rvalue")) {
       if (aObject._rtype === "custom") {
         if (
           aObject._rvalue &&
           typeof this._local_api._rpc_decode === "function"
         ) {
-          bObject = this._local_api._rpc_decode(aObject._rvalue);
-          if (bObject === undefined) {
-            bObject = aObject;
+          transformedObject = this._local_api._rpc_decode(aObject._rvalue);
+          if (transformedObject === undefined) {
+            bObject = aObject._rvalue;
+          }
+          // the object is transformed but not decoded, e.g.: decompressed
+          else if (
+            transformedObject &&
+            transformedObject._rtype &&
+            transformedObject._rvalue
+          ) {
+            aObject = transformedObject;
+          }
+          // decoded
+          else {
+            bObject = transformedObject;
           }
         } else {
-          bObject = aObject;
+          bObject = aObject._rvalue;
         }
+      }
+
+      if (bObject) {
+        // do thing since the object is already decoded
       } else if (aObject._rtype === "callback") {
         bObject = this._genRemoteCallback(aObject._rvalue, withPromise);
       } else if (aObject._rtype === "interface") {

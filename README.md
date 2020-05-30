@@ -96,41 +96,58 @@ Notes:
     |note: 64-bit integers (signed or unsigned) are not supported|
 
  - `dotdict` in Python is a simple wrapper over `dict` that support using the dot notation to get item, similar to what you can do with Javascript object.
- - custom types are supported by defining `export_api._rpc_encode()` and `export_api._rpc_encode()` in the api exported from the plugin, see an example below: 
-    ```javascript
-    class Cat{
-        constructor(name, color, age){
-            this.name = name
-            this.color = color
-            this.age = age
+
+ ## Encoding and decoding custom objects
+ For the data or object types that are not in the table above, for example, a custom class, you can send it by defining `export_api._rpc_encode()` and `export_api._rpc_decode()` in the api exported from the plugin. 
+ 
+ The basic idea is to use `_rpc_encode` function to represent your custom data type into array/dictionary of primitive types (string, number etc.) such that they can be send via imjoy-rpc. Then use `_rpc_decode` to reconstruct the object remotely based on the representation.
+
+In the `_rpc_encode` and `_rpc_decode`, you can use if statement to check if you can encode or decode the object, otherwise the value will be left undecoded/encoded. 
+
+Inside `_rpc_encode`, you need to specify a custom type name with the `_ctype` key and return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object. If no `_ctype` key is detected in the returned object, imjoy-rpc will assume you have transformed the object (e.g. applied compression), and apply internal encoding to the transformed object.
+
+In `_rpc_decode`, you can then check the `_ctype` key, apply the corresponding decoding procedure and return the decoded object. In some cases, you may want to simply transform the object and pass it to imjoy-rpc for decoding. For example, to decompress the object, you can return an object with at least two keys: `_rtype` and `_rvalue`, and make sure the object is represented one of the format listed in the table above.
+
+See an example below:
+
+```javascript
+class Cat{
+    constructor(name, color, age){
+        this.name = name
+        this.color = color
+        this.age = age
+    }
+}
+
+class Plugin {
+    _rpc_encode(obj){
+        if(obj instanceof Cat){
+        return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age}
         }
     }
+    _rpc_decode(encoded_obj){
+        if(encoded_obj._ctype === 'cat'){
+        return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
+        }
+    }
+    async run(){
+        const bobo = new Cat('boboshu', 'mixed', 0.67)
+        // assuming we have a shower plugin
+        const showerPlugin = await api.getPlugin('catShower')
+        // now pass bobo into the shower plugin, and we should get a clean cat, the name should be still bobo
+        // note that the other plugin is running in another sandboxed iframe or in Python
+        // because we have the custom encoding/decoding, we can send the Cat object to the other plugin
+        // Also notice that the other plugin should also define custom encoding decoding following the same representation
+        const cleanCat = await showerPlugin.wash(bobo)
+        api.alert(cleanCat.name + ' was happily washed in the shower.')
+    }
+};
+api.export(new Plugin())
+```
 
-    class Plugin {
-        _rpc_encode(obj){
-            if(obj instanceof Cat){
-            return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age}
-            }
-        }
-        _rpc_decode(encoded_obj){
-            if(encoded_obj._ctype === 'cat'){
-            return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
-            }
-        }
-        async run(){
-            const bobo = new Cat('boboshu', 'mixed', 0.67)
-            // assuming we have a shower plugin
-            const showerPlugin = await api.getPlugin('catShower')
-            // now pass bobo into the shower plugin, and we should get a clean cat, the name should be still bobo
-            // note that the other plugin is running in another sandboxed iframe or in Python
-            // because we have the custom encoding/decoding, we can send the Cat object to the other plugin
-            // Also notice that the other plugin should also define custom encoding decoding following the same representation
-            const cleanCat = await showerPlugin.wash(bobo)
-            api.alert(cleanCat.name + ' was happily washed in the shower.')
-        }
-    };
-    api.export(new Plugin())
-    ```
+Note that, you need to implement the same encoding and decoding for the two connection peers.
+
+
 ## Remote Objects
 
 When sending an object (a JS `Object`, `Class` or Python `dict`, `class`) remotely via imjoy-rpc, a proxy object will be created on the other side. The object can contain supported data types which will be send directly to remote locations.

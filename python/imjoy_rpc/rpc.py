@@ -621,15 +621,31 @@ class RPC(MessageEmitter):
             and "_rtype" in a_object
             and "_rvalue" in a_object
         ):
+            b_object = None
             if a_object["_rtype"] == "custom":
                 if a_object["_rvalue"] and callable(self._local_api.get("_rpc_decode")):
-                    b_object = self._local_api["_rpc_decode"](a_object["_rvalue"])
-                    if b_object is None:
-                        b_object = a_object
+                    transformed_object = self._local_api["_rpc_decode"](
+                        a_object["_rvalue"]
+                    )
+                    if transformed_object is None:
+                        b_object = a_object["_rvalue"]
+                    elif (
+                        isinstance(transformed_object, dict)
+                        and "_rtype" in transformed_object
+                        and "_rvalue" in transformed_object
+                    ):
+                        # the object is transformed but not decoded, e.g.: decompressed
+                        a_object = transformed_object
+                    else:
+                        # decoded
+                        b_object = transformed_object
                 else:
-                    b_object = a_object
+                    b_object = a_object["_rvalue"]
 
-            if a_object["_rtype"] == "callback":
+            if b_object is not None:
+                # do thing since the object is already decoded
+                pass
+            elif a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(a_object["_rvalue"], with_promise)
             elif a_object["_rtype"] == "interface":
                 b_object = self._gen_remote_method(
