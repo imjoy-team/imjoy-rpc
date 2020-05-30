@@ -365,6 +365,7 @@ define([
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
+                default_rpc_base_url: 'http://localhost:8080/dist/',
                 imjoy_api: {
                   async showMessage(_plugin, msg, duration) {
                     duration = duration || 5
