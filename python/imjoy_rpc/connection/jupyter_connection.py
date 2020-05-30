@@ -138,7 +138,7 @@ def put_buffers(state, buffer_paths, buffers):
         obj = state
         for key in buffer_path[:-1]:
             obj = obj[key]
-        obj[buffer_path[-1]] = buffer
+        obj[buffer_path[-1]] = buffer if isinstance(buffer, bytes) else buffer.tobytes()
 
 
 def _separate_buffers(substate, path, buffer_paths, buffers):

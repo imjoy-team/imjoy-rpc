@@ -62,12 +62,12 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | Number   | int/float | v |
 | Boolean  |  bool     | v |
 | null/undefined  | None    | v |
+| ArrayBuffer | bytes  | v |
 | Array([])   | list/tuple |[_encode(v)] |
 | Object({})  | dict  | {_encode(v)} |
 | Set | Set | {_rtype: "set", _rvalue: _encode(Array.from(v))} |
 | Map | OrderedDict  |{_rtype: "orderedmap", _rvalue: _encode(Array.from(v))} |
 | Error | Exception | { _rtype: "error", _rvalue: v.toString() } |
-| ArrayBuffer | bytes  | { _rtype: "bytes", _rvalue: v } |
 | Blob | BytesIO/StringIO  | { _rtype: "blob", _rvalue: v, _rmime: v.type } |
 | DataView | memoryview  |  { _rtype: "memoryview", _rvalue: v.buffer }|
 | TypedArray | 1-D numpy array*  |{_rtype: "typedarray", _rvalue: v.buffer, _rdtype: dtype} |
@@ -106,7 +106,7 @@ In the `_rpc_encode` and `_rpc_decode`, you can use if statement to check if you
 
 Inside `_rpc_encode`, you need to specify a custom type name with the `_ctype` key and return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object. If no `_ctype` key is detected in the returned object, imjoy-rpc will assume you have transformed the object (e.g. applied compression), and apply internal encoding to the transformed object.
 
-In `_rpc_decode`, you can then check the `_ctype` key, apply the corresponding decoding procedure and return the decoded object. In some cases, you may want to simply transform the object and pass it to imjoy-rpc for decoding. For example, to decompress the object, you can return an object with at least two keys: `_rtype` and `_rvalue`, and make sure the object is represented one of the format listed in the table above.
+In `_rpc_decode`, you can then check the `_ctype` key, apply the corresponding decoding procedure and return the decoded object. In some cases, you may want to simply transform the object and pass it to imjoy-rpc for decoding. For example, to decompress the object, you can return an object with the `_rtype` key, and make sure the object is represented one of the format listed in the table above.
 
 See an example below:
 

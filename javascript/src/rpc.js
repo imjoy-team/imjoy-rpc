@@ -187,7 +187,6 @@ export class RPC extends MessageEmitter {
     });
 
     this._connection.on("method", data => {
-      debugger;
       let resolve, reject, method, args, result;
       try {
         if (data.promise) {
@@ -408,34 +407,47 @@ export class RPC extends MessageEmitter {
    * @returns {Array} wrapped arguments
    */
   _encode(aObject, as_interface, object_id) {
-    const transferables = [];
-    if (!aObject) {
+    const a_type = typeof aObject;
+    if (
+      a_type === "number" ||
+      a_type === "string" ||
+      a_type === "boolean" ||
+      aObject === null ||
+      aObject === undefined ||
+      aObject instanceof ArrayBuffer
+    ) {
       return aObject;
     }
-    const _transfer = aObject._transfer;
-    let bObject;
-    const isarray = Array.isArray(aObject);
     //skip if already encoded
-    if (typeof aObject === "object" && aObject._rtype && aObject._rvalue) {
+    if (a_type === "object" && aObject._rtype) {
       return aObject;
     }
 
+    const transferables = [];
+    const _transfer = aObject._transfer;
+    let bObject;
+    const isarray = Array.isArray(aObject);
+
     if (aObject && typeof this._local_api._rpc_encode === "function") {
-      const transformed_obj = this._local_api._rpc_encode(aObject);
+      const transformedObj = this._local_api._rpc_encode(aObject);
       // if _ctype exist, means it has been encoded
-      if (transformed_obj && transformed_obj._ctype) {
+      if (transformedObj && transformedObj._ctype) {
         bObject = {
           _rtype: "custom",
-          _rvalue: transformed_obj,
-          _rid: aObject["_rid"]
+          _rvalue: transformedObj
         };
         return bObject;
       }
+      // if encoded as internal representation
+      else if (transformedObj && transformedObj._rtype) {
+        return transformedObj;
+      }
       // if the returned object does not contain _rtype, assuming the object has been transformed
-      else if (transformed_obj !== undefined) {
-        aObject = transformed_obj;
+      else if (transformedObj !== undefined) {
+        aObject = transformedObj;
       }
     }
+
     if (typeof aObject === "function") {
       if (as_interface) {
         if (!object_id) throw new Error("object_id is not specified.");
@@ -489,12 +501,6 @@ export class RPC extends MessageEmitter {
         _rshape: aObject.shape,
         _rdtype: dtype
       };
-    } else if (aObject instanceof ArrayBuffer) {
-      if (aObject._transfer || _transfer) {
-        transferables.push(aObject);
-        delete aObject._transfer;
-      }
-      bObject = aObject;
     } else if (aObject instanceof Error) {
       console.error(aObject);
       bObject = { _rtype: "error", _rvalue: aObject.toString() };
@@ -528,12 +534,6 @@ export class RPC extends MessageEmitter {
       };
     } else if (aObject instanceof Blob) {
       bObject = { _rtype: "blob", _rvalue: aObject };
-    } else if (aObject instanceof ArrayBuffer) {
-      if (aObject._transfer || _transfer) {
-        transferables.push(aObject);
-        delete aObject._transfer;
-      }
-      bObject = { _rtype: "bytes", _rvalue: aObject };
     } else if (aObject instanceof ArrayBufferView) {
       if (aObject._transfer || _transfer) {
         transferables.push(aObject.buffer);
@@ -597,24 +597,14 @@ export class RPC extends MessageEmitter {
           if (k.startsWith("_")) {
             continue;
           }
-          // only encode primitive types, function, object, array
-          if (
-            typeof aObject[k] === "function" ||
-            aObject.constructor instanceof Object ||
-            Array.isArray(aObject)
-          ) {
-            bObject[k] = this._encode(
-              aObject[k],
-              typeof as_interface === "string" ? as_interface + "." + k : k,
-              object_id
-            );
-          } else if (aObject !== Object(aObject)) {
-            bObject[k] = aObject[k];
-          }
+          bObject[k] = this._encode(
+            aObject[k],
+            typeof as_interface === "string" ? as_interface + "." + k : k,
+            object_id
+          );
         }
         // object id for dispose the object remotely
         bObject._rintf = object_id;
-        this._method_weakmap.set(aObject, bObject);
         // remove interface when closed
         if (aObject.on && typeof aObject.on === "function") {
           aObject.on("close", () => {
@@ -656,15 +646,15 @@ export class RPC extends MessageEmitter {
       return aObject;
     }
     var bObject, transformedObject, v, k;
-    if (aObject.hasOwnProperty("_rtype") && aObject.hasOwnProperty("_rvalue")) {
+    if (aObject.hasOwnProperty("_rtype")) {
       if (aObject._rtype === "custom") {
         if (
-          aObject._rvalue &&
+          aObject._rvalue !== undefined &&
           typeof this._local_api._rpc_decode === "function"
         ) {
           transformedObject = this._local_api._rpc_decode(aObject._rvalue);
           if (transformedObject === undefined) {
-            bObject = aObject._rvalue;
+            // do nothing
           }
           // the object is transformed but not decoded, e.g.: decompressed
           else if (
@@ -679,7 +669,7 @@ export class RPC extends MessageEmitter {
             bObject = transformedObject;
           }
         } else {
-          bObject = aObject._rvalue;
+          bObject = aObject;
         }
       }
 
@@ -726,8 +716,6 @@ export class RPC extends MessageEmitter {
           });
           bObject._path = aObject._rpath;
         }
-      } else if (aObject._rtype === "bytes") {
-        bObject = aObject._rvalue;
       } else if (aObject._rtype === "typedarray") {
         const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
         if (!arraytype)
