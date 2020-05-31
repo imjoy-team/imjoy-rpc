@@ -279,18 +279,14 @@ describe("RPC", async () => {
         this.age = age
       }
     }
+    
+    api.registerCodec({'name': 'cat', 'type': Cat, 'encoder': (obj)=>{
+      return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age}
+    }, 'decoder': (encoded_obj)=>{
+      return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
+    }})
   
     class Plugin {
-      _rpc_encode(obj){
-        if(obj instanceof Cat){
-          return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age}
-        }
-      }
-      _rpc_decode(encoded_obj){
-        if(encoded_obj._ctype === 'cat'){
-          return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
-        }
-      }
       async run(){
         const bobo = new Cat('boboshu', 'mixed', 0.67)
         const cat = await api.echo(bobo)

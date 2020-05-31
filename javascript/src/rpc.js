@@ -41,10 +41,11 @@ function indexObject(obj, is) {
  * should only provide send() and onMessage() methods)
  */
 export class RPC extends MessageEmitter {
-  constructor(connection, config) {
+  constructor(connection, config, codecs) {
     super(config && config.debug);
     this._connection = connection;
     this.config = config || {};
+    this._codecs = codecs || {};
     this._object_store = {};
     this._method_weakmap = new WeakMap();
     this._object_weakmap = new WeakMap();
@@ -428,23 +429,17 @@ export class RPC extends MessageEmitter {
     let bObject;
     const isarray = Array.isArray(aObject);
 
-    if (aObject && typeof this._local_api._rpc_encode === "function") {
-      const transformedObj = this._local_api._rpc_encode(aObject);
-      // if _ctype exist, means it has been encoded
-      if (transformedObj && transformedObj._ctype) {
+    for (let tp of Object.keys(this._codecs)) {
+      const codec = this._codecs[tp];
+      if (codec.encoder && aObject instanceof codec.type) {
+        // TODO: what if multiple encoders found
+        const encodedObj = codec.encoder(aObject);
         bObject = {
           _rtype: "custom",
-          _rvalue: transformedObj
+          _ctype: codec.name,
+          _rvalue: encodedObj
         };
         return bObject;
-      }
-      // if encoded as internal representation
-      else if (transformedObj && transformedObj._rtype) {
-        return transformedObj;
-      }
-      // if the returned object does not contain _rtype, assuming the object has been transformed
-      else if (transformedObj !== undefined) {
-        aObject = transformedObj;
       }
     }
 
@@ -648,26 +643,10 @@ export class RPC extends MessageEmitter {
     var bObject, transformedObject, v, k;
     if (aObject.hasOwnProperty("_rtype")) {
       if (aObject._rtype === "custom") {
-        if (
-          aObject._rvalue !== undefined &&
-          typeof this._local_api._rpc_decode === "function"
-        ) {
-          transformedObject = this._local_api._rpc_decode(aObject._rvalue);
-          if (transformedObject === undefined) {
-            // do nothing
-          }
-          // the object is transformed but not decoded, e.g.: decompressed
-          else if (
-            transformedObject &&
-            transformedObject._rtype &&
-            transformedObject._rvalue
-          ) {
-            aObject = transformedObject;
-          }
-          // decoded
-          else {
-            bObject = transformedObject;
-          }
+        if (this._codecs[aObject._ctype]) {
+          const codec = this._codecs[aObject._ctype];
+          if (codec.decoder) bObject = codec.decoder(aObject._rvalue);
+          else bObject = aObject;
         } else {
           bObject = aObject;
         }

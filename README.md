@@ -74,7 +74,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | tf.Tensor/nj.array | numpy array  |{_rtype: "ndarray", _rvalue: v.buffer, _rshape: shape, _rdtype: _dtype} |
 | Function* | function/callable* | {_rtype: "interface", _rid: _rid, _rvalue: name} <br> {_rtype: "callback", _rvalue: id} |
 | Class | class/dotdict()* | {...} |
-| custom | custom | {_rtype: "custom", _rvalue: _rpc_encode(v), _rid: _rid}
+| custom | custom | {_rtype: "custom", _ctype: "my_type", _rvalue: encoder(v)} |
 
 Notes:
  - `_encode(...)` in the imjoy-rpc representation means the type will be recursively encoded (decoded).
@@ -98,15 +98,16 @@ Notes:
  - `dotdict` in Python is a simple wrapper over `dict` that support using the dot notation to get item, similar to what you can do with Javascript object.
 
  ## Encoding and decoding custom objects
- For the data or object types that are not in the table above, for example, a custom class, you can send it by defining `export_api._rpc_encode()` and `export_api._rpc_decode()` in the api exported from the plugin. 
+ For the data or object types that are not in the table above, for example, a custom class, you can support them by register your own `codec`(i.e. encoder and decoder) with `api.registerCodec()`.
+
+ You need to provide a `name`, a `type`, `encoder` and `decoder` function. For example: in javascript, you can call `api.registerCodec({"name": "my_custom_codec", "type": MyClass, "encoder": (obj)=>{ ... return encoded;}, "decoder": (obj)=>{... return decoded;})`, or in Python you can do `api.registerCodec(name="my_custom_codec", type=MyClass, encoder=my_encoder_func, decoder=my_decoder_func)`.
  
- The basic idea is to use `_rpc_encode` function to represent your custom data type into array/dictionary of primitive types (string, number etc.) such that they can be send via imjoy-rpc. Then use `_rpc_decode` to reconstruct the object remotely based on the representation.
 
-In the `_rpc_encode` and `_rpc_decode`, you can use if statement to check if you can encode or decode the object, otherwise the value will be left undecoded/encoded. 
+ The basic idea of using a custom codec is to use the `encoder` to represent your custom data type into array/dictionary of primitive types (string, number etc.) such that they can be send via the transport layer of imjoy-rpc. Then use the `decoder` to reconstruct the object remotely based on the representation.
 
-Inside `_rpc_encode`, you need to specify a custom type name with the `_ctype` key and return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object. If no `_ctype` key is detected in the returned object, imjoy-rpc will assume you have transformed the object (e.g. applied compression), and apply internal encoding to the transformed object.
+The `encoder` function take an object as input and you need to return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object.
 
-In `_rpc_decode`, you can then check the `_ctype` key, apply the corresponding decoding procedure and return the decoded object. In some cases, you may want to simply transform the object and pass it to imjoy-rpc for decoding. For example, to decompress the object, you can return an object with the `_rtype` key, and make sure the object is represented one of the format listed in the table above.
+In the `decoder` function, you need to convert the represented object into the decoded object.
 
 See an example below:
 
@@ -119,17 +120,20 @@ class Cat{
     }
 }
 
-class Plugin {
-    _rpc_encode(obj){
-        if(obj instanceof Cat){
+api.registerCodec({
+    'name': 'cat', 
+    'type': Cat, 
+    'encoder': (obj)=>{
+        // convert the Cat instance as a dictionary with all the properties
         return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age}
-        }
-    }
-    _rpc_decode(encoded_obj){
-        if(encoded_obj._ctype === 'cat'){
+    },
+    'decoder': (encoded_obj)=>{
+        // recover the Cat instance
         return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
-        }
     }
+})
+
+class Plugin {
     async run(){
         const bobo = new Cat('boboshu', 'mixed', 0.67)
         // assuming we have a shower plugin
@@ -145,7 +149,8 @@ class Plugin {
 api.export(new Plugin())
 ```
 
-Note that, you need to implement the same encoding and decoding for the two connection peers.
+Note that, you need to implement the same encoding and decoding for the two connection peers. Otherwise the object will remain undecoded.
+
 
 
 ## Remote Objects

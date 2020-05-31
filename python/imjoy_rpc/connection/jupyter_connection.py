@@ -17,6 +17,7 @@ class JupyterCommManager:
         self.clients = {}
         self.interface = None
         self.rpc_context = rpc_context
+        self._codecs = {}
 
     def get_ident(self):
         return connection_id.get(default=None)
@@ -37,6 +38,11 @@ class JupyterCommManager:
         display(Javascript("window.connectPlugin && window.connectPlugin()"))
         display(HTML('<div id="{}"></div>'.format(config.id)))
 
+    def register_codec(self, config):
+        assert "name" in config
+        assert "encoder" in config or "decoder" in config
+        self._codecs[config["name"]] = dotdict(config)
+
     def register(self, target="imjoy_rpc"):
         get_ipython().kernel.comm_manager.register_target(
             target, self._create_new_connection
@@ -54,11 +60,18 @@ class JupyterCommManager:
                 result = config.verify_credential(cfg["credential"])
                 cfg["auth"] = result["auth"]
             cfg["id"] = config["id"]
-            rpc = RPC(
-                connection, self.rpc_context, export=self.set_interface, config=cfg,
-            )
+            rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs,)
             rpc.set_interface(self.interface)
             rpc.init()
+
+            def patch_api(_):
+                api = rpc.get_remote() or {}
+                api.export = self.set_interface
+                api.registerCodec = self.register_codec
+                api.disposeObject = rpc.dispose_object
+
+            rpc.on("remoteReady", patch_api)
+
             self.clients[comm.comm_id].rpc = rpc
 
         connection.once("initialize", initialize)

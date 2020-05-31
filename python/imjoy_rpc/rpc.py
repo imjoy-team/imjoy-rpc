@@ -51,7 +51,7 @@ def index_object(obj, ids):
 
 class RPC(MessageEmitter):
     def __init__(
-        self, connection, rpc_context, export, config=None,
+        self, connection, rpc_context, config=None, codecs=None,
     ):
         self.manager_api = {}
         self.services = {}
@@ -62,11 +62,11 @@ class RPC(MessageEmitter):
         self._remote_set = False
         self._store = ReferenceStore()
         self._remote_interface = None
+        self._codecs = codecs or {}
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
 
         self.rpc_context = rpc_context
-        self.export = export
 
         if config is None:
             config = {}
@@ -278,8 +278,6 @@ class RPC(MessageEmitter):
         self.rpc_context.api = _remote
         self.rpc_context.api.utils = dotdict()
         self.rpc_context.api.WORK_DIR = self.work_dir
-        self.rpc_context.api.export = self.export
-        self.rpc_context.api.disposeObject = self.dispose_object
 
     def _log(self, info):
         self._connection.emit({"type": "log", "message": info})
@@ -472,24 +470,18 @@ class RPC(MessageEmitter):
         isarray = isinstance(a_object, list)
         b_object = [] if isarray else {}
 
-        if (
-            a_object is not None
-            and hasattr(self._local_api, "_rpc_encode")
-            and callable(self._local_api._rpc_encode)
-        ):
-            encoded_obj = self._local_api._rpc_encode(a_object)
-            if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
+        encoded_obj = None
+        for tp in self._codecs:
+            codec = self._codecs[tp]
+            if codec.encoder and isinstance(a_object, codec.type):
+                # TODO: what if multiple encoders found
+                encoded_obj = codec.encoder(a_object)
                 b_object = {
                     "_rtype": "custom",
+                    "_ctype": codec.name,
                     "_rvalue": encoded_obj,
                 }
                 return b_object
-            # if encoded as internal representation
-            elif isinstance(encoded_obj, dict) and encoded_obj.get("_rtype"):
-                return encoded_obj
-            # if the returned object does not contain _rtype, assuming the object has been transformed
-            elif encoded_obj is not None:
-                a_object = encoded_obj
 
         if callable(a_object):
             if as_interface:
@@ -618,25 +610,12 @@ class RPC(MessageEmitter):
         if isinstance(a_object, dict) and "_rtype" in a_object:
             b_object = None
             if a_object["_rtype"] == "custom":
-                if (
-                    "_rvalue" in a_object
-                    and hasattr(self._local_api, "_rpc_decode")
-                    and callable(self._local_api._rpc_decode)
-                ):
-                    transformed_object = self._local_api._rpc_decode(
-                        a_object["_rvalue"]
-                    )
-                    if transformed_object is None:
-                        pass
-                    elif (
-                        isinstance(transformed_object, dict)
-                        and "_rtype" in transformed_object
-                    ):
-                        # the object is transformed but not decoded, e.g.: decompressed
-                        a_object = transformed_object
+                if a_object["_ctype"] in self._codecs:
+                    codec = self._codecs[a_object["_ctype"]]
+                    if codec.decoder:
+                        b_object = codec.decoder(a_object["_rvalue"])
                     else:
-                        # decoded
-                        b_object = transformed_object
+                        b_object = a_object
                 else:
                     b_object = a_object
 

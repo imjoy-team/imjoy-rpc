@@ -7,8 +7,9 @@ import { RPC } from "./rpc.js";
 
 export function connectRPC(connection, config) {
   config = config || {};
+  const codecs = {};
 
-  const rpc = new RPC(connection, config);
+  const rpc = new RPC(connection, config, codecs);
   rpc.on("getInterface", function() {
     launchConnected();
   });
@@ -24,6 +25,15 @@ export function connectRPC(connection, config) {
     if (api.dispose) {
       throw new Error("`dispose` is a reserved function name");
     }
+    api.registerCodec = function(config) {
+      if (!config["name"] || (!config["encoder"] && !config["decoder"])) {
+        throw new Error(
+          "Invalid codec format, please make sure you provide a name, type, encoder and decoder."
+        );
+      } else {
+        codecs[config["name"]] = config;
+      }
+    };
     api.disposeObject = function(obj) {
       rpc.disposeObject(obj);
     };
