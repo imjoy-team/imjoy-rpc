@@ -109,7 +109,8 @@ The `encoder` function take an object as input and you need to return the repres
 
 In the `decoder` function, you need to convert the represented object into the decoded object.
 
-See an example below:
+### Example 1: encoding and decoding custom classes with imjoy-rpc
+In this example, we first define a `Cat` class, then we register a codec to do encoding and decoding of the `Cat` instances.
 
 ```javascript
 class Cat{
@@ -153,6 +154,8 @@ api.export(new Plugin())
 ```
 
 Note that, you need to implement the same encoding and decoding for the two connection peers. Otherwise the object will remain undecoded.
+
+### Example 2: sending `itk.Image` from Python to Javascript
 
 Here is another example for supporting a new type `itk.Image` for displaying 2D/3D image in Python in the itk-vtk-viewer (Javascript). 
 
