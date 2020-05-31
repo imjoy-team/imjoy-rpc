@@ -113,11 +113,12 @@ See an example below:
 
 ```javascript
 class Cat{
-    constructor(name, color, age){
-        this.name = name
-        this.color = color
-        this.age = age
-    }
+  constructor(name, color, age, clean){
+    this.name = name
+    this.color = color
+    this.age = age
+    this.clean = clean
+  }
 }
 
 api.registerCodec({
@@ -125,11 +126,11 @@ api.registerCodec({
     'type': Cat, 
     'encoder': (obj)=>{
         // convert the Cat instance as a dictionary with all the properties
-        return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age}
+        return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age, clean: obj.clean}
     },
     'decoder': (encoded_obj)=>{
         // recover the Cat instance
-        return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
+        return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age, encoded_obj.clean)
     }
 })
 
@@ -137,15 +138,15 @@ class Plugin {
     async setup(){
     }
     async run(){
-        const bobo = new Cat('boboshu', 'mixed', 0.67)
+        const dirtyCat = new Cat('boboshu', 'mixed', 0.67, false)
         // assuming we have a shower plugin
         const showerPlugin = await api.getPlugin('catShower')
-        // now pass bobo into the shower plugin, and we should get a clean cat, the name should be still bobo
+        // now pass a cat into the shower plugin, and we should get a clean cat, the name should be the same
         // note that the other plugin is running in another sandboxed iframe or in Python
         // because we have the cat codec registered, we can send the Cat object to the other plugin
         // Also notice that the other plugin should also define custom encoding decoding following the same representation
-        const cleanCat = await showerPlugin.wash(bobo)
-        api.alert(cleanCat.name + ' was happily washed in the shower.')
+        const cleanCat = await showerPlugin.wash(dirtyCat)
+        if(cleanCat.clean) api.alert(cleanCat.name + ' is clean.')
     }
 };
 api.export(new Plugin())
