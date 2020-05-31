@@ -31,6 +31,14 @@ export function connectRPC(connection, config) {
           "Invalid codec format, please make sure you provide a name, type, encoder and decoder."
         );
       } else {
+        if (config.type) {
+          for (let k of Object.keys(codecs)) {
+            if (codecs[k].type === config.type || k === config.name) {
+              delete codecs[k];
+              console.warn("Remove duplicated codec: " + k);
+            }
+          }
+        }
         codecs[config["name"]] = config;
       }
     };

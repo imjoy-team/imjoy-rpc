@@ -44,6 +44,8 @@ def index_object(obj, ids):
     else:
         if isinstance(obj, dict):
             _obj = obj[ids[0]]
+        elif isinstance(obj, (list, tuple)):
+            _obj = obj[int(ids[0])]
         else:
             _obj = getattr(obj, ids[0])
         return index_object(_obj, ids[1:])
@@ -566,7 +568,7 @@ class RPC(MessageEmitter):
                         continue
                     encoded = self._encode(
                         a_object_norm[key],
-                        as_interface + "." + key
+                        as_interface + "." + str(key)
                         if isinstance(as_interface, str)
                         else key,
                         object_id,
@@ -609,13 +611,17 @@ class RPC(MessageEmitter):
         if isinstance(a_object, dict) and "_rtype" in a_object:
             b_object = None
             if a_object["_rtype"] == "custom":
-                if a_object["_ctype"] in self._codecs:
+                if a_object.get("_ctype") and a_object["_ctype"] in self._codecs:
                     codec = self._codecs[a_object["_ctype"]]
                     if codec.decoder:
                         b_object = codec.decoder(a_object["_rvalue"])
                     else:
+                        logger.warn(
+                            "No decoder found for type: " + a_object.get("_ctype")
+                        )
                         b_object = a_object
                 else:
+                    logger.warn("No decoder found for type: " + a_object.get("_ctype"))
                     b_object = a_object
 
             if b_object is not None:

@@ -243,7 +243,9 @@ describe("RPC", async () => {
     expect(await api.testGetPlugin(3, 6)).to.equal(18);
     const count = Object.keys(core._object_store).length;
     await api.closePlugin22();
-    expect(Object.keys(core._object_store).length).to.equal(count - 1);
+    setTimeout(() => {
+      expect(Object.keys(core._object_store).length).to.equal(count - 1);
+    }, 0);
   });
 
   it("should dispose object", async () => {

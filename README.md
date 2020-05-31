@@ -151,7 +151,64 @@ api.export(new Plugin())
 
 Note that, you need to implement the same encoding and decoding for the two connection peers. Otherwise the object will remain undecoded.
 
+Here is another example for supporting a new type `itk.Image` for displaying 2D/3D image in Python in the itk-vtk-viewer (Javascript). 
 
+We will first encode all the itk.Image instances with the `itkimage_to_json` function.
+
+```python
+# Run `pip install itk itkwidgets` before trying this example
+from imjoy_rpc import api
+import numpy as np
+import itk
+from itkwidgets.trait_types import itkimage_to_json, itkimage_from_json
+from itkwidgets._transform_types import to_itk_image
+
+# register an encoder for encoding the itk.Image, the name `itkimage` will be used for decoding
+# this example only use the encoder part
+api.registerCodec({'name': 'itkimage', 'type': itk.Image, 'encoder': itkimage_to_json, 'decoder': itkimage_from_json})
+
+class ImJoyPlugin():
+    def setup(self):
+        api.log('plugin initialized')
+
+    async def run(self, ctx):
+        image_array = np.random.randint(0, 255, [10,10,10], dtype='uint8')
+        itk_image = to_itk_image(image_array)
+        # here the itk_image will be encoded via the registered encoder function (i.e.: itkimage_to_json)
+        api.createWindow(type="itk-vtk-viewer", src="https://oeway.github.io/itk-vtk-viewer/", data={"image_array": itk_image})
+
+api.export(ImJoyPlugin())
+```
+
+For the Javascript part, we also need a codec to decode the itkImage, we will use an existing function called `decompressImage`. Here is the implementation we made for the viewer served on https://oeway.github.io/itk-vtk-viewer/:
+
+```javascript
+
+// register a decoder to decode custom type `itkimage`
+api.registerCodec({name: 'itkimage', decoder: itkVtkViewer.utils.decompressImage})
+
+api.export({
+    setup() {
+        api.log("itk-vtk-viewer loaded successfully.")
+    },
+    async run(ctx) {
+        await this.imshow(ctx.data.image_array)
+    },
+    async imshow(image_array) {
+        // image_array is the decoded image
+        const vtkImage = itkVtkViewer.utils.vtkITKHelper.convertItkToVtkImage(image_array)
+        const dims = vtkImage.getDimensions()
+        const is2D = dims.length === 2 || (dims.length === 3 && dims[2] === 1)
+        itkVtkViewer.createViewer(container, {
+            image: vtkImage,
+            pointSets: null,
+            geometries: null,
+            use2D: is2D,
+            rotate: false
+        })
+    }
+})
+```
 
 ## Remote Objects
 

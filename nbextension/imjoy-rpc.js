@@ -411,6 +411,9 @@ define([
                 .connectPlugin(new Connection())
               this.plugins[plugin.name] = plugin
               this.active_plugin = plugin;
+              if(plugin.api.setup){
+                await plugin.api.setup()
+              }
               this.$forceUpdate()
             },
             async runNotebookPlugin() {

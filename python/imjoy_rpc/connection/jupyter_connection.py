@@ -41,6 +41,13 @@ class JupyterCommManager:
     def register_codec(self, config):
         assert "name" in config
         assert "encoder" in config or "decoder" in config
+        if "type" in config:
+            for tp in list(self._codecs.keys()):
+                codec = self._codecs[tp]
+                if codec.type == config["type"] or tp == config["name"]:
+                    print("Removing duplicated codec: " + tp)
+                    del self._codecs[tp]
+
         self._codecs[config["name"]] = dotdict(config)
 
     def register(self, target="imjoy_rpc"):
@@ -65,7 +72,7 @@ class JupyterCommManager:
             rpc.init()
 
             def patch_api(_):
-                api = rpc.get_remote() or {}
+                api = rpc.get_remote() or dotdict()
                 api.export = self.set_interface
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object
