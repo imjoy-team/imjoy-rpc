@@ -21,7 +21,7 @@ from .utils import (
     MessageEmitter,
 )
 
-API_VERSION = "0.2.2"
+API_VERSION = "0.2.3"
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
@@ -44,6 +44,8 @@ def index_object(obj, ids):
     else:
         if isinstance(obj, dict):
             _obj = obj[ids[0]]
+        elif isinstance(obj, (list, tuple)):
+            _obj = obj[int(ids[0])]
         else:
             _obj = getattr(obj, ids[0])
         return index_object(_obj, ids[1:])
@@ -51,7 +53,7 @@ def index_object(obj, ids):
 
 class RPC(MessageEmitter):
     def __init__(
-        self, connection, rpc_context, export, config=None,
+        self, connection, rpc_context, config=None, codecs=None,
     ):
         self.manager_api = {}
         self.services = {}
@@ -62,11 +64,11 @@ class RPC(MessageEmitter):
         self._remote_set = False
         self._store = ReferenceStore()
         self._remote_interface = None
+        self._codecs = codecs or {}
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
 
         self.rpc_context = rpc_context
-        self.export = export
 
         if config is None:
             config = {}
@@ -134,10 +136,28 @@ class RPC(MessageEmitter):
         """Set interface."""
         # TODO: setup forwarding_functions
         self.set_config(config)
-        if isinstance(api, dict):
-            api = {a: api[a] for a in api.keys() if not a.startswith("_")}
-        elif inspect.isclass(type(api)):
-            api = {a: getattr(api, a) for a in dir(api) if not a.startswith("_")}
+
+        # store it in a docdict such that the methods are hashable
+        self._local_api = dotdict(api) if isinstance(api, dict) else api
+
+        self._fire("interfaceAvailable")
+
+    def send_interface(self):
+        """Send interface."""
+        if self._local_api is None:
+            raise Exception("interface is not set.")
+        if isinstance(self._local_api, dict):
+            api = {
+                a: self._local_api[a]
+                for a in self._local_api.keys()
+                if not a.startswith("_")
+            }
+        elif inspect.isclass(type(self._local_api)):
+            api = {
+                a: getattr(self._local_api, a)
+                for a in dir(self._local_api)
+                if not a.startswith("_")
+            }
         else:
             raise Exception("unsupported api export")
 
@@ -153,16 +173,8 @@ class RPC(MessageEmitter):
             api["exit"] = exit_wrapper
         else:
             api["exit"] = self.default_exit
-        # store it in a docdict such that the methods are hashable
-        self._local_api = dotdict(api)
 
-        self._fire("interfaceAvailable")
-
-    def send_interface(self):
-        """Send interface."""
-        if self._local_api is None:
-            raise Exception("interface is not set.")
-        api = self._encode(self._local_api, True)
+        api = self._encode(api, True)
         self._connection.emit({"type": "setInterface", "api": api})
 
     def _dispose_object(self, object_id):
@@ -268,8 +280,6 @@ class RPC(MessageEmitter):
         self.rpc_context.api = _remote
         self.rpc_context.api.utils = dotdict()
         self.rpc_context.api.WORK_DIR = self.work_dir
-        self.rpc_context.api.export = self.export
-        self.rpc_context.api.disposeObject = self.dispose_object
 
     def _log(self, info):
         self._connection.emit({"type": "log", "message": info})
@@ -451,32 +461,29 @@ class RPC(MessageEmitter):
 
     def _encode(self, a_object, as_interface=False, object_id=None):
         """Encode object."""
-        if a_object is None:
+        if isinstance(a_object, (int, float, bool, str, bytes)) or a_object is None:
             return a_object
         if isinstance(a_object, tuple):
             a_object = list(a_object)
-        isarray = isinstance(a_object, list)
-        b_object = [] if isarray else {}
         # skip if already encoded
-        if (
-            isinstance(a_object, dict)
-            and "_rtype" in a_object
-            and "_rvalue" in a_object
-        ):
+        if isinstance(a_object, dict) and "_rtype" in a_object:
             return a_object
 
-        if a_object is not None and callable(self._local_api.get("_rpc_encode")):
-            encoded_obj = self._local_api["_rpc_encode"](a_object)
-            if isinstance(encoded_obj, dict) and encoded_obj.get("_ctype"):
+        isarray = isinstance(a_object, list)
+        b_object = None
+
+        encoded_obj = None
+        for tp in self._codecs:
+            codec = self._codecs[tp]
+            if codec.encoder and isinstance(a_object, codec.type):
+                # TODO: what if multiple encoders found
+                encoded_obj = codec.encoder(a_object)
                 b_object = {
                     "_rtype": "custom",
+                    "_ctype": codec.name,
                     "_rvalue": encoded_obj,
-                    "_rid": a_object["_rid"],
                 }
                 return b_object
-            # if the returned object does not contain _rtype, assuming the object has been transformed
-            elif encoded_obj is not None:
-                a_object = encoded_obj
 
         if callable(a_object):
             if as_interface:
@@ -487,7 +494,10 @@ class RPC(MessageEmitter):
                     "_rintf": object_id,
                     "_rvalue": as_interface,
                 }
-                self._method_weakmap[a_object] = b_object
+                try:
+                    self._method_weakmap[a_object] = b_object
+                except:
+                    pass
             elif a_object in self._method_weakmap:
                 b_object = self._method_weakmap[a_object]
             else:
@@ -496,7 +506,6 @@ class RPC(MessageEmitter):
                     "_rtype": "callback",
                     "_rvalue": cid,
                 }
-
         elif NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
             v_bytes = a_object.tobytes()
             b_object = {
@@ -505,33 +514,26 @@ class RPC(MessageEmitter):
                 "_rshape": a_object.shape,
                 "_rdtype": str(a_object.dtype),
             }
-        elif isinstance(a_object, bytes):
-            b_object = a_object
         elif isinstance(a_object, Exception):
             b_object = {"_rtype": "error", "_rvalue": str(a_object)}
-        # TODO: encode file object
-        elif isinstance(a_object, (int, float, bool, str)):
-            b_object = a_object
-        elif isinstance(a_object, bytes):
-            v_obj = {"_rtype": "bytes", "_rvalue": a_object}
         elif isinstance(a_object, memoryview):
-            v_obj = {"_rtype": "memoryview", "_rvalue": a_object}
+            b_object = {"_rtype": "memoryview", "_rvalue": a_object.tobytes()}
         elif isinstance(
             a_object, (io.IOBase, io.TextIOBase, io.BufferedIOBase, io.RawIOBase)
         ):
-            v_obj = {
+            b_object = {
                 "_rtype": "blob",
                 "_rvalue": a_object.read(),
                 "_rmime": "application/octet-stream",
             }
         # NOTE: "typedarray" is not used
         elif isinstance(a_object, OrderedDict):
-            v_obj = {
+            b_object = {
                 "_rtype": "orderedmap",
                 "_rvalue": self._encode(list(a_object), as_interface),
             }
         elif isinstance(a_object, set):
-            v_obj = {
+            b_object = {
                 "_rtype": "set",
                 "_rvalue": self._encode(list(a_object), as_interface),
             }
@@ -557,37 +559,27 @@ class RPC(MessageEmitter):
             keys = range(len(a_object_norm)) if isarray else a_object_norm.keys()
             # encode interfaces
             if (not isarray and a_object_norm.get("_rintf")) or as_interface:
-                object_id = str(uuid.uuid4())
+                if object_id is None:
+                    object_id = str(uuid.uuid4())
+                    self._object_store[object_id] = a_object
+
                 for key in keys:
                     if isinstance(key, str) and key.startswith("_"):
                         continue
-                    # only encode int, float, bool, str, function, dict, list
-                    if (
-                        callable(a_object_norm[key])
-                        or isinstance(a_object_norm[key], (list, dict))
-                        or inspect.isclass(type(a_object_norm[key]))
-                    ):
-
-                        encoded = self._encode(
-                            a_object_norm[key],
-                            as_interface + "." + key
-                            if isinstance(as_interface, str)
-                            else key,
-                            object_id,
-                        )
-                        if isarray:
-                            b_object.append(encoded)
-                        else:
-                            b_object[key] = encoded
-                    elif isinstance(a_object_norm[key], (int, float, bool, str)):
-                        if isarray:
-                            b_object.append(a_object_norm[key])
-                        else:
-                            b_object[key] = a_object_norm[key]
+                    encoded = self._encode(
+                        a_object_norm[key],
+                        as_interface + "." + str(key)
+                        if isinstance(as_interface, str)
+                        else key,
+                        object_id,
+                    )
+                    if isarray:
+                        b_object.append(encoded)
+                    else:
+                        b_object[key] = encoded
                 # TODO: how to despose list object? create a wrapper for list?
                 if not isarray:
                     b_object["_rintf"] = object_id
-                self._object_store[object_id] = a_object
                 # remove interface when closed
                 if "on" in a_object_norm and callable(a_object_norm["on"]):
 
@@ -616,20 +608,26 @@ class RPC(MessageEmitter):
         """Decode object."""
         if a_object is None:
             return a_object
-        if (
-            isinstance(a_object, dict)
-            and "_rtype" in a_object
-            and "_rvalue" in a_object
-        ):
+        if isinstance(a_object, dict) and "_rtype" in a_object:
+            b_object = None
             if a_object["_rtype"] == "custom":
-                if a_object["_rvalue"] and callable(self._local_api.get("_rpc_decode")):
-                    b_object = self._local_api["_rpc_decode"](a_object["_rvalue"])
-                    if b_object is None:
+                if a_object.get("_ctype") and a_object["_ctype"] in self._codecs:
+                    codec = self._codecs[a_object["_ctype"]]
+                    if codec.decoder:
+                        b_object = codec.decoder(a_object["_rvalue"])
+                    else:
+                        logger.warn(
+                            "No decoder found for type: " + a_object.get("_ctype")
+                        )
                         b_object = a_object
                 else:
+                    logger.warn("No decoder found for type: " + a_object.get("_ctype"))
                     b_object = a_object
 
-            if a_object["_rtype"] == "callback":
+            if b_object is not None:
+                # do thing since the object is already decoded
+                pass
+            elif a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(a_object["_rvalue"], with_promise)
             elif a_object["_rtype"] == "interface":
                 b_object = self._gen_remote_method(
@@ -658,8 +656,6 @@ class RPC(MessageEmitter):
                     logger.debug("Error in converting: %s", exc)
                     b_object = a_object
                     raise exc
-            elif a_object["_rtype"] == "bytes":
-                b_object = a_object["_rvalue"]
             elif a_object["_rtype"] == "memoryview":
                 b_object = memoryview(a_object["_rvalue"])
             elif a_object["_rtype"] == "blob":
@@ -686,7 +682,6 @@ class RPC(MessageEmitter):
                 b_object = Exception(a_object["_rvalue"])
             else:
                 b_object = a_object
-
         elif isinstance(a_object, (dict, list, tuple)):
             if isinstance(a_object, tuple):
                 a_object = list(a_object)
@@ -708,5 +703,4 @@ class RPC(MessageEmitter):
             if isinstance(b_object, dict) and not isinstance(b_object, dotdict):
                 b_object = dotdict(b_object)
             self._object_weakmap[b_object] = a_object.get("_rintf")
-
         return b_object

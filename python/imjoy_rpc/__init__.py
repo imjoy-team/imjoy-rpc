@@ -59,7 +59,9 @@ if type_of_script() == "jupyter":
     from .connection.jupyter_connection import JupyterCommManager
 
     manager = JupyterCommManager(_rpc_context)
-    _rpc_context.api = dotdict(export=manager.set_interface)
+    _rpc_context.api = dotdict(
+        export=manager.set_interface, registerCodec=manager.register_codec
+    )
     manager.register()
 else:
     print("TODO: support socketio connection")

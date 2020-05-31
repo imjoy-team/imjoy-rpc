@@ -97,7 +97,7 @@ function initPlugin(config) {
   const pluginConfig = {
     allow_execution: false,
     version: "0.1.1",
-    api_version: "0.2.2",
+    api_version: "0.2.3",
     dedicated_thread: true,
     description: "Jupyter notebook",
     id: "jupyter_" + randId(),
@@ -158,7 +158,7 @@ class Connection extends MessageEmitter {
     data.peer_id = this._peer_id;
     const split = remove_buffers(data);
     split.state.__buffer_paths__ = split.buffer_paths;
-    this.comm.send(data, {}, {}, split.buffers);
+    this.comm.send(split.state, {}, {}, split.buffers);
   }
 };
 
@@ -247,7 +247,7 @@ function setupMessageHandler(targetOrigin, comm) {
       const data = e.data;
       const split = remove_buffers(data);
       split.state.__buffer_paths__ = split.buffer_paths;
-      comm.send(data, {}, {}, split.buffers);
+      comm.send(split.state, {}, {}, split.buffers);
     }
   });
 }
@@ -361,7 +361,7 @@ define([
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-              version: '0.13.11'
+              version: '0.13.12'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
@@ -408,6 +408,9 @@ define([
                 .connectPlugin(new Connection())
               this.plugins[plugin.name] = plugin
               this.active_plugin = plugin;
+              if(plugin.api.setup){
+                await plugin.api.setup()
+              }
               this.$forceUpdate()
             },
             async runNotebookPlugin() {
@@ -499,6 +502,9 @@ define([
         window.connectPlugin = async function () {
           await app.connectPlugin()
           await app.runNotebookPlugin()
+        }
+        window.loadImJoyPlugin = async function(){
+
         }
       });
     }
