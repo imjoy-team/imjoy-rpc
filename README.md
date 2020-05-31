@@ -141,6 +141,8 @@ class Plugin {
 })
 
 class Plugin {
+    async setup(){
+    }
     async run(){
         const dirtyCat = new Cat('boboshu', 'mixed', 0.67, false)
         // assuming we have a shower plugin
