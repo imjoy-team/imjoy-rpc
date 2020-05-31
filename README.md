@@ -134,13 +134,15 @@ api.registerCodec({
 })
 
 class Plugin {
+    async setup(){
+    }
     async run(){
         const bobo = new Cat('boboshu', 'mixed', 0.67)
         // assuming we have a shower plugin
         const showerPlugin = await api.getPlugin('catShower')
         // now pass bobo into the shower plugin, and we should get a clean cat, the name should be still bobo
         // note that the other plugin is running in another sandboxed iframe or in Python
-        // because we have the custom encoding/decoding, we can send the Cat object to the other plugin
+        // because we have the cat codec registered, we can send the Cat object to the other plugin
         // Also notice that the other plugin should also define custom encoding decoding following the same representation
         const cleanCat = await showerPlugin.wash(bobo)
         api.alert(cleanCat.name + ' was happily washed in the shower.')

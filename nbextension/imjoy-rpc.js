@@ -97,7 +97,7 @@ function initPlugin(config) {
   const pluginConfig = {
     allow_execution: false,
     version: "0.1.1",
-    api_version: "0.2.2",
+    api_version: "0.2.3",
     dedicated_thread: true,
     description: "Jupyter notebook",
     id: "jupyter_" + randId(),
@@ -361,13 +361,10 @@ define([
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-              base_url: 'http://localhost:8080/dist/',
-              debug: true,
-              version: '0.13.11'
+              version: '0.13.12'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
-                default_rpc_base_url: 'http://localhost:8080/dist/',
                 imjoy_api: {
                   async showMessage(_plugin, msg, duration) {
                     duration = duration || 5
