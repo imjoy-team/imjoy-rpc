@@ -468,7 +468,7 @@ class RPC(MessageEmitter):
             return a_object
 
         isarray = isinstance(a_object, list)
-        b_object = [] if isarray else {}
+        b_object = None
 
         encoded_obj = None
         for tp in self._codecs:
@@ -515,23 +515,23 @@ class RPC(MessageEmitter):
         elif isinstance(a_object, Exception):
             b_object = {"_rtype": "error", "_rvalue": str(a_object)}
         elif isinstance(a_object, memoryview):
-            v_obj = {"_rtype": "memoryview", "_rvalue": a_object.tobytes()}
+            b_object = {"_rtype": "memoryview", "_rvalue": a_object.tobytes()}
         elif isinstance(
             a_object, (io.IOBase, io.TextIOBase, io.BufferedIOBase, io.RawIOBase)
         ):
-            v_obj = {
+            b_object = {
                 "_rtype": "blob",
                 "_rvalue": a_object.read(),
                 "_rmime": "application/octet-stream",
             }
         # NOTE: "typedarray" is not used
         elif isinstance(a_object, OrderedDict):
-            v_obj = {
+            b_object = {
                 "_rtype": "orderedmap",
                 "_rvalue": self._encode(list(a_object), as_interface),
             }
         elif isinstance(a_object, set):
-            v_obj = {
+            b_object = {
                 "_rtype": "set",
                 "_rvalue": self._encode(list(a_object), as_interface),
             }
@@ -571,7 +571,6 @@ class RPC(MessageEmitter):
                         else key,
                         object_id,
                     )
-
                     if isarray:
                         b_object.append(encoded)
                     else:
