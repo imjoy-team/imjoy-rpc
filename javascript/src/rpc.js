@@ -460,12 +460,7 @@ export class RPC extends MessageEmitter {
       if (codec.encoder && aObject instanceof codec.type) {
         // TODO: what if multiple encoders found
         const encodedObj = await Promise.resolve(codec.encoder(aObject));
-        if (!encodedObj._rtype) encodedObj._rtype = codec.name;
-        else if (encodedObj._rtype !== codec.name) {
-          throw new Error(
-            `The encoded object cannot have a different _rtype(${encodedObj._rtype}) than the codec name(${codec.name}).`
-          );
-        }
+        if (encodedObj && !encodedObj._rtype) encodedObj._rtype = codec.name;
         bObject = encodedObj;
         return bObject;
       }

@@ -504,16 +504,6 @@ class RPC(MessageEmitter):
                 encoded_obj = codec.encoder(a_object)
                 if isinstance(encoded_obj, dict) and "_rtype" not in encoded_obj:
                     encoded_obj["_rtype"] = codec.name
-                elif (
-                    isinstance(encoded_obj, dict)
-                    and "_rtype" in encoded_obj
-                    and encoded_obj["_rtype"] != codec.name
-                ):
-                    raise Exception(
-                        "The encoded object cannot have a different _rtype({}) than the codec name({}).".format(
-                            encoded_obj["_rtype"], codec.name
-                        )
-                    )
                 b_object = encoded_obj
                 return b_object
 
