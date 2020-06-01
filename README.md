@@ -74,7 +74,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | tf.Tensor/nj.array | numpy array  |{_rtype: "ndarray", _rvalue: v.buffer, _rshape: shape, _rdtype: _dtype} |
 | Function* | function/callable* | {_rtype: "interface", _rid: _rid, _rvalue: name} <br> {_rtype: "callback", _rvalue: id} |
 | Class | class/dotdict()* | {...} |
-| custom | custom | {_rtype: "my_type", _rvalue: encoder(v)} |
+| custom | custom | encoder(v) (with _rtype = encoder name) |
 
 Notes:
  - `_encode(...)` in the imjoy-rpc representation means the type will be recursively encoded (decoded).
@@ -129,7 +129,7 @@ api.registerCodec({
     'type': Cat, 
     'encoder': (obj)=>{
         // convert the Cat instance as a dictionary with all the properties
-        return {_rtype: 'cat', name: obj.name, color: obj.color, age: obj.age, clean: obj.clean}
+        return {name: obj.name, color: obj.color, age: obj.age, clean: obj.clean}
     },
     'decoder': (encoded_obj)=>{
         // recover the Cat instance

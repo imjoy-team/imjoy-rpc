@@ -283,7 +283,7 @@ describe("RPC", async () => {
     }
     
     api.registerCodec({'name': 'cat', 'type': Cat, 'encoder': (obj)=>{
-      return {_rtype: 'cat', name: obj.name, color: obj.color, age: obj.age}
+      return {name: obj.name, color: obj.color, age: obj.age}
     }, 'decoder': (encoded_obj)=>{
       return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age)
     }})
