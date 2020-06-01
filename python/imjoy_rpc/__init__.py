@@ -12,7 +12,7 @@ from .utils import dotdict
 from .rpc import RPC
 
 logging.basicConfig(stream=sys.stdout)
-logger = logging.getLogger("JupyterConnection")
+logger = logging.getLogger("ImJoy-RPC")
 logger.setLevel(logging.INFO)
 
 
