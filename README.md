@@ -74,7 +74,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | tf.Tensor/nj.array | numpy array  |{_rtype: "ndarray", _rvalue: v.buffer, _rshape: shape, _rdtype: _dtype} |
 | Function* | function/callable* | {_rtype: "interface", _rid: _rid, _rvalue: name} <br> {_rtype: "callback", _rvalue: id} |
 | Class | class/dotdict()* | {...} |
-| custom | custom | encoder(v) (with _rtype = encoder name) |
+| custom | custom | encoder(v) (default `_rtype` = encoder name) |
 
 Notes:
  - `_encode(...)` in the imjoy-rpc representation means the type will be recursively encoded (decoded).
