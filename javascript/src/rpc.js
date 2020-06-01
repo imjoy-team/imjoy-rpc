@@ -437,11 +437,13 @@ export class RPC extends MessageEmitter {
       if (codec.encoder && aObject instanceof codec.type) {
         // TODO: what if multiple encoders found
         const encodedObj = await Promise.resolve(codec.encoder(aObject));
-        bObject = {
-          _rtype: "custom",
-          _ctype: codec.name,
-          _rvalue: encodedObj
-        };
+        if (!encodedObj._rtype) encodedObj._rtype = codec.name;
+        else if (encodedObj._rtype !== codec.name) {
+          throw new Error(
+            `The encoded object cannot have a different _rtype(${encodedObj._rtype}) than the codec name(${codec.name}).`
+          );
+        }
+        bObject = encodedObj;
         return bObject;
       }
     }
@@ -645,23 +647,13 @@ export class RPC extends MessageEmitter {
     }
     var bObject, v, k;
     if (aObject.hasOwnProperty("_rtype")) {
-      if (aObject._ctype && aObject._rtype === "custom") {
-        if (this._codecs[aObject._ctype]) {
-          const codec = this._codecs[aObject._ctype];
-          if (codec.decoder)
-            bObject = await Promise.resolve(codec.decoder(aObject._rvalue));
-          else {
-            console.warn("No decoder found for type: " + aObject._ctype);
-            bObject = aObject;
-          }
-        } else {
-          console.warn("No decoder found for type: " + aObject._ctype);
-          bObject = aObject;
-        }
-      }
-
-      if (bObject) {
-        // do thing since the object is already decoded
+      if (
+        this._codecs[aObject._rtype] &&
+        this._codecs[aObject._rtype].decoder
+      ) {
+        bObject = await Promise.resolve(
+          this._codecs[aObject._rtype].decoder(aObject)
+        );
       } else if (aObject._rtype === "callback") {
         bObject = this._genRemoteCallback(aObject._rvalue, withPromise);
       } else if (aObject._rtype === "interface") {

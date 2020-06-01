@@ -74,7 +74,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | tf.Tensor/nj.array | numpy array  |{_rtype: "ndarray", _rvalue: v.buffer, _rshape: shape, _rdtype: _dtype} |
 | Function* | function/callable* | {_rtype: "interface", _rid: _rid, _rvalue: name} <br> {_rtype: "callback", _rvalue: id} |
 | Class | class/dotdict()* | {...} |
-| custom | custom | {_rtype: "custom", _ctype: "my_type", _rvalue: encoder(v)} |
+| custom | custom | {_rtype: "my_type", _rvalue: encoder(v)} |
 
 Notes:
  - `_encode(...)` in the imjoy-rpc representation means the type will be recursively encoded (decoded).
@@ -105,6 +105,8 @@ Notes:
 
  The basic idea of using a custom codec is to use the `encoder` to represent your custom data type into array/dictionary of primitive types (string, number etc.) such that they can be send via the transport layer of imjoy-rpc. Then use the `decoder` to reconstruct the object remotely based on the representation.
 
+For the `name`, it will be assigned as `_rtype` for the data representation, therefore please be aware that you should not use a name that already used internally (see the table above), unless you want to overried the default encoding.
+
 The `encoder` function take an object as input and you need to return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object.
 
 In the `decoder` function, you need to convert the represented object into the decoded object.
@@ -127,7 +129,7 @@ api.registerCodec({
     'type': Cat, 
     'encoder': (obj)=>{
         // convert the Cat instance as a dictionary with all the properties
-        return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age, clean: obj.clean}
+        return {_rtype: 'cat', name: obj.name, color: obj.color, age: obj.age, clean: obj.clean}
     },
     'decoder': (encoded_obj)=>{
         // recover the Cat instance
