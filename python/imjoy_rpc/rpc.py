@@ -463,6 +463,30 @@ class RPC(MessageEmitter):
         """Encode object."""
         if isinstance(a_object, (int, float, bool, str, bytes)) or a_object is None:
             return a_object
+
+        if callable(a_object):
+            if as_interface:
+                if not object_id:
+                    raise Exception("object_id is not specified.")
+                b_object = {
+                    "_rtype": "interface",
+                    "_rintf": object_id,
+                    "_rvalue": as_interface,
+                }
+                try:
+                    self._method_weakmap[a_object] = b_object
+                except:
+                    pass
+            elif a_object in self._method_weakmap:
+                b_object = self._method_weakmap[a_object]
+            else:
+                cid = self._store.put(a_object)
+                b_object = {
+                    "_rtype": "callback",
+                    "_rvalue": cid,
+                }
+            return b_object
+
         if isinstance(a_object, tuple):
             a_object = list(a_object)
         # skip if already encoded
@@ -493,28 +517,7 @@ class RPC(MessageEmitter):
                 b_object = encoded_obj
                 return b_object
 
-        if callable(a_object):
-            if as_interface:
-                if not object_id:
-                    raise Exception("object_id is not specified.")
-                b_object = {
-                    "_rtype": "interface",
-                    "_rintf": object_id,
-                    "_rvalue": as_interface,
-                }
-                try:
-                    self._method_weakmap[a_object] = b_object
-                except:
-                    pass
-            elif a_object in self._method_weakmap:
-                b_object = self._method_weakmap[a_object]
-            else:
-                cid = self._store.put(a_object)
-                b_object = {
-                    "_rtype": "callback",
-                    "_rvalue": cid,
-                }
-        elif NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
+        if NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
             v_bytes = a_object.tobytes()
             b_object = {
                 "_rtype": "ndarray",

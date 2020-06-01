@@ -422,32 +422,8 @@ export class RPC extends MessageEmitter {
     ) {
       return aObject;
     }
-    //skip if already encoded
-    if (a_type === "object" && aObject._rtype) {
-      return aObject;
-    }
 
-    const transferables = [];
-    const _transfer = aObject._transfer;
     let bObject;
-    const isarray = Array.isArray(aObject);
-
-    for (let tp of Object.keys(this._codecs)) {
-      const codec = this._codecs[tp];
-      if (codec.encoder && aObject instanceof codec.type) {
-        // TODO: what if multiple encoders found
-        const encodedObj = await Promise.resolve(codec.encoder(aObject));
-        if (!encodedObj._rtype) encodedObj._rtype = codec.name;
-        else if (encodedObj._rtype !== codec.name) {
-          throw new Error(
-            `The encoded object cannot have a different _rtype(${encodedObj._rtype}) than the codec name(${codec.name}).`
-          );
-        }
-        bObject = encodedObj;
-        return bObject;
-      }
-    }
-
     if (typeof aObject === "function") {
       if (as_interface) {
         if (!object_id) throw new Error("object_id is not specified.");
@@ -467,7 +443,35 @@ export class RPC extends MessageEmitter {
           _rvalue: cid
         };
       }
-    } else if (
+      return bObject;
+    }
+
+    //skip if already encoded
+    if (a_type === "object" && aObject._rtype) {
+      return aObject;
+    }
+
+    const transferables = [];
+    const _transfer = aObject._transfer;
+    const isarray = Array.isArray(aObject);
+
+    for (let tp of Object.keys(this._codecs)) {
+      const codec = this._codecs[tp];
+      if (codec.encoder && aObject instanceof codec.type) {
+        // TODO: what if multiple encoders found
+        const encodedObj = await Promise.resolve(codec.encoder(aObject));
+        if (!encodedObj._rtype) encodedObj._rtype = codec.name;
+        else if (encodedObj._rtype !== codec.name) {
+          throw new Error(
+            `The encoded object cannot have a different _rtype(${encodedObj._rtype}) than the codec name(${codec.name}).`
+          );
+        }
+        bObject = encodedObj;
+        return bObject;
+      }
+    }
+
+    if (
       /*global tf*/
       typeof tf !== "undefined" &&
       tf.Tensor &&
