@@ -109,7 +109,7 @@ For the `name`, it will be assigned as `_rtype` for the data representation, the
 
 The `encoder` function take an object as input and you need to return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object. By default, if your returned object does not contain a key `_rtype`, the codec `name` will be used as `_rtype`. You can also assign a different `_rtype` name, that allows the conversion between different types.
 
-In the `decoder` function, you need to convert the represented object into the decoded object.
+The `decoder` function converts the encoded object into the actual object. It will only be called when the `_rtype` of an object matches the `name` of the codec.
 
 ### Example 1: encoding and decoding custom classes with imjoy-rpc
 In this example, we first define a `Cat` class, then we register a codec to do encoding and decoding of the `Cat` instances.
