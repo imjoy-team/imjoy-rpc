@@ -1,4 +1,5 @@
 import sys
+import logging
 
 if sys.version_info < (3, 7):
     import aiocontextvars
@@ -9,6 +10,10 @@ from werkzeug.local import Local, LocalProxy, LocalManager
 import uuid
 from .utils import dotdict
 from .rpc import RPC
+
+logging.basicConfig(stream=sys.stdout)
+logger = logging.getLogger("ImJoy-RPC")
+logger.setLevel(logging.INFO)
 
 
 def type_of_script():
@@ -55,7 +60,7 @@ class ContextLocal(Local):
 _rpc_context = ContextLocal()
 
 if type_of_script() == "jupyter":
-    print("Using jupyter connection for imjoy-rpc")
+    logger.info("Using jupyter connection for imjoy-rpc")
     from .connection.jupyter_connection import JupyterCommManager
 
     manager = JupyterCommManager(_rpc_context)
@@ -64,7 +69,7 @@ if type_of_script() == "jupyter":
     )
     manager.register()
 else:
-    print("TODO: support socketio connection")
+    logger.info("TODO: support socketio connection")
     raise NotImplementedError
 
 api = LocalProxy(_rpc_context, "api")

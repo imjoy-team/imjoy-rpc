@@ -422,30 +422,8 @@ export class RPC extends MessageEmitter {
     ) {
       return aObject;
     }
-    //skip if already encoded
-    if (a_type === "object" && aObject._rtype) {
-      return aObject;
-    }
 
-    const transferables = [];
-    const _transfer = aObject._transfer;
     let bObject;
-    const isarray = Array.isArray(aObject);
-
-    for (let tp of Object.keys(this._codecs)) {
-      const codec = this._codecs[tp];
-      if (codec.encoder && aObject instanceof codec.type) {
-        // TODO: what if multiple encoders found
-        const encodedObj = await Promise.resolve(codec.encoder(aObject));
-        bObject = {
-          _rtype: "custom",
-          _ctype: codec.name,
-          _rvalue: encodedObj
-        };
-        return bObject;
-      }
-    }
-
     if (typeof aObject === "function") {
       if (as_interface) {
         if (!object_id) throw new Error("object_id is not specified.");
@@ -465,7 +443,30 @@ export class RPC extends MessageEmitter {
           _rvalue: cid
         };
       }
-    } else if (
+      return bObject;
+    }
+
+    //skip if already encoded
+    if (a_type === "object" && aObject._rtype) {
+      return aObject;
+    }
+
+    const transferables = [];
+    const _transfer = aObject._transfer;
+    const isarray = Array.isArray(aObject);
+
+    for (let tp of Object.keys(this._codecs)) {
+      const codec = this._codecs[tp];
+      if (codec.encoder && aObject instanceof codec.type) {
+        // TODO: what if multiple encoders found
+        const encodedObj = await Promise.resolve(codec.encoder(aObject));
+        if (encodedObj && !encodedObj._rtype) encodedObj._rtype = codec.name;
+        bObject = encodedObj;
+        return bObject;
+      }
+    }
+
+    if (
       /*global tf*/
       typeof tf !== "undefined" &&
       tf.Tensor &&
@@ -645,23 +646,13 @@ export class RPC extends MessageEmitter {
     }
     var bObject, v, k;
     if (aObject.hasOwnProperty("_rtype")) {
-      if (aObject._ctype && aObject._rtype === "custom") {
-        if (this._codecs[aObject._ctype]) {
-          const codec = this._codecs[aObject._ctype];
-          if (codec.decoder)
-            bObject = await Promise.resolve(codec.decoder(aObject._rvalue));
-          else {
-            console.warn("No decoder found for type: " + aObject._ctype);
-            bObject = aObject;
-          }
-        } else {
-          console.warn("No decoder found for type: " + aObject._ctype);
-          bObject = aObject;
-        }
-      }
-
-      if (bObject) {
-        // do thing since the object is already decoded
+      if (
+        this._codecs[aObject._rtype] &&
+        this._codecs[aObject._rtype].decoder
+      ) {
+        bObject = await Promise.resolve(
+          this._codecs[aObject._rtype].decoder(aObject)
+        );
       } else if (aObject._rtype === "callback") {
         bObject = this._genRemoteCallback(aObject._rvalue, withPromise);
       } else if (aObject._rtype === "interface") {

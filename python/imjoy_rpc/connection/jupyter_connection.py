@@ -1,4 +1,7 @@
 import uuid
+import sys
+import logging
+
 from IPython import get_ipython
 from IPython.display import display, HTML, Javascript
 
@@ -7,6 +10,10 @@ from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
 from werkzeug.local import Local
 import contextvars
+
+logging.basicConfig(stream=sys.stdout)
+logger = logging.getLogger("JupyterConnection")
+logger.setLevel(logging.INFO)
 
 connection_id = contextvars.ContextVar("connection_id")
 
@@ -45,7 +52,7 @@ class JupyterCommManager:
             for tp in list(self._codecs.keys()):
                 codec = self._codecs[tp]
                 if codec.type == config["type"] or tp == config["name"]:
-                    print("Removing duplicated codec: " + tp)
+                    logger.warn("Removing duplicated codec: " + tp)
                     del self._codecs[tp]
 
         self._codecs[config["name"]] = dotdict(config)
@@ -111,8 +118,10 @@ class JupyterCommConnection(MessageEmitter):
                         del data["__buffer_paths__"]
                         put_buffers(data, buffer_paths, msg["buffers"])
                     self._fire(data["type"], data)
-            elif self.config.get("debug"):
-                print(f"connection peer id mismatch {data.peer_id} != {self.peer_id}")
+            else:
+                logger.warn(
+                    f"connection peer id mismatch {data.peer_id} != {self.peer_id}"
+                )
 
         comm.on_msg(msg_cb)
 

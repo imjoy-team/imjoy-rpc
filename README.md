@@ -74,7 +74,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 | tf.Tensor/nj.array | numpy array  |{_rtype: "ndarray", _rvalue: v.buffer, _rshape: shape, _rdtype: _dtype} |
 | Function* | function/callable* | {_rtype: "interface", _rid: _rid, _rvalue: name} <br> {_rtype: "callback", _rvalue: id} |
 | Class | class/dotdict()* | {...} |
-| custom | custom | {_rtype: "custom", _ctype: "my_type", _rvalue: encoder(v)} |
+| custom | custom | encoder(v) (default `_rtype` = encoder name) |
 
 Notes:
  - `_encode(...)` in the imjoy-rpc representation means the type will be recursively encoded (decoded).
@@ -105,7 +105,9 @@ Notes:
 
  The basic idea of using a custom codec is to use the `encoder` to represent your custom data type into array/dictionary of primitive types (string, number etc.) such that they can be send via the transport layer of imjoy-rpc. Then use the `decoder` to reconstruct the object remotely based on the representation.
 
-The `encoder` function take an object as input and you need to return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object.
+For the `name`, it will be assigned as `_rtype` for the data representation, therefore please be aware that you should not use a name that already used internally (see the table above), unless you want to overried the default encoding. Also note that you cannot overried the encoding of primitive types and functions.
+
+The `encoder` function take an object as input and you need to return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object. By default, if your returned object does not contain a key `_rtype`, the codec `name` will be used as `_rtype`. You can also assign a different `_rtype` name, that allows the conversion between different types.
 
 In the `decoder` function, you need to convert the represented object into the decoded object.
 
@@ -127,11 +129,16 @@ api.registerCodec({
     'type': Cat, 
     'encoder': (obj)=>{
         // convert the Cat instance as a dictionary with all the properties
-        return {_ctype: 'cat', name: obj.name, color: obj.color, age: obj.age, clean: obj.clean}
+        return {name: obj.name, color: obj.color, age: obj.age, clean: obj.clean}
     },
     'decoder': (encoded_obj)=>{
         // recover the Cat instance
         return new Cat(encoded_obj.name, encoded_obj.color, encoded_obj.age, encoded_obj.clean)
+    }
+})
+
+class Plugin {
+    async setup(){
     }
 })
 

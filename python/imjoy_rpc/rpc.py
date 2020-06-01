@@ -463,27 +463,6 @@ class RPC(MessageEmitter):
         """Encode object."""
         if isinstance(a_object, (int, float, bool, str, bytes)) or a_object is None:
             return a_object
-        if isinstance(a_object, tuple):
-            a_object = list(a_object)
-        # skip if already encoded
-        if isinstance(a_object, dict) and "_rtype" in a_object:
-            return a_object
-
-        isarray = isinstance(a_object, list)
-        b_object = None
-
-        encoded_obj = None
-        for tp in self._codecs:
-            codec = self._codecs[tp]
-            if codec.encoder and isinstance(a_object, codec.type):
-                # TODO: what if multiple encoders found
-                encoded_obj = codec.encoder(a_object)
-                b_object = {
-                    "_rtype": "custom",
-                    "_ctype": codec.name,
-                    "_rvalue": encoded_obj,
-                }
-                return b_object
 
         if callable(a_object):
             if as_interface:
@@ -506,7 +485,29 @@ class RPC(MessageEmitter):
                     "_rtype": "callback",
                     "_rvalue": cid,
                 }
-        elif NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
+            return b_object
+
+        if isinstance(a_object, tuple):
+            a_object = list(a_object)
+        # skip if already encoded
+        if isinstance(a_object, dict) and "_rtype" in a_object:
+            return a_object
+
+        isarray = isinstance(a_object, list)
+        b_object = None
+
+        encoded_obj = None
+        for tp in self._codecs:
+            codec = self._codecs[tp]
+            if codec.encoder and isinstance(a_object, codec.type):
+                # TODO: what if multiple encoders found
+                encoded_obj = codec.encoder(a_object)
+                if isinstance(encoded_obj, dict) and "_rtype" not in encoded_obj:
+                    encoded_obj["_rtype"] = codec.name
+                b_object = encoded_obj
+                return b_object
+
+        if NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
             v_bytes = a_object.tobytes()
             b_object = {
                 "_rtype": "ndarray",
@@ -610,23 +611,11 @@ class RPC(MessageEmitter):
             return a_object
         if isinstance(a_object, dict) and "_rtype" in a_object:
             b_object = None
-            if a_object["_rtype"] == "custom":
-                if a_object.get("_ctype") and a_object["_ctype"] in self._codecs:
-                    codec = self._codecs[a_object["_ctype"]]
-                    if codec.decoder:
-                        b_object = codec.decoder(a_object["_rvalue"])
-                    else:
-                        logger.warn(
-                            "No decoder found for type: " + a_object.get("_ctype")
-                        )
-                        b_object = a_object
-                else:
-                    logger.warn("No decoder found for type: " + a_object.get("_ctype"))
-                    b_object = a_object
-
-            if b_object is not None:
-                # do thing since the object is already decoded
-                pass
+            if (
+                self._codecs.get(a_object["_rtype"])
+                and self._codecs[a_object["_rtype"]].decoder
+            ):
+                b_object = self._codecs[a_object["_rtype"]].decoder(a_object)
             elif a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(a_object["_rvalue"], with_promise)
             elif a_object["_rtype"] == "interface":
