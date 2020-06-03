@@ -17,11 +17,11 @@ $.getStylesheet(
 );
 
 $.getStylesheet(
-  "http://fezvrasta.github.io/snackbarjs/themes-css/material.css"
+  "https://fezvrasta.github.io/snackbarjs/themes-css/material.css"
 );
 
 $.getStylesheet(
-  "http://fezvrasta.github.io/snackbarjs/dist/snackbar.min.css"
+  "https://fezvrasta.github.io/snackbarjs/dist/snackbar.min.css"
 );
 
 function randId() {
