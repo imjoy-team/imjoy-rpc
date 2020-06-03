@@ -235,8 +235,11 @@ import numpy as np
 def lazy_encoder(obj):
     encoded = {}
 
+    # slicing on the array with a list of slices, each slice list uses [start, stop, step] format
+    # the default step is 1
+    # for example get_slice([(0, 10, 2), (0, 1)])
     def get_slice(slices):
-        indexes = tuple([slice(s[0], s[1]) for s in slices])
+        indexes = tuple([slice(s[0], s[1], None if len(s)==2 else s[2]) for s in slices])
         return np.array(obj[indexes].compute())
 
     encoded["slice"] = get_slice
@@ -253,12 +256,21 @@ class ImJoyPlugin():
     async def run(self, ctx):
         # make a dask array
         array1 = da.random.random((10000, 10000), chunks=(1000, 1000))
-        # send the array and get it back
+        # Send the array and get it back,
         # because of the decoding, we will get an slice interface to the array instead
         array2 = await api.echo(array1)
-        array3 = await array2.slice([[0, 1], [0, 1]])
+        
+        # Here we use the echo function as an example
+        # but you can also send this array to, for example a javascript plugin,
+        # it can bet the same slice function
+        # we perform slicing on two dimensions
+        # start=0, stop=4, step=2 for the first dimension
+        # start=5, stop=6 for the second dimension
+        slices = await array2.slice([[0, 4, 2], [5, 6]])
 
-        # dispose the array
+        api.alert(str(slices))
+
+        # dispose the array when we don't need it
         api.disposeObject(array2)
 
 api.export(ImJoyPlugin())
