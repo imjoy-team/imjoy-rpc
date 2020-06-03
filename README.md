@@ -170,7 +170,7 @@ We will first encode all the itk.Image instances with the `itkimage_to_json` fun
 
 ```python
 # Run `pip install itk itkwidgets` before trying this example
-from imjoy import api
+from imjoy_rpc import api
 import numpy as np
 import itk
 from itkwidgets.trait_types import itkimage_to_json, itkimage_from_json
@@ -228,7 +228,7 @@ api.export({
 Since an encoder can also contain function, this allow us to make a lazy object that can be used to fetch data gradually.
 ```python
 # Run `pip install dask[array]` before trying this example
-from imjoy import api
+from imjoy_rpc import api
 import dask.array as da
 import numpy as np
 

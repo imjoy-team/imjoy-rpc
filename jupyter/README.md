@@ -24,7 +24,7 @@ Now run ImJoy plugins in a cell, see an example that uses itk-vtk-viewer to visu
 ```python
 import imageio
 import numpy as np
-from imjoy import api
+from imjoy_rpc import api
 
 class ImJoyPlugin():
     def setup(self):
