@@ -18,7 +18,11 @@ class SocketioConnection(MessageEmitter):
                 if "type" in data:
                     self._fire(data["type"], data)
             elif self.config.get("debug"):
-                print(f"connection peer id mismatch {data.peer_id} != {self.peer_id}")
+                print(
+                    "connection peer id mismatch {} != {}".format(
+                        data.get("peer_id"), self.peer_id
+                    )
+                )
 
         @sio.event
         def connect():

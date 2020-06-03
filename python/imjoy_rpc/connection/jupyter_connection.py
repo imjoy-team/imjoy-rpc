@@ -96,7 +96,7 @@ class JupyterCommManager:
         connection.emit(
             {
                 "type": "imjoyRPCReady",
-                "config": self.default_config,
+                "config": dict(self.default_config),
                 "peer_id": connection.peer_id,
             }
         )
@@ -124,7 +124,9 @@ class JupyterCommConnection(MessageEmitter):
                     self._fire(data["type"], data)
             else:
                 logger.warn(
-                    f"connection peer id mismatch {data.get(peer_id)} != {self.peer_id}"
+                    "connection peer id mismatch {} != {}".format(
+                        data.get("peer_id"), self.peer_id
+                    )
                 )
 
         comm.on_msg(msg_cb)
