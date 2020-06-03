@@ -159,7 +159,7 @@ export class RPC extends MessageEmitter {
         });
         this._connection.emit({
           type: "disposeObject",
-          objectId: objectId
+          object_id: objectId
         });
       } else {
         throw new Error("Invalid object");
