@@ -1,0 +1,5 @@
+{
+    "load_extensions": {
+        "imjoy_jupyter_extension/index": true
+    }
+}
