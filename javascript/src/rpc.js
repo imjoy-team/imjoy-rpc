@@ -342,7 +342,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote method
    */
-  _genRemoteMethod(peer_id, name, objectId) {
+  _genRemoteMethod(peerId, name, objectId) {
     var me = this;
     var remoteMethod = function() {
       return new Promise(async (resolve, reject) => {
@@ -372,7 +372,7 @@ export class RPC extends MessageEmitter {
           me._connection.emit(
             {
               type: "method",
-              peer_id: peer_id,
+              peer_id: peerId,
               name: name,
               object_id: objectId,
               args: args,
@@ -813,7 +813,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote callback
    */
-  _genRemoteCallback(peer_id, cid, withPromise) {
+  _genRemoteCallback(peerId, cid, withPromise) {
     var me = this;
     var remoteCallback;
     if (withPromise) {
@@ -828,7 +828,7 @@ export class RPC extends MessageEmitter {
             me._connection.emit(
               {
                 type: "callback",
-                peer_id: peer_id,
+                peer_id: peerId,
                 id: cid,
                 args: args,
                 promise: await me._wrap([resolve, reject])
@@ -849,7 +849,7 @@ export class RPC extends MessageEmitter {
         return me._connection.emit(
           {
             type: "callback",
-            peer_id: peer_id,
+            peer_id: peerId,
             id: cid,
             args: args
           },
