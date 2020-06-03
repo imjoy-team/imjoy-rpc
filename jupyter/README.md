@@ -10,33 +10,15 @@ The library has an abstract transport interface that can support different types
 
 To use it, you need to install the imjoy-rpc library in Python and the notebook extension in javascript.
 
-### Install ImJoy RPC library
+### Install ImJoy RPC and Jupyter notebook extension
 ```bash
-pip install -U imjoy-rpc
-```
-
-### Install Jupyter notebook extension
-
-```bash
-# install the extension
-jupyter nbextension install https://raw.githubusercontent.com/imjoy-team/imjoy-rpc/master/nbextension/imjoy-rpc.js --user
-
-# for development, you can clone this repo and add --symlink
-# git clone https://github.com/imjoy-team/imjoy-rpc.git
-# cd imjoy-rpc
-# jupyter nbextension install nbextension/imjoy-rpc.js --user --symlink
-
-# enable the extension
-jupyter nbextension enable imjoy-rpc --user
-
-# you can also disabled it if you don't need it anymore
-# jupyter nbextension disable imjoy-rpc
+pip install -U imjoy-rpc imjoy-jupyter-extension
 ```
 
 ### Use ImJoy plugins inside Jupyter notebooks
 Now you can start a jupyter notebook via for example `jupyter notebook` command, you should be able to see an ImJoy icon in the toolbar if everything goes well.
 
-![imjoy in the notebook toolbar](./imjoy-toolbar.png)
+![imjoy in the notebook toolbar](./imjoy_jupyter_extension/static/imjoy-toolbar.png)
 
 Now run ImJoy plugins in a cell, see an example that uses itk-vtk-viewer to visualize images:
 ```python

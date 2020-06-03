@@ -136,31 +136,30 @@ export class RPC extends MessageEmitter {
     if (!this._local_api) {
       throw new Error("interface is not set.");
     }
-    this._local_api._rintf = "_rlocal";
     this._encode(this._local_api, true).then(api => {
       this._connection.emit({ type: "setInterface", api: api });
     });
   }
 
-  _disposeObject(object_id) {
-    if (this._object_store[object_id]) {
-      delete this._object_store[object_id];
+  _disposeObject(objectId) {
+    if (this._object_store[objectId]) {
+      delete this._object_store[objectId];
     } else {
-      throw new Error(`Object (id=${object_id}) not found.`);
+      throw new Error(`Object (id=${objectId}) not found.`);
     }
   }
 
   disposeObject(obj) {
     return new Promise((resolve, reject) => {
       if (this._object_weakmap.has(obj)) {
-        const object_id = this._object_weakmap.get(obj);
+        const objectId = this._object_weakmap.get(obj);
         this._connection.once("disposed", data => {
           if (data.error) reject(new Error(data.error));
           else resolve();
         });
         this._connection.emit({
           type: "disposeObject",
-          object_id: object_id
+          object_id: objectId
         });
       } else {
         throw new Error("Invalid object");
@@ -343,13 +342,13 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote method
    */
-  _genRemoteMethod(name, object_id) {
+  _genRemoteMethod(peerId, name, objectId) {
     var me = this;
     var remoteMethod = function() {
       return new Promise(async (resolve, reject) => {
         let id = null;
         try {
-          id = me._method_refs.put(object_id ? object_id + "/" + name : name);
+          id = me._method_refs.put(objectId ? objectId + "/" + name : name);
           var wrapped_resolve = function() {
             if (id !== null) me._method_refs.fetch(id);
             return resolve.apply(this, arguments);
@@ -359,8 +358,8 @@ export class RPC extends MessageEmitter {
             return reject.apply(this, arguments);
           };
 
-          wrapped_resolve.__jailed_pairs__ = wrapped_reject;
-          wrapped_reject.__jailed_pairs__ = wrapped_resolve;
+          wrapped_resolve.__rpc_pair = wrapped_reject;
+          wrapped_reject.__rpc_pair = wrapped_resolve;
 
           var args = Array.prototype.slice.call(arguments);
           if (name === "register" || name === "export" || name === "on") {
@@ -373,8 +372,9 @@ export class RPC extends MessageEmitter {
           me._connection.emit(
             {
               type: "method",
+              peer_id: peerId,
               name: name,
-              object_id: object_id,
+              object_id: objectId,
               args: args,
               promise: await me._wrap([wrapped_resolve, wrapped_reject])
             },
@@ -383,7 +383,7 @@ export class RPC extends MessageEmitter {
         } catch (e) {
           if (id) me._method_refs.fetch(id);
           reject(
-            `Failed to exectue remote method (interface: ${object_id ||
+            `Failed to exectue remote method (interface: ${objectId ||
               me.id}, method: ${name}), error: ${e}`
           );
         }
@@ -410,12 +410,12 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Array} wrapped arguments
    */
-  async _encode(aObject, as_interface, object_id) {
-    const a_type = typeof aObject;
+  async _encode(aObject, asInterface, objectId) {
+    const aType = typeof aObject;
     if (
-      a_type === "number" ||
-      a_type === "string" ||
-      a_type === "boolean" ||
+      aType === "number" ||
+      aType === "string" ||
+      aType === "boolean" ||
       aObject === null ||
       aObject === undefined ||
       aObject instanceof ArrayBuffer
@@ -425,12 +425,13 @@ export class RPC extends MessageEmitter {
 
     let bObject;
     if (typeof aObject === "function") {
-      if (as_interface) {
-        if (!object_id) throw new Error("object_id is not specified.");
+      if (asInterface) {
+        if (!objectId) throw new Error("objectId is not specified.");
         bObject = {
           _rtype: "interface",
-          _rintf: object_id,
-          _rvalue: as_interface
+          _rpeer_id: this._connection.peer_id,
+          _rintf: objectId,
+          _rvalue: asInterface
         };
         this._method_weakmap.set(aObject, bObject);
       } else if (this._method_weakmap.has(aObject)) {
@@ -439,6 +440,7 @@ export class RPC extends MessageEmitter {
         const cid = this._store.put(aObject);
         bObject = {
           _rtype: "callback",
+          _rpeer_id: this._connection.peer_id,
           _rname: (aObject.constructor && aObject.constructor.name) || cid,
           _rvalue: cid
         };
@@ -446,9 +448,19 @@ export class RPC extends MessageEmitter {
       return bObject;
     }
 
-    //skip if already encoded
-    if (a_type === "object" && aObject._rtype) {
-      return aObject;
+    // skip if already encoded
+    if (aObject.constructor instanceof Object && aObject._rtype) {
+      // make sure the interface functions are encoded
+      if (aObject._rintf) {
+        const temp = aObject._rtype;
+        delete aObject._rtype;
+
+        bObject = await this._encode(aObject, asInterface, objectId);
+        bObject._rtype = temp;
+      } else {
+        bObject = aObject;
+      }
+      return bObject;
     }
 
     const transferables = [];
@@ -461,6 +473,13 @@ export class RPC extends MessageEmitter {
         // TODO: what if multiple encoders found
         const encodedObj = await Promise.resolve(codec.encoder(aObject));
         if (encodedObj && !encodedObj._rtype) encodedObj._rtype = codec.name;
+        // encode the functions in the interface object
+        if (encodedObj && encodedObj._rintf) {
+          const temp = encodedObj._rtype;
+          delete encodedObj._rtype;
+          encodedObj = await this._encode(encodedObj, asInterface, objectId);
+          encodedObj._rtype = temp;
+        }
         bObject = encodedObj;
         return bObject;
       }
@@ -553,12 +572,12 @@ export class RPC extends MessageEmitter {
     } else if (aObject instanceof Set) {
       bObject = {
         _rtype: "set",
-        _rvalue: await this._encode(Array.from(aObject), as_interface)
+        _rvalue: await this._encode(Array.from(aObject), asInterface)
       };
     } else if (aObject instanceof Map) {
       bObject = {
         _rtype: "orderedmap",
-        _rvalue: await this._encode(Array.from(aObject), as_interface)
+        _rvalue: await this._encode(Array.from(aObject), asInterface)
       };
     } else if (
       aObject.constructor instanceof Object ||
@@ -581,15 +600,15 @@ export class RPC extends MessageEmitter {
         ).concat(Object.keys(aObject));
         // TODO: use a proxy object to represent the actual object
         // always encode class instance as interface
-        as_interface = true;
+        asInterface = true;
       } else {
         throw Error("Unsupported interface type");
       }
       // encode interfaces
-      if (aObject._rintf || as_interface) {
-        if (!object_id) {
-          object_id = randId();
-          this._object_store[object_id] = aObject;
+      if (aObject._rintf || asInterface) {
+        if (!objectId) {
+          objectId = randId();
+          this._object_store[objectId] = aObject;
         }
         for (let k of keys) {
           if (k === "constructor") continue;
@@ -598,16 +617,16 @@ export class RPC extends MessageEmitter {
           }
           bObject[k] = await this._encode(
             aObject[k],
-            typeof as_interface === "string" ? as_interface + "." + k : k,
-            object_id
+            typeof asInterface === "string" ? asInterface + "." + k : k,
+            objectId
           );
         }
         // object id for dispose the object remotely
-        bObject._rintf = object_id;
+        bObject._rintf = objectId;
         // remove interface when closed
         if (aObject.on && typeof aObject.on === "function") {
           aObject.on("close", () => {
-            delete this._object_store[object_id];
+            delete this._object_store[objectId];
           });
         }
       } else {
@@ -621,7 +640,7 @@ export class RPC extends MessageEmitter {
       const keys = Object.getOwnPropertyNames(
         Object.getPrototypeOf(aObject)
       ).concat(Object.keys(aObject));
-      const object_id = randId();
+      const objectId = randId();
 
       for (let k of keys) {
         if (["hasOwnProperty", "constructor"].includes(k)) continue;
@@ -629,13 +648,16 @@ export class RPC extends MessageEmitter {
         bObject[k] = await this._encode(aObject[k], k, bObject);
       }
       // object id, used for dispose the object
-      bObject._rintf = object_id;
+      bObject._rintf = objectId;
     } else {
       throw "imjoy-rpc: Unsupported data type:" + aObject;
     }
 
     if (transferables.length > 0) {
       bObject.__transferables__ = transferables;
+    }
+    if (!bObject) {
+      throw new Error("Failed to encode object");
     }
     return bObject;
   }
@@ -645,18 +667,32 @@ export class RPC extends MessageEmitter {
       return aObject;
     }
     var bObject, v, k;
-    if (aObject.hasOwnProperty("_rtype")) {
+    if (aObject["_rtype"]) {
       if (
         this._codecs[aObject._rtype] &&
         this._codecs[aObject._rtype].decoder
       ) {
+        if (aObject._rintf) {
+          const temp = aObject._rtype;
+          delete aObject._rtype;
+          aObject = await this._decode(aObject, withPromise);
+          aObject._rtype = temp;
+        }
         bObject = await Promise.resolve(
           this._codecs[aObject._rtype].decoder(aObject)
         );
       } else if (aObject._rtype === "callback") {
-        bObject = this._genRemoteCallback(aObject._rvalue, withPromise);
+        bObject = this._genRemoteCallback(
+          aObject._rpeer_id,
+          aObject._rvalue,
+          withPromise
+        );
       } else if (aObject._rtype === "interface") {
-        bObject = this._genRemoteMethod(aObject._rvalue, aObject._rintf);
+        bObject = this._genRemoteMethod(
+          aObject._rpeer_id,
+          aObject._rvalue,
+          aObject._rintf
+        );
       } else if (aObject._rtype === "ndarray") {
         /*global nj tf*/
         //create build array/tensor if used in the plugin
@@ -712,6 +748,13 @@ export class RPC extends MessageEmitter {
       } else if (aObject._rtype === "set") {
         bObject = new Set(await this._decode(aObject._rvalue, withPromise));
       } else {
+        // make sure all the interface functions are decoded
+        if (aObject._rintf) {
+          const temp = aObject._rtype;
+          delete aObject._rtype;
+          aObject = await this._decode(aObject, withPromise);
+          aObject._rtype = temp;
+        }
         bObject = aObject;
       }
     } else if (aObject.constructor === Object || Array.isArray(aObject)) {
@@ -726,6 +769,9 @@ export class RPC extends MessageEmitter {
     } else {
       bObject = aObject;
     }
+    if (bObject === undefined) {
+      throw new Error("Failed to decode object");
+    }
     // store the object id for dispose
     if (aObject._rintf) {
       this._object_weakmap.set(bObject, aObject._rintf);
@@ -733,8 +779,8 @@ export class RPC extends MessageEmitter {
     return bObject;
   }
 
-  async _wrap(args, as_interface) {
-    var wrapped = await this._encode(args, as_interface);
+  async _wrap(args, asInterface) {
+    var wrapped = await this._encode(args, asInterface);
     return wrapped;
   }
 
@@ -767,7 +813,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote callback
    */
-  _genRemoteCallback(cid, withPromise) {
+  _genRemoteCallback(peerId, cid, withPromise) {
     var me = this;
     var remoteCallback;
     if (withPromise) {
@@ -776,15 +822,15 @@ export class RPC extends MessageEmitter {
           var args = await me._wrap(Array.prototype.slice.call(arguments));
           var transferables = args.__transferables__;
           if (transferables) delete args.__transferables__;
-          resolve.__jailed_pairs__ = reject;
-          reject.__jailed_pairs__ = resolve;
+          resolve.__rpc_pair = reject;
+          reject.__rpc_pair = resolve;
           try {
             me._connection.emit(
               {
                 type: "callback",
+                peer_id: peerId,
                 id: cid,
                 args: args,
-                // object_id :  me.id,
                 promise: await me._wrap([resolve, reject])
               },
               transferables
@@ -803,9 +849,9 @@ export class RPC extends MessageEmitter {
         return me._connection.emit(
           {
             type: "callback",
+            peer_id: peerId,
             id: cid,
             args: args
-            // object_id :  me.id
           },
           transferables
         );
@@ -953,8 +999,8 @@ class ReferenceStore {
         this._readyHandler();
       }
     }
-    if (obj && obj.__jailed_pairs__) {
-      const _id = getKeyByValue(this._store, obj.__jailed_pairs__);
+    if (obj && obj.__rpc_pair) {
+      const _id = getKeyByValue(this._store, obj.__rpc_pair);
       this.fetch(_id);
     }
     return obj;

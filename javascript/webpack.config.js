@@ -67,6 +67,7 @@ module.exports = {
                       browsers: ['last 2 Chrome versions']
                     },
                     useBuiltIns: 'entry',
+                    corejs: "3.0.0",
                     modules: false,
                   },
                 ],

@@ -194,14 +194,14 @@ class RPC(MessageEmitter):
                 if "error" in data:
                     reject(data["error"])
                 else:
-                    resolve()
+                    resolve(None)
 
             self._connection.once("disposed", handle_disposed)
             self._connection.emit({"type": "disposeObject", "object_id": object_id})
 
         return FuturePromise(pfunc, self._remote_logger)
 
-    def _gen_remote_method(self, name, plugin_id=None):
+    def _gen_remote_method(self, peer_id, name, plugin_id=None):
         """Return remote method."""
 
         def remote_method(*arguments, **kwargs):
@@ -211,10 +211,11 @@ class RPC(MessageEmitter):
                 arguments = [kwargs]
 
             def pfunc(resolve, reject):
-                resolve.__jailed_pairs__ = reject
-                reject.__jailed_pairs__ = resolve
+                resolve.__rpc_pair = reject
+                reject.__rpc_pair = resolve
                 call_func = {
                     "type": "method",
+                    "peer_id": peer_id,
                     "name": name,
                     "object_id": plugin_id,
                     "args": self.wrap(arguments),
@@ -227,7 +228,7 @@ class RPC(MessageEmitter):
         remote_method.__remote_method = True  # pylint: disable=protected-access
         return remote_method
 
-    def _gen_remote_callback(self, cid, with_promise):
+    def _gen_remote_callback(self, peer_id, cid, with_promise):
         """Return remote callback."""
         if with_promise:
 
@@ -237,12 +238,13 @@ class RPC(MessageEmitter):
                     arguments = [kwargs]
 
                 def pfunc(resolve, reject):
-                    resolve.__jailed_pairs__ = reject
-                    reject.__jailed_pairs__ = resolve
+                    resolve.__rpc_pair = reject
+                    reject.__rpc_pair = resolve
                     self._connection.emit(
                         {
                             "type": "callback",
                             "id": cid,
+                            "peer_id": peer_id,
                             # 'object_id'  : self.id,
                             "args": self.wrap(arguments),
                             "promise": self.wrap([resolve, reject]),
@@ -261,6 +263,7 @@ class RPC(MessageEmitter):
                     {
                         "type": "callback",
                         "id": cid,
+                        "peer_id": peer_id,
                         # 'object_id'  : self.id,
                         "args": self.wrap(arguments),
                     }
@@ -470,6 +473,7 @@ class RPC(MessageEmitter):
                     raise Exception("object_id is not specified.")
                 b_object = {
                     "_rtype": "interface",
+                    "_rpeer_id": self._connection.peer_id,
                     "_rintf": object_id,
                     "_rvalue": as_interface,
                 }
@@ -483,6 +487,8 @@ class RPC(MessageEmitter):
                 cid = self._store.put(a_object)
                 b_object = {
                     "_rtype": "callback",
+                    "_rname": a_object.__name__,
+                    "_rpeer_id": self._connection.peer_id,
                     "_rvalue": cid,
                 }
             return b_object
@@ -491,7 +497,15 @@ class RPC(MessageEmitter):
             a_object = list(a_object)
         # skip if already encoded
         if isinstance(a_object, dict) and "_rtype" in a_object:
-            return a_object
+            # make sure the interface functions are encoded
+            if "_rintf" in a_object:
+                temp = a_object["_rtype"]
+                del a_object["_rtype"]
+                b_object = self._encode(a_object, as_interface, object_id)
+                b_object._rtype = temp
+            else:
+                b_object = a_object
+            return b_object
 
         isarray = isinstance(a_object, list)
         b_object = None
@@ -504,6 +518,12 @@ class RPC(MessageEmitter):
                 encoded_obj = codec.encoder(a_object)
                 if isinstance(encoded_obj, dict) and "_rtype" not in encoded_obj:
                     encoded_obj["_rtype"] = codec.name
+                # encode the functions in the interface object
+                if isinstance(encoded_obj, dict) and "_rintf" in encoded_obj:
+                    temp = encoded_obj["_rtype"]
+                    del encoded_obj["_rtype"]
+                    encoded_obj = self._encode(encoded_obj, True)
+                    encoded_obj["_rtype"] = temp
                 b_object = encoded_obj
                 return b_object
 
@@ -515,6 +535,7 @@ class RPC(MessageEmitter):
                 "_rshape": a_object.shape,
                 "_rdtype": str(a_object.dtype),
             }
+
         elif isinstance(a_object, Exception):
             b_object = {"_rtype": "error", "_rvalue": str(a_object)}
         elif isinstance(a_object, memoryview):
@@ -596,7 +617,6 @@ class RPC(MessageEmitter):
                         b_object[key] = self._encode(a_object_norm[key])
         else:
             raise Exception("imjoy-rpc: Unsupported data type:" + str(aObject))
-
         return b_object
 
     def unwrap(self, args, with_promise):
@@ -615,12 +635,19 @@ class RPC(MessageEmitter):
                 self._codecs.get(a_object["_rtype"])
                 and self._codecs[a_object["_rtype"]].decoder
             ):
+                if "_rintf" in a_object:
+                    temp = a_object["_rtype"]
+                    del a_object["_rtype"]
+                    a_object = self._decode(a_object, with_promise)
+                    a_object["_rtype"] = temp
                 b_object = self._codecs[a_object["_rtype"]].decoder(a_object)
             elif a_object["_rtype"] == "callback":
-                b_object = self._gen_remote_callback(a_object["_rvalue"], with_promise)
+                b_object = self._gen_remote_callback(
+                    a_object.get("_rpeer_id"), a_object["_rvalue"], with_promise
+                )
             elif a_object["_rtype"] == "interface":
                 b_object = self._gen_remote_method(
-                    a_object["_rvalue"], a_object["_rintf"]
+                    a_object.get("_rpeer_id"), a_object["_rvalue"], a_object["_rintf"]
                 )
             elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
@@ -637,6 +664,7 @@ class RPC(MessageEmitter):
                         b_object = NUMPY.frombuffer(
                             a_object["_rvalue"], dtype=a_object["_rdtype"]
                         ).reshape(tuple(a_object["_rshape"]))
+
                     else:
                         b_object = a_object
                         logger.warn("numpy is not available, failed to decode ndarray")
@@ -670,6 +698,12 @@ class RPC(MessageEmitter):
             elif a_object["_rtype"] == "error":
                 b_object = Exception(a_object["_rvalue"])
             else:
+                # make sure all the interface functions are decoded
+                if "_rintf" in a_object:
+                    temp = a_object["_rtype"]
+                    del a_object["_rtype"]
+                    a_object = self._decode(a_object, with_promise)
+                    a_object["_rtype"] = temp
                 b_object = a_object
         elif isinstance(a_object, (dict, list, tuple)):
             if isinstance(a_object, tuple):

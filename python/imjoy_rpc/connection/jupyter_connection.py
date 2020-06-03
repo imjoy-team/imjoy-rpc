@@ -11,6 +11,10 @@ from imjoy_rpc.utils import MessageEmitter, dotdict
 from werkzeug.local import Local
 import contextvars
 
+import sys
+
+sys.stdout = open("/dev/stdout", "w")
+
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("JupyterConnection")
 logger.setLevel(logging.INFO)
@@ -120,7 +124,7 @@ class JupyterCommConnection(MessageEmitter):
                     self._fire(data["type"], data)
             else:
                 logger.warn(
-                    f"connection peer id mismatch {data.peer_id} != {self.peer_id}"
+                    f"connection peer id mismatch {data.get(peer_id)} != {self.peer_id}"
                 )
 
         comm.on_msg(msg_cb)

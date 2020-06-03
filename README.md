@@ -40,7 +40,7 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
 ```
 
 
-### [Jupyter notebook extension](./nbextension/README.md)
+### [Jupyter notebook extension](./jupyter/README.md)
 
 ## imjoy-rpc handshaking protocol
 
@@ -107,7 +107,7 @@ Notes:
 
 For the `name`, it will be assigned as `_rtype` for the data representation, therefore please be aware that you should not use a name that already used internally (see the table above), unless you want to overried the default encoding. Also note that you cannot overried the encoding of primitive types and functions.
 
-The `encoder` function take an object as input and you need to return the represented object/dictionary. Note that, you can only use primitive types plus array/list and object/dict in the represented object. By default, if your returned object does not contain a key `_rtype`, the codec `name` will be used as `_rtype`. You can also assign a different `_rtype` name, that allows the conversion between different types.
+The `encoder` function take an object as input and you need to return the represented object/dictionary. You can only use primitive types plus array/list and object/dict in the represented object. If you want to include function in the encoding, please also include a key `_rintf` and set the value to true. By default, if your returned object does not contain a key `_rtype`, the codec `name` will be used as `_rtype`. You can also assign a different `_rtype` name, that allows the conversion between different types.
 
 The `decoder` function converts the encoded object into the actual object. It will only be called when the `_rtype` of an object matches the `name` of the codec.
 
@@ -221,6 +221,59 @@ api.export({
         })
     }
 })
+```
+
+### Example 3: sending lazy object
+
+Since an encoder can also contain function, this allow us to make a lazy object that can be used to fetch data gradually.
+```python
+# Run `pip install dask[array]` before trying this example
+from imjoy_rpc import api
+import dask.array as da
+import numpy as np
+
+def lazy_encoder(obj):
+    encoded = {}
+
+    # slicing on the array with a list of slices, each slice list uses [start, stop, step] format
+    # the default step is 1
+    # for example get_slice([(0, 10, 2), (0, 1)])
+    def get_slice(slices):
+        indexes = tuple([slice(s[0], s[1], None if len(s)==2 else s[2]) for s in slices])
+        return np.array(obj[indexes].compute())
+
+    encoded["slice"] = get_slice
+    encoded["_rintf"] = True
+    return encoded
+
+
+api.registerCodec({'name': 'daskimage', 'type': da.Array, 'encoder': lazy_encoder})
+
+class ImJoyPlugin():
+    def setup(self):
+        api.log('plugin initialized')
+
+    async def run(self, ctx):
+        # make a dask array
+        array1 = da.random.random((10000, 10000), chunks=(1000, 1000))
+        # Send the array and get it back,
+        # because of the decoding, we will get an slice interface to the array instead
+        array2 = await api.echo(array1)
+        
+        # Here we use the echo function as an example
+        # but you can also send this array to, for example a javascript plugin,
+        # it can bet the same slice function
+        # we perform slicing on two dimensions
+        # start=0, stop=4, step=2 for the first dimension
+        # start=5, stop=6 for the second dimension
+        slices = await array2.slice([[0, 4, 2], [5, 6]])
+
+        api.alert(str(slices))
+
+        # dispose the array when we don't need it
+        api.disposeObject(array2)
+
+api.export(ImJoyPlugin())
 ```
 
 ## Remote Objects

@@ -1,8 +1,15 @@
 """Provide utility functions for RPC"""
+import sys
+
+if sys.version_info < (3, 7):
+    import aiocontextvars
+import contextvars
 import asyncio
 import copy
 import uuid
 import traceback
+import threading
+from werkzeug.local import Local
 
 
 class dotdict(dict):  # pylint: disable=invalid-name
@@ -67,8 +74,8 @@ class ReferenceStore:
         obj = self._store[search_id]
         if not hasattr(obj, "__remote_method"):
             del self._store[search_id]
-        if hasattr(obj, "__jailed_pairs__"):
-            _id = get_key_by_value(self._store, obj.__jailed_pairs__)
+        if hasattr(obj, "__rpc_pair"):
+            _id = get_key_by_value(self._store, obj.__rpc_pair)
             self.fetch(_id)
         return obj
 
@@ -212,3 +219,61 @@ class MessageEmitter:
         else:
             if self._logger and self._logger.debug:
                 self._logger.debug("Unhandled event: {}, data: {}".format(event, data))
+
+
+class ContextLocal(Local):
+    def __init__(self):
+        object.__setattr__(
+            self, "__context_id__", contextvars.ContextVar("context_id", default=None)
+        )
+        object.__setattr__(self, "__thread_lock__", threading.Lock())
+        object.__setattr__(self, "__storage__", {})
+        object.__setattr__(self, "__ident_func__", self.__get_ident)
+        object.__setattr__(self, "__default_context_id__", "_")
+
+    def set_default_context(self, context_id):
+        object.__setattr__(self, "__default_context_id__", context_id)
+
+    def run_with_context(self, context_id, func, *args, **kwargs):
+        # make sure we obtain the context with the correct context_id
+        with object.__getattribute__(self, "__thread_lock__"):
+            object.__getattribute__(self, "__context_id__").set(context_id)
+            object.__setattr__(self, "__default_context_id__", context_id)
+            ctx = contextvars.copy_context()
+        ctx.run(func, *args, **kwargs)
+
+    def __get_ident(self):
+        ident = object.__getattribute__(self, "__context_id__").get()
+        if ident is None:
+            return object.__getattribute__(self, "__default_context_id__")
+        if not isinstance(ident, str):
+            raise ValueError("Context value must be a string.")
+        return ident
+
+
+def setup_connection(_rpc_context, connection_type, logger=None):
+
+    if connection_type == "jupyter":
+        if logger:
+            logger.info("Using jupyter connection for imjoy-rpc")
+        from .connection.jupyter_connection import JupyterCommManager
+
+        manager = JupyterCommManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            export=manager.set_interface, registerCodec=manager.register_codec
+        )
+        manager.register()
+    else:
+        if logger:
+            logger.warn("There is no connection set for imjoy-rpc")
+
+
+def type_of_script():
+    try:
+        ipy_str = str(type(get_ipython()))
+        if "zmqshell" in ipy_str:
+            return "jupyter"
+        if "terminal" in ipy_str:
+            return "ipython"
+    except:
+        return "terminal"
