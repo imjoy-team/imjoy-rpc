@@ -361,13 +361,10 @@ define([
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-              base_url: 'http://127.0.0.1:8080/',
-              debug: true,
-              // version: '0.13.14'
+               version: '0.13.15'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
-                default_rpc_base_url: 'http://127.0.0.1:8080/',
                 imjoy_api: {
                   async showMessage(_plugin, msg, duration) {
                     duration = duration || 5
