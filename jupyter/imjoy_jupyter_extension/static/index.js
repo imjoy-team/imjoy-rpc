@@ -162,62 +162,61 @@ class Connection extends MessageEmitter {
   }
 };
 
-function startImJoy(app, imjoy) {
-  imjoy.start().then(() => {
-    imjoy.event_bus.on("show_message", msg => {
-      $.snackbar({
-        content: msg,
-        timeout: 5000
-      });
+async function startImJoy(app, imjoy) {
+  await imjoy.start()
+  imjoy.event_bus.on("show_message", msg => {
+    $.snackbar({
+      content: msg,
+      timeout: 5000
     });
-    imjoy.event_bus.on("close_window", w => {
-      const idx = app.dialogWindows.indexOf(w)
-      if (idx >= 0)
-        app.dialogWindows.splice(idx, 1)
-      app.$forceUpdate()
-    })
-    imjoy.event_bus.on("add_window", w => {
-      if (document.getElementById(w.window_id)) return;
-      if (!w.dialog) {
-        if (document.getElementById(app.active_plugin.id)) {
-          const elem = document.createElement("div");
-          elem.id = w.window_id;
-          elem.classList.add("imjoy-inline-window")
-          document.getElementById(app.active_plugin.id).appendChild(elem)
-          return
-        }
-      }
-      app.dialogWindows.push(w)
-      app.selected_dialog_window = w;
-      if (w.fullscreen || w.standalone)
-        app.fullscreen = true;
-      else
-        app.fullscreen = false;
-      app.$modal.show("window-modal-dialog");
-      app.$forceUpdate()
-      w.api.show = w.show = () => {
-        app.selected_dialog_window = w;
-        app.$modal.show("window-modal-dialog");
-        imjoy.wm.selectWindow(w);
-        w.api.emit("show");
-      };
-
-      w.api.hide = w.hide = () => {
-        if (app.selected_dialog_window === w) {
-          app.$modal.hide("window-modal-dialog");
-        }
-        w.api.emit("hide");
-      };
-
-      setTimeout(() => {
-        try {
-          w.show();
-        } catch (e) {
-          console.error(e);
-        }
-      }, 500);
-    });
+  });
+  imjoy.event_bus.on("close_window", w => {
+    const idx = app.dialogWindows.indexOf(w)
+    if (idx >= 0)
+      app.dialogWindows.splice(idx, 1)
+    app.$forceUpdate()
   })
+  imjoy.event_bus.on("add_window", w => {
+    if (document.getElementById(w.window_id)) return;
+    if (!w.dialog) {
+      if (document.getElementById(app.active_plugin.id)) {
+        const elem = document.createElement("div");
+        elem.id = w.window_id;
+        elem.classList.add("imjoy-inline-window")
+        document.getElementById(app.active_plugin.id).appendChild(elem)
+        return
+      }
+    }
+    app.dialogWindows.push(w)
+    app.selected_dialog_window = w;
+    if (w.fullscreen || w.standalone)
+      app.fullscreen = true;
+    else
+      app.fullscreen = false;
+    app.$modal.show("window-modal-dialog");
+    app.$forceUpdate()
+    w.api.show = w.show = () => {
+      app.selected_dialog_window = w;
+      app.$modal.show("window-modal-dialog");
+      imjoy.wm.selectWindow(w);
+      w.api.emit("show");
+    };
+
+    w.api.hide = w.hide = () => {
+      if (app.selected_dialog_window === w) {
+        app.$modal.hide("window-modal-dialog");
+      }
+      w.api.emit("hide");
+    };
+
+    setTimeout(() => {
+      try {
+        w.show();
+      } catch (e) {
+        console.error(e);
+      }
+    }, 500);
+  });
 }
 
 function setupComm(targetOrigin) {
@@ -361,7 +360,7 @@ define([
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-               version: '0.13.15'
+              version: '0.13.15'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
@@ -380,7 +379,23 @@ define([
                 }
               });
               this.imjoy = imjoy;
-              startImJoy(this, this.imjoy)
+              startImJoy(this, this.imjoy).then(() => {
+                const base_url = new URL(Jupyter.notebook.base_url, document.baseURI).href
+                if (!base_url.endsWith('/')) base_url = base_url + '/';
+                this.imjoy.pm
+                  .reloadPluginRecursively({
+                    uri: base_url + 'elfinder/'
+                  })
+                  .then(async plugin => {
+                    this.plugins[plugin.name] = plugin
+                    this.showMessage(`Plugin ${plugin.name} successfully loaded into the workspace.`)
+                    this.$forceUpdate()
+                  })
+                  .catch(e => {
+                    console.error(e);
+                    this.showMessage(`Failed to load the ImJoy elFinder plugin, error: ${e}`);
+                  });
+              })
             });
           },
           methods: {
@@ -408,7 +423,7 @@ define([
                 .connectPlugin(new Connection())
               this.plugins[plugin.name] = plugin
               this.active_plugin = plugin;
-              if(plugin.api.setup){
+              if (plugin.api.setup) {
                 await plugin.api.setup()
               }
               this.$forceUpdate()
@@ -503,7 +518,7 @@ define([
           await app.connectPlugin()
           await app.runNotebookPlugin()
         }
-        window.loadImJoyPlugin = async function(){
+        window.loadImJoyPlugin = async function () {
 
         }
       });
