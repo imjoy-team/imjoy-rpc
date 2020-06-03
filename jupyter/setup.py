@@ -5,9 +5,7 @@ import sys
 from setuptools import setup, find_packages
 
 
-DESCRIPTION = (
-    "Running ImJoy in Jupyter notebooks."
-)
+DESCRIPTION = "Running ImJoy in Jupyter notebooks."
 
 ROOT_DIR = os.path.dirname(__file__)
 
@@ -36,15 +34,16 @@ setup(
     license="MIT",
     packages=find_packages(),
     include_package_data=True,
-    data_files= [
-        ('share/jupyter/nbextensions/imjoy_jupyter_extension', [
-            'imjoy_jupyter_extension/static/index.js',
-            'imjoy_jupyter_extension/static/imjoy-icon.png',
-            'imjoy_jupyter_extension/static/imjoy_jupyter_extension.yaml'
-        ],),
-        ("etc/jupyter/nbconfig/notebook.d", [
-            "imjoy_jupyter_extension.json"
-        ]),
+    data_files=[
+        (
+            "share/jupyter/nbextensions/imjoy_jupyter_extension",
+            [
+                "imjoy_jupyter_extension/static/index.js",
+                "imjoy_jupyter_extension/static/imjoy-icon.png",
+                "imjoy_jupyter_extension/static/imjoy_jupyter_extension.yaml",
+            ],
+        ),
+        ("etc/jupyter/nbconfig/notebook.d", ["imjoy_jupyter_extension.json"]),
     ],
     install_requires=["imjoy-rpc", "notebook>=5.3"],
     extras_require={},
