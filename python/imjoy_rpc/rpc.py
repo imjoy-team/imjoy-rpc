@@ -495,6 +495,10 @@ class RPC(MessageEmitter):
 
         if isinstance(a_object, tuple):
             a_object = list(a_object)
+
+        if isinstance(a_object, dotdict):
+            a_object = dict(a_object)
+
         # skip if already encoded
         if isinstance(a_object, dict) and "_rtype" in a_object:
             # make sure the interface functions are encoded
@@ -561,11 +565,9 @@ class RPC(MessageEmitter):
             }
         elif hasattr(a_object, "_rintf") and a_object._rintf == True:
             b_object = self._encode(a_object, true)
-        elif isinstance(a_object, (list, dict, dotdict)) or inspect.isclass(
-            type(a_object)
-        ):
+        elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
             b_object = [] if isarray else {}
-            if not isinstance(a_object, (list, dict, dotdict)) and inspect.isclass(
+            if not isinstance(a_object, (list, dict)) and inspect.isclass(
                 type(a_object)
             ):
                 a_object_norm = {
