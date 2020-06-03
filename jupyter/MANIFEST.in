@@ -1,2 +1,2 @@
-recursive-include ./ *.json
+include imjoy_jupyter_extension.json
 recursive-include imjoy_jupyter_extension/static *.js
