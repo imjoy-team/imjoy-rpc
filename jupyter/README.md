@@ -1,6 +1,8 @@
-ImJoy RPC
+ImJoy Jupyter Extension
 ============
+Try the demo here: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/imjoy-team/imjoy-binder-image/master?filepath=imjoy-jupyter-tutorial.ipynb)
 
+![](https://raw.githubusercontent.com/imjoy-team/imjoy-binder-image/master/screenshot-imjoy-notebook.png)
 
 ## Using ImJoy with Jupyter notebooks
 
