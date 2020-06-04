@@ -201,7 +201,7 @@ class RPC(MessageEmitter):
 
         return FuturePromise(pfunc, self._remote_logger)
 
-    def _gen_remote_method(self, peer_id, name, plugin_id=None):
+    def _gen_remote_method(self, target_id, name, plugin_id=None):
         """Return remote method."""
 
         def remote_method(*arguments, **kwargs):
@@ -215,7 +215,7 @@ class RPC(MessageEmitter):
                 reject.__rpc_pair = resolve
                 call_func = {
                     "type": "method",
-                    "peer_id": peer_id,
+                    "target_id": target_id,
                     "name": name,
                     "object_id": plugin_id,
                     "args": self.wrap(arguments),
@@ -228,7 +228,7 @@ class RPC(MessageEmitter):
         remote_method.__remote_method = True  # pylint: disable=protected-access
         return remote_method
 
-    def _gen_remote_callback(self, peer_id, cid, with_promise):
+    def _gen_remote_callback(self, target_id, cid, with_promise):
         """Return remote callback."""
         if with_promise:
 
@@ -244,7 +244,7 @@ class RPC(MessageEmitter):
                         {
                             "type": "callback",
                             "id": cid,
-                            "peer_id": peer_id,
+                            "target_id": target_id,
                             # 'object_id'  : self.id,
                             "args": self.wrap(arguments),
                             "promise": self.wrap([resolve, reject]),
@@ -263,7 +263,7 @@ class RPC(MessageEmitter):
                     {
                         "type": "callback",
                         "id": cid,
-                        "peer_id": peer_id,
+                        "target_id": target_id,
                         # 'object_id'  : self.id,
                         "args": self.wrap(arguments),
                     }
@@ -473,7 +473,7 @@ class RPC(MessageEmitter):
                     raise Exception("object_id is not specified.")
                 b_object = {
                     "_rtype": "interface",
-                    "_rpeer_id": self._connection.peer_id,
+                    "_rtarget_id": self._connection.peer_id,
                     "_rintf": object_id,
                     "_rvalue": as_interface,
                 }
@@ -488,7 +488,7 @@ class RPC(MessageEmitter):
                 b_object = {
                     "_rtype": "callback",
                     "_rname": a_object.__name__,
-                    "_rpeer_id": self._connection.peer_id,
+                    "_rtarget_id": self._connection.peer_id,
                     "_rvalue": cid,
                 }
             return b_object
@@ -645,11 +645,11 @@ class RPC(MessageEmitter):
                 b_object = self._codecs[a_object["_rtype"]].decoder(a_object)
             elif a_object["_rtype"] == "callback":
                 b_object = self._gen_remote_callback(
-                    a_object.get("_rpeer_id"), a_object["_rvalue"], with_promise
+                    a_object.get("_rtarget_id"), a_object["_rvalue"], with_promise
                 )
             elif a_object["_rtype"] == "interface":
                 b_object = self._gen_remote_method(
-                    a_object.get("_rpeer_id"), a_object["_rvalue"], a_object["_rintf"]
+                    a_object.get("_rtarget_id"), a_object["_rvalue"], a_object["_rintf"]
                 )
             elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin

@@ -342,7 +342,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote method
    */
-  _genRemoteMethod(peerId, name, objectId) {
+  _genRemoteMethod(targetId, name, objectId) {
     var me = this;
     var remoteMethod = function() {
       return new Promise(async (resolve, reject) => {
@@ -372,7 +372,7 @@ export class RPC extends MessageEmitter {
           me._connection.emit(
             {
               type: "method",
-              peer_id: peerId,
+              target_id: targetId,
               name: name,
               object_id: objectId,
               args: args,
@@ -429,7 +429,7 @@ export class RPC extends MessageEmitter {
         if (!objectId) throw new Error("objectId is not specified.");
         bObject = {
           _rtype: "interface",
-          _rpeer_id: this._connection.peer_id,
+          _rtarget_id: this._connection.peer_id,
           _rintf: objectId,
           _rvalue: asInterface
         };
@@ -440,7 +440,7 @@ export class RPC extends MessageEmitter {
         const cid = this._store.put(aObject);
         bObject = {
           _rtype: "callback",
-          _rpeer_id: this._connection.peer_id,
+          _rtarget_id: this._connection.peer_id,
           _rname: (aObject.constructor && aObject.constructor.name) || cid,
           _rvalue: cid
         };
@@ -683,13 +683,13 @@ export class RPC extends MessageEmitter {
         );
       } else if (aObject._rtype === "callback") {
         bObject = this._genRemoteCallback(
-          aObject._rpeer_id,
+          aObject._rtarget_id,
           aObject._rvalue,
           withPromise
         );
       } else if (aObject._rtype === "interface") {
         bObject = this._genRemoteMethod(
-          aObject._rpeer_id,
+          aObject._rtarget_id,
           aObject._rvalue,
           aObject._rintf
         );
@@ -813,7 +813,7 @@ export class RPC extends MessageEmitter {
    *
    * @returns {Function} wrapped remote callback
    */
-  _genRemoteCallback(peerId, cid, withPromise) {
+  _genRemoteCallback(targetId, cid, withPromise) {
     var me = this;
     var remoteCallback;
     if (withPromise) {
@@ -828,7 +828,7 @@ export class RPC extends MessageEmitter {
             me._connection.emit(
               {
                 type: "callback",
-                peer_id: peerId,
+                target_id: targetId,
                 id: cid,
                 args: args,
                 promise: await me._wrap([resolve, reject])
@@ -849,7 +849,7 @@ export class RPC extends MessageEmitter {
         return me._connection.emit(
           {
             type: "callback",
-            peer_id: peerId,
+            target_id: targetId,
             id: cid,
             args: args
           },
