@@ -277,7 +277,7 @@ const APP_TEMPLATE = `
       <li title="About ImJoy"><a href="#" @click="aboutImJoy()"><i class="fa-info-circle fa"></i>&nbsp;About ImJoy</a></li>
     </ul>
   </button>
-  <button class="btn btn-default" @click="runNotebookPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
+  <button class="btn btn-default" v-if="active_plugin" @click="runNotebookPlugin()"><i class="fa-play fa"></i>&nbsp;Run</button>
 </div>
 <div class="btn-group">
   <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
@@ -320,7 +320,7 @@ define([
     // if yes, initialize the rpc connection
     if (window.self !== window.top) {
       initPlugin();
-      window.runPlugin = function () {
+      window.connectPlugin = function () {
         comm = setupComm("*");
         setupMessageHandler("*", comm);
         console.log("ImJoy RPC reloaded.");
@@ -328,7 +328,7 @@ define([
       var elem = document.createElement("div");
       elem.id = "app";
       elem.style.display = "inline-block"
-      elem.innerHTML = `<button class="btn btn-default" onclick="runPlugin()"><i class="fa-play fa"></i>&nbsp;<img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 18px;"></button>`;
+      elem.innerHTML = `<button class="btn btn-default" onclick="connectPlugin()"><i class="fa-play fa"></i>&nbsp;<img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 18px;"></button>`;
       document.getElementById("maintoolbar-container").appendChild(elem);
       console.log("ImJoy RPC started.");
 
@@ -360,7 +360,7 @@ define([
           mounted() {
             window.dispatchEvent(new Event('resize'));
             imjoyLoder.loadImJoyCore({
-              version: '0.13.15'
+              version: '0.13.16'
             }).then(imjoyCore => {
               console.log(`ImJoy Core (v${imjoyCore.VERSION}) loaded.`)
               const imjoy = new imjoyCore.ImJoy({
@@ -430,9 +430,6 @@ define([
             },
             async runNotebookPlugin() {
               try {
-                if (!this.active_plugin) {
-                  await this.connectPlugin()
-                }
                 const plugin = this.active_plugin;
                 if (plugin.api.run) {
                   let config = {};
@@ -517,9 +514,6 @@ define([
         window.connectPlugin = async function () {
           await app.connectPlugin()
           await app.runNotebookPlugin()
-        }
-        window.loadImJoyPlugin = async function () {
-
         }
       });
     }
