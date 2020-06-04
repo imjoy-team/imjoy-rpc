@@ -11,10 +11,6 @@ from imjoy_rpc.utils import MessageEmitter, dotdict
 from werkzeug.local import Local
 import contextvars
 
-import sys
-
-sys.stdout = open("/dev/stdout", "w")
-
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("JupyterConnection")
 logger.setLevel(logging.INFO)
