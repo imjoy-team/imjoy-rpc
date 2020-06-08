@@ -40,7 +40,7 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
 ```
 
 
-### [Jupyter notebook extension](./jupyter/README.md)
+### [Jupyter notebook extension](https://github.com/imjoy-team/imjoy-jupyter-extension)
 
 ## imjoy-rpc handshaking protocol
 
