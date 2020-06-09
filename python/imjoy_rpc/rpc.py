@@ -206,6 +206,7 @@ class RPC(MessageEmitter):
 
         def remote_method(*arguments, **kwargs):
             """Run remote method."""
+            arguments = list(arguments)
             # wrap keywords to a dictionary and pass to the last argument
             if kwargs:
                 arguments = arguments + [kwargs]
@@ -234,6 +235,7 @@ class RPC(MessageEmitter):
 
             def remote_callback(*arguments, **kwargs):
                 # wrap keywords to a dictionary and pass to the last argument
+                arguments = list(arguments)
                 if kwargs:
                     arguments = arguments + [kwargs]
 
@@ -256,9 +258,10 @@ class RPC(MessageEmitter):
         else:
 
             def remote_callback(*arguments, **kwargs):
-                # wrap keywords to a dictionary and pass to the first argument
-                if not arguments and kwargs:
-                    arguments = [kwargs]
+                # wrap keywords to a dictionary and pass to the last argument
+                arguments = list(arguments)
+                if kwargs:
+                    arguments = arguments + [kwargs]
                 self._connection.emit(
                     {
                         "type": "callback",
