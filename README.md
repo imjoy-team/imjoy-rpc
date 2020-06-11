@@ -288,6 +288,8 @@ The two types can be switched automatically or manually:
 
 Note: if a method's name starts with `_`, it will not be sent and mapped remotely.
 
-Importantly, When an object is sent to remote location, the object will be stored in an internal object store. Because the object store will always hold object, it will not be possible for the garbage collector to recycle the resources. To get rid of this issue, you need to dispose the remote object manually by calling `api.disposeObject(obj)` function. This will notify the remote peer to remove the object from the object store, such that the garbage collector can then collect the occupied resources.
+Importantly, When an object is sent to remote location, the object will be stored in an internal object store. Because the object store will always hold object, it will not be possible for the garbage collector to recycle the resources.
 
-**Therefore, please always call `api.disposeObject(obj)` when you don't need a remote object anymore.** This is necessary only for those object encoded in `interface` mode.
+In Python we use `weakref` library to add a "hook" to remove the remote object when the object is deleted or not reachable anymore. Therefore, if you are in Python, the remote object (e.g. in Javascript) will be removed automatically. However, there is no such feature in Javascript, as a result, you need to dispose the remote object manually by calling `api.disposeObject(obj)` function. This will notify the remote peer to remove the object from the object store, such that the garbage collector can then collect the occupied resources.
+
+**Therefore, in Javascript, please always call `api.disposeObject(obj)` when you don't need a remote object anymore.** This is necessary only for those object encoded in `interface` mode.

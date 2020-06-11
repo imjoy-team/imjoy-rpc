@@ -59,7 +59,6 @@ class RPC(MessageEmitter):
         self.services = {}
         self._object_store = {}
         self._method_weakmap = weakref.WeakKeyDictionary()
-        self._object_weakmap = weakref.WeakKeyDictionary()
         self._local_api = None
         self._remote_set = False
         self._store = ReferenceStore()
@@ -184,10 +183,11 @@ class RPC(MessageEmitter):
             raise Exception("Object (id={}) not found.".format(object_id))
 
     def dispose_object(self, obj):
-        if obj in self._object_weakmap:
-            object_id = self._object_weakmap[obj]
-        else:
-            raise Exception("Invalid object")
+        del obj
+
+    def _dispose_remote_object(self, object_id):
+        if not isinstance(object_id, str):
+            raise ValueError("object_id can only be a string")
 
         def pfunc(resolve, reject):
             def handle_disposed(data):
@@ -725,10 +725,10 @@ class RPC(MessageEmitter):
         else:
             b_object = a_object
 
-        # object id, used for dispose the object
+        # dispose the remote object automatically
         if isinstance(a_object, dict) and a_object.get("_rintf"):
-            # make the dict hashable
-            if isinstance(b_object, dict) and not isinstance(b_object, dotdict):
-                b_object = dotdict(b_object)
-            self._object_weakmap[b_object] = a_object.get("_rintf")
+            weakref.finalize(
+                b_object, self._dispose_remote_object, a_object.get("_rintf")
+            )
+
         return b_object
