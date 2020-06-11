@@ -206,9 +206,10 @@ class RPC(MessageEmitter):
 
         def remote_method(*arguments, **kwargs):
             """Run remote method."""
-            # wrap keywords to a dictionary and pass to the first argument
-            if not arguments and kwargs:
-                arguments = [kwargs]
+            arguments = list(arguments)
+            # wrap keywords to a dictionary and pass to the last argument
+            if kwargs:
+                arguments = arguments + [kwargs]
 
             def pfunc(resolve, reject):
                 resolve.__rpc_pair = reject
@@ -233,9 +234,10 @@ class RPC(MessageEmitter):
         if with_promise:
 
             def remote_callback(*arguments, **kwargs):
-                # wrap keywords to a dictionary and pass to the first argument
-                if not arguments and kwargs:
-                    arguments = [kwargs]
+                # wrap keywords to a dictionary and pass to the last argument
+                arguments = list(arguments)
+                if kwargs:
+                    arguments = arguments + [kwargs]
 
                 def pfunc(resolve, reject):
                     resolve.__rpc_pair = reject
@@ -256,9 +258,10 @@ class RPC(MessageEmitter):
         else:
 
             def remote_callback(*arguments, **kwargs):
-                # wrap keywords to a dictionary and pass to the first argument
-                if not arguments and kwargs:
-                    arguments = [kwargs]
+                # wrap keywords to a dictionary and pass to the last argument
+                arguments = list(arguments)
+                if kwargs:
+                    arguments = arguments + [kwargs]
                 self._connection.emit(
                     {
                         "type": "callback",
