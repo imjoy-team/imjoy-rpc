@@ -41,14 +41,6 @@ def format_traceback(traceback_string):
     return formatted_error_string
 
 
-def get_key_by_value(dict_, value):
-    """Return key by value."""
-    for key, val in dict_.items():
-        if value == val:
-            return key
-    return None
-
-
 class ReferenceStore:
     """Represent a reference store."""
 
@@ -74,9 +66,8 @@ class ReferenceStore:
         obj = self._store[search_id]
         if not hasattr(obj, "__remote_method"):
             del self._store[search_id]
-        if hasattr(obj, "__rpc_pair"):
-            _id = get_key_by_value(self._store, obj.__rpc_pair)
-            self.fetch(_id)
+        if hasattr(obj, "__promise_pair"):
+            self.fetch(obj.__promise_pair)
         return obj
 
 
