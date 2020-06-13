@@ -567,7 +567,7 @@ class RPC(MessageEmitter):
                 "_rvalue": self._encode(list(a_object), as_interface),
             }
         elif hasattr(a_object, "_rintf") and a_object._rintf == True:
-            b_object = self._encode(a_object, true)
+            b_object = self._encode(a_object, True)
         elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
             b_object = [] if isarray else {}
             if not isinstance(a_object, (list, dict)) and inspect.isclass(
