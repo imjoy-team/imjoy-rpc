@@ -22,10 +22,6 @@ function _appendBuffer(buffer1, buffer2) {
   return tmp.buffer;
 }
 
-function getKeyByValue(object, value) {
-  return Object.keys(object).find(key => object[key] === value);
-}
-
 function indexObject(obj, is) {
   if (typeof is == "string") return indexObject(obj, is.split("."));
   else if (is.length == 0) return obj;
@@ -358,8 +354,14 @@ export class RPC extends MessageEmitter {
             return reject.apply(this, arguments);
           };
 
-          wrapped_resolve.__rpc_pair = wrapped_reject;
-          wrapped_reject.__rpc_pair = wrapped_resolve;
+          const encodedPromise = await me._wrap([
+            wrapped_resolve,
+            wrapped_reject
+          ]);
+
+          // store the key id for removing them from the reference store together
+          wrapped_resolve.__promise_pair = encodedPromise[1]._rvalue;
+          wrapped_reject.__promise_pair = encodedPromise[0]._rvalue;
 
           var args = Array.prototype.slice.call(arguments);
           if (name === "register" || name === "export" || name === "on") {
@@ -376,7 +378,7 @@ export class RPC extends MessageEmitter {
               name: name,
               object_id: objectId,
               args: args,
-              promise: await me._wrap([wrapped_resolve, wrapped_reject])
+              promise: encodedPromise
             },
             transferables
           );
@@ -822,8 +824,11 @@ export class RPC extends MessageEmitter {
           var args = await me._wrap(Array.prototype.slice.call(arguments));
           var transferables = args.__transferables__;
           if (transferables) delete args.__transferables__;
-          resolve.__rpc_pair = reject;
-          reject.__rpc_pair = resolve;
+
+          const encodedPromise = await me._wrap([resolve, reject]);
+          // store the key id for removing them from the reference store together
+          resolve.__promise_pair = encodedPromise[1]._rvalue;
+          reject.__promise_pair = encodedPromise[0]._rvalue;
           try {
             me._connection.emit(
               {
@@ -831,7 +836,7 @@ export class RPC extends MessageEmitter {
                 target_id: targetId,
                 id: cid,
                 args: args,
-                promise: await me._wrap([resolve, reject])
+                promise: encodedPromise
               },
               transferables
             );
@@ -999,9 +1004,8 @@ class ReferenceStore {
         this._readyHandler();
       }
     }
-    if (obj && obj.__rpc_pair) {
-      const _id = getKeyByValue(this._store, obj.__rpc_pair);
-      this.fetch(_id);
+    if (obj && obj.__promise_pair) {
+      this.fetch(obj.__promise_pair);
     }
     return obj;
   }

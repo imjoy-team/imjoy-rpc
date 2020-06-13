@@ -212,15 +212,17 @@ class RPC(MessageEmitter):
                 arguments = arguments + [kwargs]
 
             def pfunc(resolve, reject):
-                resolve.__rpc_pair = reject
-                reject.__rpc_pair = resolve
+                encoded_promise = self.wrap([resolve, reject])
+                # store the key id for removing them from the reference store together
+                resolve.__promise_pair = encoded_promise[0]["_rvalue"]
+                reject.__promise_pair = encoded_promise[1]["_rvalue"]
                 call_func = {
                     "type": "method",
                     "target_id": target_id,
                     "name": name,
                     "object_id": plugin_id,
                     "args": self.wrap(arguments),
-                    "promise": self.wrap([resolve, reject]),
+                    "promise": encoded_promise,
                 }
                 self._connection.emit(call_func)
 
@@ -240,8 +242,10 @@ class RPC(MessageEmitter):
                     arguments = arguments + [kwargs]
 
                 def pfunc(resolve, reject):
-                    resolve.__rpc_pair = reject
-                    reject.__rpc_pair = resolve
+                    encoded_promise = self.wrap([resolve, reject])
+                    # store the key id for removing them from the reference store together
+                    resolve.__promise_pair = encoded_promise[0]["_rvalue"]
+                    reject.__promise_pair = encoded_promise[1]["_rvalue"]
                     self._connection.emit(
                         {
                             "type": "callback",
@@ -249,7 +253,7 @@ class RPC(MessageEmitter):
                             "target_id": target_id,
                             # 'object_id'  : self.id,
                             "args": self.wrap(arguments),
-                            "promise": self.wrap([resolve, reject]),
+                            "promise": encoded_promise,
                         }
                     )
 
