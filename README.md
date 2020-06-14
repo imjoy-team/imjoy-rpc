@@ -276,6 +276,65 @@ class ImJoyPlugin():
 api.export(ImJoyPlugin())
 ```
 
+### Example 4: passing Zarr array from Python to Javascript
+[Zarr](https://zarr.readthedocs.io/en/stable/) is an emerging standard for storing or serving chunked, compressed N-dimensional arrays. It is ideally suited for storing large amount of data remotely. For example, we can use store large images in zarr format on a blob storage (e.g. AWS S3) and visualize it in a web app. With imjoy-rpc, we can define a custom codec for zarr arrays/groups to support sending Zarr arrays, for example from Python to Javascript (use [zarr.js](https://github.com/gzuidhof/zarr.js/)).
+
+
+This is the codec looks like in Python:
+
+```python
+import zarr
+from imjoy import api
+from tifffile import imread
+
+def encode_zarr_store(zobj):
+    def getItem(key):
+        return zobj.store[key]
+
+    def setItem(key, value):
+        zobj.store[key] = value
+
+    def containsItem(key):
+        return key in zobj.store
+
+    return {
+        "_rintf": True,
+        "_rtype": 'zarr-array' if isinstance(zobj, zarr.Array) else 'zarr-group',
+        "getItem": getItem,
+        "setItem": setItem,
+        "containsItem": containsItem,
+    }
+
+api.registerCodec({'name': 'zarr-array', 'type': zarr.Array, "encoder": encode_zarr_store})
+api.registerCodec({'name': 'zarr-group', 'type': zarr.hierarchy.Group, "encoder": encode_zarr_store})
+
+...
+    def run(self, ctx):
+        image = imread('cell_membranes.tif')
+        image = (image*65536).astype('uint16')
+        z_array = zarr.array(image, chunks=(50, 50))
+        ...
+        # let's assume viewer is a web app that supports imjoy-rpc
+        # 
+        viwer.imshow(z_array)
+```
+
+The encoded object can be directly used as a zarr array or group for zarr.js:
+
+This is the relevant part in the viwer plugin in Javascript:
+```js
+
+// assuming that we already loaded zarr.js
+
+function imshow(z_array){
+    // we don't need an decoder, the z_array object can be directly read by zarr.openArray
+    zarrArr = await zarr.openArray({ store: z_array });
+    ...
+}
+```
+For an real example notebook, see [here](https://gist.github.com/oeway/ebedc17c9ab1f6aa5eee181679d85b5f) for the source code or try it on Binder: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gist/oeway/ebedc17c9ab1f6aa5eee181679d85b5f/master?filepath=vitessce-image-viewer-imjoy-demo.ipynb)
+
+
 ## Remote Objects
 
 When sending an object (a JS `Object`, `Class` or Python `dict`, `class`) remotely via imjoy-rpc, a proxy object will be created on the other side. The object can contain supported data types which will be send directly to remote locations.
