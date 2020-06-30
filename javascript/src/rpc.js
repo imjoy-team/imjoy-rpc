@@ -667,7 +667,7 @@ export class RPC extends MessageEmitter {
     if (!aObject) {
       return aObject;
     }
-    let bObject, v, k;
+    let bObject;
     if (aObject["_rtype"]) {
       if (
         this._codecs[aObject._rtype] &&
@@ -761,9 +761,9 @@ export class RPC extends MessageEmitter {
     } else if (aObject.constructor === Object || Array.isArray(aObject)) {
       const isarray = Array.isArray(aObject);
       bObject = isarray ? [] : {};
-      for (k in Object.keys(aObject)) {
+      for (let k of Object.keys(aObject)) {
         if (isarray || aObject.hasOwnProperty(k)) {
-          v = aObject[k];
+          const v = aObject[k];
           bObject[k] = await this._decode(v, withPromise);
         }
       }
