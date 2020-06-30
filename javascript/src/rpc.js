@@ -23,8 +23,8 @@ function _appendBuffer(buffer1, buffer2) {
 }
 
 function indexObject(obj, is) {
-  if (typeof is == "string") return indexObject(obj, is.split("."));
-  else if (is.length == 0) return obj;
+  if (typeof is === "string") return indexObject(obj, is.split("."));
+  else if (is.length === 0) return obj;
   else return indexObject(obj[is[0]], is.slice(1));
 }
 
@@ -166,7 +166,6 @@ export class RPC extends MessageEmitter {
   /**
    * Handles a message from the remote site
    */
-  // var callback_reg = new RegExp("onupdate|run$")
   _setupMessageHanlders() {
     this._connection.on("init", this.init);
     this._connection.on("execute", data => {
@@ -299,7 +298,7 @@ export class RPC extends MessageEmitter {
   }
 
   _ndarray(typedArray, shape, dtype) {
-    var _dtype = typedArrayToDtype[typedArray.constructor.name];
+    const _dtype = typedArrayToDtype[typedArray.constructor.name];
     if (dtype && dtype !== _dtype) {
       throw "dtype doesn't match the type of the array: " +
         _dtype +
@@ -339,17 +338,17 @@ export class RPC extends MessageEmitter {
    * @returns {Function} wrapped remote method
    */
   _genRemoteMethod(targetId, name, objectId) {
-    var me = this;
-    var remoteMethod = function() {
+    const me = this;
+    const remoteMethod = function() {
       return new Promise(async (resolve, reject) => {
         let id = null;
         try {
           id = me._method_refs.put(objectId ? objectId + "/" + name : name);
-          var wrapped_resolve = function() {
+          const wrapped_resolve = function() {
             if (id !== null) me._method_refs.fetch(id);
             return resolve.apply(this, arguments);
           };
-          var wrapped_reject = function() {
+          const wrapped_reject = function() {
             if (id !== null) me._method_refs.fetch(id);
             return reject.apply(this, arguments);
           };
@@ -363,13 +362,13 @@ export class RPC extends MessageEmitter {
           wrapped_resolve.__promise_pair = encodedPromise[1]._rvalue;
           wrapped_reject.__promise_pair = encodedPromise[0]._rvalue;
 
-          var args = Array.prototype.slice.call(arguments);
+          let args = Array.prototype.slice.call(arguments);
           if (name === "register" || name === "export" || name === "on") {
             args = await me._wrap(args, true);
           } else {
             args = await me._wrap(args);
           }
-          var transferables = args.__transferables__;
+          const transferables = args.__transferables__;
           if (transferables) delete args.__transferables__;
           me._connection.emit(
             {
@@ -473,7 +472,7 @@ export class RPC extends MessageEmitter {
       const codec = this._codecs[tp];
       if (codec.encoder && aObject instanceof codec.type) {
         // TODO: what if multiple encoders found
-        const encodedObj = await Promise.resolve(codec.encoder(aObject));
+        let encodedObj = await Promise.resolve(codec.encoder(aObject));
         if (encodedObj && !encodedObj._rtype) encodedObj._rtype = codec.name;
         // encode the functions in the interface object
         if (encodedObj && encodedObj._rintf) {
@@ -510,7 +509,7 @@ export class RPC extends MessageEmitter {
       nj.NdArray &&
       aObject instanceof nj.NdArray
     ) {
-      var dtype = typedArrayToDtype[aObject.selection.data.constructor.name];
+      const dtype = typedArrayToDtype[aObject.selection.data.constructor.name];
       if (aObject._transfer || _transfer) {
         transferables.push(aObject.selection.data.buffer);
         delete aObject._transfer;
@@ -668,7 +667,7 @@ export class RPC extends MessageEmitter {
     if (!aObject) {
       return aObject;
     }
-    var bObject, v, k;
+    let bObject, v, k;
     if (aObject["_rtype"]) {
       if (
         this._codecs[aObject._rtype] &&
@@ -760,9 +759,9 @@ export class RPC extends MessageEmitter {
         bObject = aObject;
       }
     } else if (aObject.constructor === Object || Array.isArray(aObject)) {
-      var isarray = Array.isArray(aObject);
+      const isarray = Array.isArray(aObject);
       bObject = isarray ? [] : {};
-      for (k in aObject) {
+      for (k in Object.keys(aObject)) {
         if (isarray || aObject.hasOwnProperty(k)) {
           v = aObject[k];
           bObject[k] = await this._decode(v, withPromise);
@@ -782,8 +781,7 @@ export class RPC extends MessageEmitter {
   }
 
   async _wrap(args, asInterface) {
-    var wrapped = await this._encode(args, asInterface);
-    return wrapped;
+    return await this._encode(args, asInterface);
   }
 
   /**
@@ -798,8 +796,7 @@ export class RPC extends MessageEmitter {
    * @returns {Array} unwrapped args
    */
   async _unwrap(args, withPromise) {
-    var result = await this._decode(args, withPromise);
-    return result;
+    return await this._decode(args, withPromise);
   }
 
   /**
@@ -816,13 +813,13 @@ export class RPC extends MessageEmitter {
    * @returns {Function} wrapped remote callback
    */
   _genRemoteCallback(targetId, cid, withPromise) {
-    var me = this;
-    var remoteCallback;
+    const me = this;
+    let remoteCallback;
     if (withPromise) {
       remoteCallback = function() {
         return new Promise(async (resolve, reject) => {
-          var args = await me._wrap(Array.prototype.slice.call(arguments));
-          var transferables = args.__transferables__;
+          const args = await me._wrap(Array.prototype.slice.call(arguments));
+          const transferables = args.__transferables__;
           if (transferables) delete args.__transferables__;
 
           const encodedPromise = await me._wrap([resolve, reject]);
@@ -848,8 +845,8 @@ export class RPC extends MessageEmitter {
       return remoteCallback;
     } else {
       remoteCallback = async function() {
-        var args = await me._wrap(Array.prototype.slice.call(arguments));
-        var transferables = args.__transferables__;
+        const args = await me._wrap(Array.prototype.slice.call(arguments));
+        const transferables = args.__transferables__;
         if (transferables) delete args.__transferables__;
         return me._connection.emit(
           {
@@ -940,7 +937,7 @@ class ReferenceStore {
    * @returns {Number} smallest available id and reserves it
    */
   _genId() {
-    var id;
+    let id;
     if (this._indices.length === 1) {
       id = this._indices[0]++;
     } else {
@@ -957,7 +954,7 @@ class ReferenceStore {
    * @param {Number} id to release
    */
   _releaseId(id) {
-    for (var i = 0; i < this._indices.length; i++) {
+    for (let i = 0; i < this._indices.length; i++) {
       if (id < this._indices[i]) {
         this._indices.splice(i, 0, id);
         break;
@@ -965,7 +962,7 @@ class ReferenceStore {
     }
 
     // cleaning-up the sequence tail
-    for (i = this._indices.length - 1; i >= 0; i--) {
+    for (let i = this._indices.length - 1; i >= 0; i--) {
       if (this._indices[i] - 1 === this._indices[i - 1]) {
         this._indices.pop();
       } else {
@@ -985,7 +982,7 @@ class ReferenceStore {
     if (this._busyHandler && Object.keys(this._store).length === 0) {
       this._busyHandler();
     }
-    var id = this._genId();
+    const id = this._genId();
     this._store[id] = obj;
     return id;
   }
@@ -996,7 +993,7 @@ class ReferenceStore {
    * @param {Number} id of an object to retrieve
    */
   fetch(id) {
-    var obj = this._store[id];
+    const obj = this._store[id];
     if (obj && !obj.__remote_method) {
       delete this._store[id];
       this._releaseId(id);
