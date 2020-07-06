@@ -52,16 +52,39 @@ def setup_cors(app):
     )
 
 
+clients = {}
+
+
+async def app_handler(request):
+    return web.Response(text="clients: " + str(clients))
+
+
 def setup_router(app):
     if opt.static_dir is not None:
         app.router.add_static("/", path=str(opt.static_dir))
+    app.router.add_get("/apps", app_handler)
 
 
 def setup_socketio(sio):
     @sio.event
-    def join_rpc_channel(sid, data):
-        logger.info(f'{sid} joined the rpc channel: {data.get("channel")}')
-        sio.enter_room(sid, data.get("channel"))
+    async def join_rpc_channel(sid, data):
+        channel = data.get("channel")
+        logger.info(f"{sid} joined the rpc channel: {channel}")
+        sio.enter_room(sid, channel)
+        clients[sid]["rpc_channel"] = channel
+        for room in sio.rooms(sid):
+            logger.info("broadcase join_rpc_channel to %s", room)
+            await sio.emit("join_rpc_channel", {"sid": sid}, room=room, skip_sid=sid)
+
+    @sio.event
+    async def connect(sid, environ):
+        print(sid, "connected")
+        clients[sid] = {"sid": sid}
+
+    @sio.event
+    async def disconnect(sid):
+        print(sid, "disconnected")
+        del clients[sid]
 
     @sio.event
     async def imjoy_rpc(sid, data):

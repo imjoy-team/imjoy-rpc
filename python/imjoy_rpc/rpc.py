@@ -77,13 +77,18 @@ class RPC(MessageEmitter):
         self._remote_logger = dotdict({"info": self._log, "error": self._error})
         super().__init__(self._remote_logger)
 
-        self.loop = asyncio.get_event_loop()
+        try:
+            self.loop = asyncio.get_event_loop()
+        except:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
 
         if connection is not None:
             self._connection = connection
             self._setup_handlers(connection)
 
     def init(self):
+        logger.info("%s initialized", self.config.name)
         self._connection.emit(
             {
                 "type": "initialized",
@@ -99,7 +104,7 @@ class RPC(MessageEmitter):
         service = Service(plugin_path)
 
     def disconnect(self, conn):
-        local_manager.cleanup()
+        pass
 
     def default_exit(self):
         """Exit default."""

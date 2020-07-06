@@ -8,7 +8,6 @@ from IPython.display import display, HTML, Javascript
 from ipykernel.comm import Comm
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
-from werkzeug.local import Local
 import contextvars
 
 logging.basicConfig(stream=sys.stdout)
@@ -60,7 +59,7 @@ class JupyterCommManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
-    def register(self, target="imjoy_rpc"):
+    def start(self, target="imjoy_rpc"):
         get_ipython().kernel.comm_manager.register_target(
             target, self._create_new_connection
         )
@@ -105,7 +104,7 @@ class JupyterCommManager:
 class JupyterCommConnection(MessageEmitter):
     def __init__(self, config, comm, open_msg):
         self.config = dotdict(config or {})
-        super().__init__(self.config.get("debug"))
+        super().__init__(logger)
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
         self.comm = comm

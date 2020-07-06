@@ -23,6 +23,7 @@ function _appendBuffer(buffer1, buffer2) {
 }
 
 function indexObject(obj, is) {
+  if (!is) throw new Error("undefined index");
   if (typeof is === "string") return indexObject(obj, is.split("."));
   else if (is.length === 0) return obj;
   else return indexObject(obj[is[0]], is.slice(1));
@@ -183,16 +184,23 @@ export class RPC extends MessageEmitter {
     });
 
     this._connection.on("method", async data => {
-      let resolve, reject, method, args, result;
+      let resolve, reject, method, method_this, args, result;
       try {
         if (data.promise) {
           [resolve, reject] = await this._unwrap(data.promise, false);
         }
         const _interface = this._object_store[data.object_id];
         method = indexObject(_interface, data.name);
+        if (data.name.includes(".")) {
+          const tmp = data.name.split(".");
+          const intf_index = tmp.slice(0, tmp.length - 1).join(".");
+          method_this = indexObject(_interface, intf_index);
+        } else {
+          method_this = _interface;
+        }
         args = await this._unwrap(data.args, true);
         if (data.promise) {
-          result = method.apply(_interface, args);
+          result = method.apply(method_this, args);
           if (
             result instanceof Promise ||
             (method.constructor && method.constructor.name === "AsyncFunction")
@@ -202,7 +210,7 @@ export class RPC extends MessageEmitter {
             resolve(result);
           }
         } else {
-          method.apply(_interface, args);
+          method.apply(method_this, args);
         }
       } catch (err) {
         console.error(this.config.name, err);

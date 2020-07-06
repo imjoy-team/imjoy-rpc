@@ -1,2 +1,3 @@
 werkzeug
 numpy
+python-socketio[asyncio_client]

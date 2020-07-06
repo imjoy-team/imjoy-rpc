@@ -255,10 +255,32 @@ def setup_connection(_rpc_context, connection_type, logger=None):
             export=manager.set_interface,
             registerCodec=manager.register_codec,
         )
-        manager.register()
+        manager.start()
+
+    elif connection_type == "terminal":
+        if logger:
+            logger.info("Using socketio connection for imjoy-rpc")
+        from .connection.socketio_connection import SocketIOManager
+
+        manager = SocketIOManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            export=manager.set_interface, registerCodec=manager.register_codec
+        )
+
+        def setup():
+            pass
+
+        def run(ctx):
+            _rpc_context.api.alert("hello from python!")
+
+        manager.set_interface({"setup": setup, "run": run})
+        manager.start("test")
     else:
         if logger:
-            logger.warn("There is no connection set for imjoy-rpc")
+            logger.warn(
+                "There is no connection set for imjoy-rpc, connection type: "
+                + connection_type
+            )
 
 
 def type_of_script():
