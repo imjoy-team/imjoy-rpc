@@ -267,14 +267,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
             export=manager.set_interface, registerCodec=manager.register_codec
         )
 
-        def setup():
-            pass
-
-        def run(ctx):
-            _rpc_context.api.alert("hello from python!")
-
-        manager.set_interface({"setup": setup, "run": run})
-        manager.start("test")
+        manager.start(
+            _rpc_context.default_config.get("engine_url", "http://127.0.0.1:9988")
+        )
     else:
         if logger:
             logger.warn(

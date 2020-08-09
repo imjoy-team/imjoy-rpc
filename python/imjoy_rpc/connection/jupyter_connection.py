@@ -18,8 +18,8 @@ connection_id = contextvars.ContextVar("connection_id")
 
 
 class JupyterCommManager:
-    def __init__(self, rpc_context, default_config=None):
-        self.default_config = default_config
+    def __init__(self, rpc_context):
+        self.default_config = rpc_context.default_config
         self.clients = {}
         self.interface = None
         self.rpc_context = rpc_context
@@ -32,7 +32,7 @@ class JupyterCommManager:
         self.set_interface({})
 
     def set_interface(self, interface, config=None):
-        config = config or {}
+        config = config or self.default_config
         config = dotdict(config)
         config.name = config.name or "Jupyter Notebook"
         config.allow_execution = config.allow_execution or False

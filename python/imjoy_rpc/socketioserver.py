@@ -11,18 +11,13 @@ logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("socketio-server")
 logger.setLevel(logging.INFO)
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--static-dir", type=str, default=None, help="connection token")
 
-opt = parser.parse_args()
-
-
-def create_app():
+def create_socketio_server(static_dir=None):
     """Create and return aiohttp webserver app."""
     sio = socketio.AsyncServer(cors_allowed_origins="*")
     app = web.Application()
     sio.attach(app)
-    setup_router(app)
+    setup_router(app, static_dir)
     setup_socketio(sio)
     setup_cors(app)
     app.on_startup.append(on_startup)
@@ -59,9 +54,9 @@ async def app_handler(request):
     return web.Response(text="clients: " + str(clients))
 
 
-def setup_router(app):
-    if opt.static_dir is not None:
-        app.router.add_static("/", path=str(opt.static_dir))
+def setup_router(app, static_dir=None):
+    if static_dir is not None:
+        app.router.add_static("/", path=str(static_dir))
     app.router.add_get("/apps", app_handler)
 
 
@@ -94,5 +89,5 @@ def setup_socketio(sio):
 
 
 if __name__ == "__main__":
-    app = create_app()
+    app = create_socketio_server()
     web.run_app(app, port=9988)

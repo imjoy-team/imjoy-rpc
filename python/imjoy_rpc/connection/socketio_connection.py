@@ -15,8 +15,8 @@ connection_id = contextvars.ContextVar("connection_id")
 
 
 class SocketIOManager:
-    def __init__(self, rpc_context, default_config=None):
-        self.default_config = default_config
+    def __init__(self, rpc_context):
+        self.default_config = rpc_context.default_config
         self.clients = {}
         self.interface = None
         self.rpc_context = rpc_context
@@ -26,7 +26,7 @@ class SocketIOManager:
         return connection_id.get(default=None)
 
     def set_interface(self, interface, config=None):
-        config = config or {}
+        config = config or self.default_config
         config = dotdict(config)
         config.name = config.name or "ImJoy Plugin"
         config.allow_execution = config.allow_execution or False
@@ -38,6 +38,9 @@ class SocketIOManager:
         self.interface = interface
         for k in self.clients:
             self.clients[k].rpc.set_interface(interface, self.default_config)
+
+        if config.url:
+            asyncio.ensure_future(self.sio.connect(config.url))
 
     def register_codec(self, config):
         assert "name" in config
@@ -60,16 +63,21 @@ class SocketIOManager:
 
         @sio.event
         async def connect():
-            await sio.emit("join_rpc_channel", {"channel": channel})
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(sio.connect("http://127.0.0.1:9988"))
+            await sio.emit("register_plugin", {"id": sio.sid}, callback=registered)
+
         self.sio = sio
         print("plugin started.")
         loop.run_until_complete(sio.wait())
 
-    def _create_new_connection(self, sio, sid):
-        connection_id.set(sid)
-        connection = SocketioConnection(self.default_config, sio)
+        if url:
+            asyncio.ensure_future(sio.connect(url))
+
+        if wait:
+            loop.run_until_complete(sio.wait())
+
+    def _create_new_connection(self, sio, plugin_channel, client_channel):
+        connection_id.set(client_channel)
+        connection = SocketioConnection(sio, plugin_channel, client_channel)
 
         def initialize(data):
             config = self.default_config.copy()
