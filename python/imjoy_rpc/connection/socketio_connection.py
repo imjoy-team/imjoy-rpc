@@ -73,6 +73,7 @@ class SocketIOManager:
             asyncio.ensure_future(sio.connect(url))
 
         if wait:
+            loop = asyncio.get_event_loop()
             loop.run_until_complete(sio.wait())
 
     def _create_new_connection(self, sio, plugin_channel, client_channel):

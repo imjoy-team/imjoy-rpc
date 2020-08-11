@@ -272,9 +272,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
         )
     else:
         if logger:
-            logger.warn(
-                "There is no connection set for imjoy-rpc, connection type: "
-                + connection_type
+            logger.info(
+                "There is no connection set for imjoy-rpc, connection type: %s",
+                connection_type,
             )
 
 
