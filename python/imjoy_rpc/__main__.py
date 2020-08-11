@@ -13,7 +13,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plugin-dir", type=str, default=None, help="path to a plugin file"
     )
-    parser.add_argument("--serve", type=str, default=None, help="start a socketio server from specified port")
+    parser.add_argument(
+        "--serve",
+        type=str,
+        default=None,
+        help="start a socketio server from specified port",
+    )
     parser.add_argument(
         "--plugin-server", type=str, default=None, help="url to the socketio server"
     )
@@ -22,7 +27,8 @@ if __name__ == "__main__":
     default_config.update(
         {
             "name": "ImJoy Plugin",
-            "plugin_server": args.plugin_server or "http://127.0.0.1:{}".format(args.serve),
+            "plugin_server": args.plugin_server
+            or "http://127.0.0.1:{}".format(args.serve),
         }
     )
 
@@ -40,14 +46,16 @@ if __name__ == "__main__":
             elif "yaml" in found[0]:
                 plugin_config = yaml.safe_load(found[1])
             default_config.update(plugin_config)
-            
+
             # load script
             found = re.findall("<script (.*)>(.*)</script>", content, re.DOTALL)[0]
             if "python" in found[0]:
                 exec(content)
             else:
                 raise Exception(
-                    "Invalid script type ({}) in file {}".format(found[0], args.plugin_dir)
+                    "Invalid script type ({}) in file {}".format(
+                        found[0], args.plugin_dir
+                    )
                 )
         else:
             raise Exception("Invalid script file type ({})".format(args.plugin_dir))

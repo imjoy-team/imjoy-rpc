@@ -62,14 +62,68 @@ def setup_router(app, static_dir=None):
 
 def setup_socketio(sio):
     @sio.event
-    async def join_rpc_channel(sid, data):
-        channel = data.get("channel")
-        logger.info(f"{sid} joined the rpc channel: {channel}")
-        sio.enter_room(sid, channel)
-        clients[sid]["rpc_channel"] = channel
-        for room in sio.rooms(sid):
-            logger.info("broadcase join_rpc_channel to %s", room)
-            await sio.emit("join_rpc_channel", {"sid": sid}, room=room, skip_sid=sid)
+    async def list_plugins(sid, data):
+        return list(plugins.values())
+
+    @sio.event
+    async def register_plugin(sid, config):
+        plugins[config["id"]] = config
+        plugin_channel = str(uuid.uuid4())
+        config["plugin_channel"] = plugin_channel
+        clients = {}
+        config["clients"] = clients
+
+        # broadcast to the plugin message to all the clients
+        @sio.on(plugin_channel)
+        async def on_plugin_message(sid, data):
+            if data.get("peer_id"):
+                for k in clients:
+                    if data.get("peer_id") == clients[k]["channel"]:
+                        await sio.emit(clients[k]["channel"], data)
+            else:
+                for k in clients:
+                    await sio.emit(clients[k]["channel"], data)
+
+        async def finalize():
+            if config["id"] in plugins:
+                for k in clients:
+                    await sio.emit(clients[k]["channel"], {"type": "disconnect"})
+                del plugins[config["id"]]
+
+        finalizers.append([sid, finalize])
+        return {"channel": plugin_channel}
+
+    @sio.event
+    async def connect_plugin(sid, data):
+        pid = data.get("id")
+
+        if pid in plugins:
+            plugin_info = plugins[pid]
+            client_info = {}
+            logger.info(f"{sid} is connecting to plugin {pid}")
+
+            # generate a channel and store it to plugin.clients
+            client_channel = str(uuid.uuid4())
+            plugin_info["clients"][client_channel] = client_info
+            client_info["channel"] = client_channel
+
+            # listen to the client channel and forward to the plugin
+            @sio.on(client_channel)
+            async def on_client_message(sid, data):
+                await sio.emit(plugin_info["plugin_channel"], data)
+
+            # notify the plugin about the new client
+            await sio.emit(plugin_info["plugin_channel"] + "-new-client", client_info)
+
+            async def finalize():
+                del plugin_info["clients"][client_channel]
+
+            finalizers.append([sid, finalize])
+
+            return {"channel": client_channel}
+        else:
+            logger.error(f"Plugin not found {pid}, requested by client {sid}")
+            return {"error": "Plugin not found: " + pid}
 
     @sio.event
     async def connect(sid, environ):
