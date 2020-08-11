@@ -78,14 +78,14 @@ def setup_socketio(sio):
 
     @sio.event
     async def disconnect(sid):
-        print(sid, "disconnected")
-        del clients[sid]
-
-    @sio.event
-    async def imjoy_rpc(sid, data):
-        for room in sio.rooms(sid):
-            logger.info("broadcase message to room %s: %s", room, data)
-            await sio.emit("imjoy_rpc", data, room=room, skip_sid=sid)
+        lst2finalize = [b for b in finalizers if b[0] == sid]
+        for obj in lst2finalize:
+            finalize_func = obj[1]
+            try:
+                logger.info("Removing " + obj[0])
+                await finalize_func()
+            finally:
+                finalizers.remove(obj)
 
 
 if __name__ == "__main__":

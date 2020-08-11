@@ -39,8 +39,8 @@ class SocketIOManager:
         for k in self.clients:
             self.clients[k].rpc.set_interface(interface, self.default_config)
 
-        if config.url:
-            asyncio.ensure_future(self.sio.connect(config.url))
+        if config.plugin_server:
+            asyncio.ensure_future(self.sio.connect(config.plugin_server))
 
     def register_codec(self, config):
         assert "name" in config
