@@ -58,6 +58,8 @@ class JupyterCommManager:
         self._codecs[config["name"]] = dotdict(config)
 
     def register(self, target="imjoy_rpc"):
+        # set initial interface
+        self.set_interface({})
         get_ipython().kernel.comm_manager.register_target(
             target, self._create_new_connection
         )
