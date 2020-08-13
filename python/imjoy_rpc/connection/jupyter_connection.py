@@ -29,6 +29,9 @@ class JupyterCommManager:
     def get_ident(self):
         return connection_id.get(default=None)
 
+    def reset_interface(self):
+        self.set_interface({})
+
     def set_interface(self, interface, config=None):
         config = config or {}
         config = dotdict(config)
@@ -58,8 +61,6 @@ class JupyterCommManager:
         self._codecs[config["name"]] = dotdict(config)
 
     def register(self, target="imjoy_rpc"):
-        # set initial interface
-        self.set_interface({})
         get_ipython().kernel.comm_manager.register_target(
             target, self._create_new_connection
         )
@@ -82,6 +83,7 @@ class JupyterCommManager:
 
             def patch_api(_):
                 api = rpc.get_remote() or dotdict()
+                api.init = self.reset_interface
                 api.export = self.set_interface
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object
