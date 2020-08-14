@@ -1,6 +1,2 @@
 werkzeug
 numpy
-python-socketio[asyncio_client]
-pyyaml
-aiohttp
-aiohttp_cors
