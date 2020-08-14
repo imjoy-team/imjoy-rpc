@@ -251,7 +251,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
 
         manager = JupyterCommManager(_rpc_context)
         _rpc_context.api = dotdict(
-            export=manager.set_interface, registerCodec=manager.register_codec
+            init=manager.reset_interface,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
         )
         manager.register()
     else:
