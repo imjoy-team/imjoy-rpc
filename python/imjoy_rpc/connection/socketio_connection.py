@@ -127,7 +127,6 @@ class SocketioConnection(MessageEmitter):
                 if "type" in data:
                     self._fire(data["type"], data)
             else:
-                print("==========>", data)
                 logger.warn(
                     "connection peer id mismatch {} != {}".format(
                         data.get("peer_id"), self.peer_id
