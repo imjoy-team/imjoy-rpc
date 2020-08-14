@@ -217,6 +217,8 @@ describe("RPC", async () => {
   });
 
   const testGetPluginCode = `
+    api.init() // init should have no effect
+
     class Plugin {
       async testGetPlugin(a, b){
         
