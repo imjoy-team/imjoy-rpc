@@ -17,7 +17,7 @@ module.exports = {
     libraryTarget: 'umd',
     umdNamedDefine: true,
   },
-  devtool: 'cheap-module-eval-source-map',
+  devtool: '#source-maps',
   devServer: {
     contentBase: path.resolve(__dirname, 'dist'),
     publicPath: '/',

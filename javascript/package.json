@@ -1,13 +1,13 @@
 {
   "name": "imjoy-rpc",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "description": "Remote procedure calls for ImJoy.",
   "module": "index.js",
   "scripts": {
     "build": "rm -rf dist && npm run build-umd",
     "build-umd": "webpack --config webpack.config.js --mode development && NODE_ENV=production webpack --config webpack.config.js --mode production --devtool source-map ",
     "watch": "NODE_ENV=production webpack --watch --progress --config webpack.config.js --mode production --devtool source-map",
-    "publish": "npm install && npm run build && npm publish",
+    "publish-npm": "npm install && npm run build && npm publish",
     "serve": "webpack-dev-server",
     "stats": "webpack --profile --json > stats.json",
     "stats-prod": "webpack --profile --json --mode production > stats-prod.json",
