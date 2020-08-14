@@ -70,7 +70,7 @@ class SocketIOManager:
         loop.run_until_complete(sio.wait())
 
         if url:
-            logger.info('connecting to %s', url)
+            logger.info("connecting to %s", url)
             asyncio.ensure_future(sio.connect(url))
 
         if wait:
