@@ -45,9 +45,9 @@ export function connectRPC(connection, config) {
     api.disposeObject = function(obj) {
       rpc.disposeObject(obj);
     };
-    api.init = function(){
+    api.init = function() {
       rpc.setInterface({});
-    }
+    };
     api.export = function(_interface, config) {
       rpc.setInterface(_interface, config);
     };
