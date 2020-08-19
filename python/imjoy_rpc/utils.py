@@ -178,8 +178,14 @@ class MessageEmitter:
         self._event_handlers[event].append(handler)
 
     def once(self, event, handler):
-        handler.___event_run_once = True
-        self.on(event, handler)
+        # wrap the handler function,
+        # this is needed because setting property
+        # won't work for member function of a class instance
+        def wrap_func(*args, **kwargs):
+            return handler(*args, **kwargs)
+
+        wrap_func.___event_run_once = True
+        self.on(event, wrap_func)
 
     def off(self, event=None, handler=None):
         if event is None and handler is None:

@@ -67,6 +67,7 @@ class RPC(MessageEmitter):
         self._codecs = codecs or {}
         self.work_dir = os.getcwd()
         self.abort = threading.Event()
+        self.id = None
 
         self.rpc_context = rpc_context
 
