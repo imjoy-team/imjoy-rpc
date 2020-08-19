@@ -184,10 +184,6 @@ class ColabConnection(MessageEmitter):
         pass
 
     def emit(self, msg):
-        if msg["type"] == "method" and msg["name"] == "createWindow":
-            # create a div for displaying window
-            window_id = "imjoy_window_" + str(uuid.uuid4())
-            msg["args"][0]["window_id"] = window_id
         msg, buffer_paths, buffers = remove_buffers(msg)
         # encode buffers into base64
         for i in range(len(buffers)):
