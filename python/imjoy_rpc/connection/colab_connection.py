@@ -23,7 +23,7 @@ class Comm:
     def __init__(self, target_name="imjoy_rpc", data=None):
         self.target_name = target_name
         self._msg_callbacks = []
-        self.comm_id = "123"
+        self.comm_id = str(uuid.uuid4())
         google.colab.output.register_callback(
             "comm_message_" + self.target_name, self.handle_comm_msg
         )
