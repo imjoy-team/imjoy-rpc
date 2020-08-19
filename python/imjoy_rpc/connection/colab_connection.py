@@ -18,6 +18,10 @@ logger.setLevel(logging.INFO)
 
 connection_id = contextvars.ContextVar("connection_id")
 
+colab_html = open(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "imjoy_colab.html"), "r"
+).read()
+
 
 class Comm:
     def __init__(self, target_name="imjoy_rpc", data=None):
@@ -72,7 +76,6 @@ class ColabManager:
         self.interface = interface
         for k in self.clients:
             self.clients[k].rpc.set_interface(interface)
-        display(Javascript("window.connectPlugin && window.connectPlugin()"))
         display(HTML('<div id="{}"></div>'.format(config.id)))
 
     def register_codec(self, config):
@@ -185,11 +188,6 @@ class ColabConnection(MessageEmitter):
             # create a div for displaying window
             window_id = "imjoy_window_" + str(uuid.uuid4())
             msg["args"][0]["window_id"] = window_id
-            display(
-                HTML(
-                    '<div id="{}" class="imjoy-inline-window"></div>'.format(window_id)
-                )
-            )
         msg, buffer_paths, buffers = remove_buffers(msg)
         # encode buffers into base64
         for i in range(len(buffers)):
