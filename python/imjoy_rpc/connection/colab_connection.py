@@ -77,6 +77,7 @@ class ColabManager:
         self.interface = interface
         for k in self.clients:
             self.clients[k].rpc.set_interface(interface)
+        display(HTML(colab_html))
         display(HTML('<div id="{}"></div>'.format(config.id)))
 
     def register_codec(self, config):

@@ -3,10 +3,6 @@
   requirejs.config({
     paths: {
       jquery: 'https://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min',
-      imjoyLoader: "https://lib.imjoy.io/imjoy-loader",
-      vue: "https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min",
-      "vue-js-modal": "https://imjoy-team.github.io/vue-js-modal/index",
-      snackbar: "https://cdnjs.cloudflare.com/ajax/libs/snackbarjs/1.1.0/snackbar.min",
     },
   });
 
@@ -28,7 +24,6 @@
     $.getStylesheet(
       "https://imjoy-team.github.io/vue-js-modal/styles.css"
     );
-
     $.getStylesheet(
       "https://fezvrasta.github.io/snackbarjs/themes-css/material.css"
     );
@@ -36,6 +31,8 @@
     $.getStylesheet(
       "https://fezvrasta.github.io/snackbarjs/dist/snackbar.min.css"
     );
+
+    $.getStylesheet("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.14.0/css/regular.min.css")
 
 
     function randId() {
@@ -139,7 +136,7 @@
         imjoyLoader: "https://lib.imjoy.io/imjoy-loader",
         vue: "https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.min",
         "vue-js-modal": "https://imjoy-team.github.io/vue-js-modal/index",
-        snackbar: "https://cdnjs.cloudflare.com/ajax/libs/snackbarjs/1.1.0/snackbar.min",
+        snackbar: "https://cdnjs.cloudflare.com/ajax/libs/snackbarjs/1.1.0/snackbar.min"
       },
       waitSeconds: 30 // optional
     });
@@ -248,15 +245,11 @@
         app.$forceUpdate()
       })
       imjoy.event_bus.on("add_window", w => {
+        app.$el.style.height = "700px";
         if (document.getElementById(w.window_id)) return;
         if (!w.dialog) {
-          if (document.getElementById(app.active_plugin.id)) {
-            const elem = document.createElement("div");
-            elem.id = w.window_id;
-            elem.classList.add("imjoy-inline-window")
-            document.getElementById(app.active_plugin.id).appendChild(elem)
-            return
-          }
+          app.regularWindows.push(w)
+          return
         }
         app.dialogWindows.push(w)
         app.selected_dialog_window = w;
@@ -444,53 +437,73 @@
 .dialog-control:focus {
   outline: none;
 }
+
+/* Dropdown Button */
+.dropbtn {
+  border: none;
+  height: 25px;
+  min-width: 64px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+
+.dropbtn > img {
+  vertical-align: middle;
+}
+
+.dropbtn:hover {background-color: #a9a9a9;}
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: #f1f1f1;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+}
+
+.dropdown-content span {
+  color: black;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
+}
+
+
+.dropdown-content span:hover {background-color: #ddd; cursor: pointer; }
+
+.dropdown:hover .dropdown-content {display: block;}
+
+
+.loader {
+  position: fixed;
+  top: 35%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transform: -webkit-translate(-50%, -50%);
+  transform: -moz-translate(-50%, -50%);
+  transform: -ms-translate(-50%, -50%);
+
+  border: 10px solid #f3f3f3; /* Light grey */
+  border-top: 10px solid #448aff; /* Blue */
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 </style>`
 
-    const APP_TEMPLATE = `
-<div style="padding-left: 5px;">
-<div class="btn-group">
-  <button class="btn btn-default dropdown">
-    <a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 17px;"></a>
-    <ul id="plugin_menu" class="dropdown-menu"><a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
-      <li v-for="(p, name) in plugins" :key="p.id" :title="p.config.description"><a href="#" :style="{color: p.api.run?'#0456ef':'gray'}" @click="run(p)">{{p.name}}</a></li>
-      <ul class="divider" v-if="plugins&&Object.keys(plugins).length>0"></ul>
-      <li title="Load a new plugin"><button @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</button></li>
-      <li title="Load a new plugin"><button @click="connectPlugin();"><i class="fa-plus fa"></i>&nbsp;Connect Plugin</button></li>
-      <li title="Show ImJoy API documentation"><a href="#" @click="loadImJoyApp()"><i class="fa-rocket fa"></i>&nbsp;ImJoy App</a></li>
-      <li title="Show ImJoy API documentation"><a href="#" @click="showAPIDocs()"><i class="fa-book fa"></i>&nbsp;API Docs</a></li>
-      <li title="About ImJoy"><a href="#" @click="aboutImJoy()"><i class="fa-info-circle fa"></i>&nbsp;About ImJoy</a></li>
-    </ul>
-  </button>
-  <button class="btn btn-default" v-if="active_plugin" @click="runNotebookPlugin()">&nbsp;Run</button>
-</div>
-<div class="btn-group">
-  <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="btn btn-default" @click="showWindow(wdialog)"><i class="fa fa-window-restore"></i></i></button>
-</div>
-<modal name="window-modal-dialog" height="500px" style="max-height: 100%; max-width: 100%" :fullscreen="fullscreen" :resizable="true" draggable=".drag-handle" :scrollable="true">
-    <div v-if="selected_dialog_window" @dblclick="maximizeWindow()" class="navbar-collapse collapse drag-handle" style="cursor:move; background-color: #448aff; color: white; text-align: center;">
-      <span class="noselect">{{ selected_dialog_window.name}}</span>
-      <button @click="closeWindow(selected_dialog_window)" class="noselect dialog-control" style="background:#ff0000c4;left:1px;">
-        X
-      </button>
-      <button @click="minimizeWindow()"  class="noselect dialog-control" style="background:#00cdff61;left:25px;">
-        -
-      </button>
-      <button @click="maximizeWindow()" class="noselect dialog-control" style="background:#00cdff61;left:45px;">
-        {{fullscreen?'=': '+'}}
-      </button>
-    </div>
-  <template v-for="wdialog in dialogWindows">
-    <div
-      :key="wdialog.window_id"
-      v-show="wdialog === selected_dialog_window"
-      style="height: calc(100% - 18px);"
-    >
-      <div :id="wdialog.window_id" style="width: 100%;height: 100%;"></div>
-    </div>
-  </template>
-</modal>
-</div>
-`
     require(["imjoyLoader", "vue", "vue-js-modal", "snackbar"], function (
       imjoyLoder,
       Vue,
@@ -498,21 +511,18 @@
       snackbar
     ) {
       Vue.use(vuejsmodal.default);
-      var elem = document.createElement("div");
-      elem.id = "app";
-      elem.style.display = "inline-block"
-      elem.innerHTML = APP_TEMPLATE;
-      document.getElementById("maintoolbar-container").appendChild(elem);
       document.head.insertAdjacentHTML("beforeend", CSStyle)
       const app = new Vue({
         el: "#app",
         data: {
           dialogWindows: [],
+          regularWindows: [],
           selected_dialog_window: null,
           plugins: {},
           fullscreen: false,
           imjoy: null,
           active_plugin: null,
+          loading: true,
         },
         mounted() {
           window.dispatchEvent(new Event('resize'));
@@ -529,6 +539,12 @@
                     timeout: duration * 1000
                   });
                 },
+                async alert(_plugin, msg) {
+                  $.snackbar({
+                    content: msg,
+                    timeout: 3000
+                  });
+                },
                 async showDialog(_plugin, config) {
                   config.dialog = true;
                   return await imjoy.pm.createWindow(_plugin, config)
@@ -538,6 +554,8 @@
             this.imjoy = imjoy;
             startImJoy(this, this.imjoy).then(() => {
               console.log('ImJoy started.')
+              this.loading = false;
+              window.connectPlugin()
             })
           });
         },
@@ -562,6 +580,7 @@
             })
           },
           async connectPlugin() {
+            this.loading = true;
             const connection = new Connection()
             const plugin = await this.imjoy.pm
               .connectPlugin(connection)
@@ -570,6 +589,7 @@
             if (plugin.api.setup) {
               await plugin.api.setup()
             }
+            this.loading = false;
             this.$forceUpdate()
           },
           async runNotebookPlugin() {
@@ -626,13 +646,11 @@
                 uri: p
               })
               .then(async plugin => {
-                debugger
                 this.plugins[plugin.name] = plugin
                 this.showMessage(`Plugin ${plugin.name} successfully loaded into the workspace.`)
                 this.$forceUpdate()
               })
               .catch(e => {
-                debugger
                 console.error(e);
                 this.showMessage(`Failed to load the plugin, error: ${e}`);
               });
@@ -669,4 +687,54 @@
 
   })
 </script>
-<div id="maintoolbar-container" style="height: 890px;"></div>
+<div id="app" style="height: 80px;">
+  <button v-if="!active_plugin" class="dropbtn" @click="connectPlugin();"><i
+      class="fa-plus fa"></i>&nbsp;Connect</button>
+  <div class="dropdown">
+    <button class="dropbtn"><img src="https://imjoy.io/static/img/imjoy-logo-black.svg" style="height: 17px;"
+        alt="ImJoy"></button>
+    <div class="dropdown-content">
+      <span v-for="(p, name) in plugins" :key="p.id" :style="{color: p.api.run?'#0456ef':'gray'}"
+        @click="run(p)">{{p.name}}</span>
+    </div>
+  </div>
+  <button class="dropbtn" v-if="active_plugin" @click="runNotebookPlugin()">&nbsp;Run</button>
+  <!-- <button class="dropbtn" @click="loadPlugin()"><i class="fa-plus fa"></i>&nbsp;Load Plugin</button> -->
+  <button class="dropbtn" @click="loadImJoyApp();"><i class="fa-rocket fa"></i>&nbsp;ImJoy App</button>
+  <button class="dropbtn" @click="showAPIDocs();"><i class="fa-book fa"></i>&nbsp;API Docs</button>
+  <button class="dropbtn" @click="aboutImJoy();"><i class="fa-info-circle fa"></i>&nbsp;
+    About
+  </button>
+  <span v-if="dialogWindows.length>0">&nbsp; | &nbsp;</span>
+  <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="dropbtn" @click="showWindow(wdialog)"><i
+      class="fa fa-window-restore"></i></i>{{wdialog.name}}</button>
+
+  <div class="loader" v-show="loading"></div>
+
+  <div v-for="w in regularWindows" style="height: calc(100% - 18px);" :key="w.window_id">
+    <div :id="w.window_id" style="width: 100%;height: 100%;"></div>
+  </div>
+
+  <modal name="window-modal-dialog" height="500px" style="max-height: 100%; max-width: 100%" :fullscreen="fullscreen"
+    :resizable="true" draggable=".drag-handle" :scrollable="true">
+    <div v-if="selected_dialog_window" @dblclick="maximizeWindow()" class="navbar-collapse collapse drag-handle"
+      style="cursor:move; background-color: #448aff; color: white; text-align: center;">
+      <span class="noselect">{{ selected_dialog_window.name}}</span>
+      <button @click="closeWindow(selected_dialog_window)" class="noselect dialog-control"
+        style="background:#ff0000c4;left:1px;">
+        X
+      </button>
+      <button @click="minimizeWindow()" class="noselect dialog-control" style="background:#00cdff61;left:25px;">
+        -
+      </button>
+      <button @click="maximizeWindow()" class="noselect dialog-control" style="background:#00cdff61;left:45px;">
+        {{fullscreen?'=': '+'}}
+      </button>
+    </div>
+    <template v-for="wdialog in dialogWindows">
+      <div :key="wdialog.window_id" v-show="wdialog === selected_dialog_window" style="height: calc(100% - 18px);">
+        <div :id="wdialog.window_id" style="width: 100%;height: 100%;"></div>
+      </div>
+    </template>
+  </modal>
+</div>
