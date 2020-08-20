@@ -7,7 +7,7 @@ from .utils import ContextLocal, setup_connection, type_of_script, dotdict
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("ImJoy-RPC")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARNING)
 
 _rpc_context = ContextLocal()
 api = LocalProxy(_rpc_context, "api")

@@ -260,7 +260,16 @@ def setup_connection(_rpc_context, connection_type, logger=None):
             export=manager.set_interface, registerCodec=manager.register_codec,
         )
         manager.start()
+    elif connection_type == "colab":
+        if logger:
+            logger.info("Using colab connection for imjoy-rpc")
+        from .connection.colab_connection import ColabManager
 
+        manager = ColabManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            export=manager.set_interface, registerCodec=manager.register_codec
+        )
+        manager.start()
     elif connection_type == "terminal":
         if logger:
             logger.info("Using socketio connection for imjoy-rpc")
@@ -284,10 +293,15 @@ def setup_connection(_rpc_context, connection_type, logger=None):
 
 def type_of_script():
     try:
-        ipy_str = str(type(get_ipython()))
-        if "zmqshell" in ipy_str:
-            return "jupyter"
-        if "terminal" in ipy_str:
-            return "ipython"
+        import google.colab.output
+
+        return "colab"
     except:
-        return "terminal"
+        try:
+            ipy_str = str(type(get_ipython()))
+            if "zmqshell" in ipy_str:
+                return "jupyter"
+            if "terminal" in ipy_str:
+                return "ipython"
+        except:
+            return "terminal"
