@@ -9,7 +9,6 @@ import contextvars
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("SocketIOConnection")
-logger.setLevel(logging.INFO)
 
 connection_id = contextvars.ContextVar("connection_id")
 

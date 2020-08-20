@@ -25,7 +25,6 @@ API_VERSION = "0.2.3"
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
-logger.setLevel(logging.INFO)
 
 try:
     import numpy as np

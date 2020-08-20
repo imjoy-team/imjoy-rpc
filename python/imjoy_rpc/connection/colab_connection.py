@@ -15,7 +15,6 @@ from imjoy_rpc.connection.jupyter_connection import put_buffers, remove_buffers
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("ColabConnection")
-logger.setLevel(logging.INFO)
 
 connection_id = contextvars.ContextVar("connection_id")
 
