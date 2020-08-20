@@ -483,8 +483,8 @@
 
 .loader {
   position: fixed;
-  top: 35%;
-  left: 50%;
+  top: calc(40% - 25px);
+  left: calc(50% - 25px);
   transform: translate(-50%, -50%);
   transform: -webkit-translate(-50%, -50%);
   transform: -moz-translate(-50%, -50%);
@@ -522,7 +522,6 @@
           fullscreen: false,
           imjoy: null,
           active_plugin: null,
-          loading: true,
         },
         mounted() {
           window.dispatchEvent(new Event('resize'));
@@ -554,7 +553,7 @@
             this.imjoy = imjoy;
             startImJoy(this, this.imjoy).then(() => {
               console.log('ImJoy started.')
-              this.loading = false;
+              document.getElementById('loading').style.display = 'none';
               window.connectPlugin()
             })
           });
@@ -580,7 +579,7 @@
             })
           },
           async connectPlugin() {
-            this.loading = true;
+            document.getElementById('loading').style.display = 'block';
             const connection = new Connection()
             const plugin = await this.imjoy.pm
               .connectPlugin(connection)
@@ -589,7 +588,7 @@
             if (plugin.api.setup) {
               await plugin.api.setup()
             }
-            this.loading = false;
+            document.getElementById('loading').style.display = 'none';
             this.$forceUpdate()
           },
           async runNotebookPlugin() {
@@ -687,6 +686,7 @@
 
   })
 </script>
+<div class="loader" id="loading"></div>
 <div id="app" style="height: 80px;">
   <button v-if="!active_plugin" class="dropbtn" @click="connectPlugin();"><i
       class="fa-plus fa"></i>&nbsp;Connect</button>
@@ -709,7 +709,6 @@
   <button v-for="wdialog in dialogWindows" :title="wdialog.name" class="dropbtn" @click="showWindow(wdialog)"><i
       class="fa fa-window-restore"></i></i>{{wdialog.name}}</button>
 
-  <div class="loader" v-show="loading"></div>
 
   <div v-for="w in regularWindows" style="height: calc(100% - 18px);" :key="w.window_id">
     <div :id="w.window_id" style="width: 100%;height: 100%;"></div>
