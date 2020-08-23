@@ -59,6 +59,9 @@ class ColabManager:
         self.interface = None
         self.rpc_context = rpc_context
         self._codecs = {}
+        # for loading plugin from source code,
+        # we can benifit from the syntax highlighting for HTML()
+        self.register_codec({"name": "HTML", "type": HTML, "encoder": lambda x: x.data})
 
     def get_ident(self):
         return connection_id.get(default=None)
