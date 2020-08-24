@@ -89,7 +89,7 @@ class ColabManager:
             for tp in list(self._codecs.keys()):
                 codec = self._codecs[tp]
                 if codec.type == config["type"] or tp == config["name"]:
-                    logger.warn("Removing duplicated codec: " + tp)
+                    logger.info("Removing duplicated codec: " + tp)
                     del self._codecs[tp]
 
         self._codecs[config["name"]] = dotdict(config)
