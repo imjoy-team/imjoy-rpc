@@ -140,7 +140,8 @@ class RPC(MessageEmitter):
     def set_interface(self, api, config=None):
         """Set interface."""
         # TODO: setup forwarding_functions
-        self.set_config(config)
+        if config:
+            self.set_config(config)
 
         # store it in a docdict such that the methods are hashable
         self._local_api = dotdict(api) if isinstance(api, dict) else api
