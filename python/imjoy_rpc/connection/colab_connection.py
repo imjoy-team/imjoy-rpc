@@ -37,7 +37,7 @@ class Comm:
             try:
                 cb({"content": {"data": msg}, "buffers": buffers})
             except Exception as e:
-                print(e)
+                logger.error("%s", e)
 
     def send(self, msg, buffers=None):
         google.colab.output.eval_js(
