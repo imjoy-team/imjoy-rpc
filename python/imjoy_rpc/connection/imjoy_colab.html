@@ -141,92 +141,45 @@
       waitSeconds: 30 // optional
     });
 
-
-    class ColabComm {
-      constructor(target_name) {
-        if (!window.google.colab) {
-          throw "ColabComm only work inside google colab."
-        }
-        this.target_name = target_name
-        this._msg_callbacks = []
-        this._eval = window.eval
-        window.eval = (msg) => {
-          if (msg.target_name && msg.target_name === this.target_name) {
-            return this.handle_comm_msg({
-              content: {
-                data: msg.msg
-              },
-              buffers: msg.buffers
-            })
-          } else {
-            return this._eval(msg)
-          }
-        }
-      }
-      handle_comm_msg(msg) {
-        for (let cb of this._msg_callbacks) {
-          try {
-            cb(msg)
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      }
-      send(msg, buffers) {
-        google.colab.kernel.invokeFunction('comm_message_' + this.target_name, [msg], {
-          buffers: buffers
-        });
-      }
-      on_msg(cb) {
-        this._msg_callbacks.push(cb)
-      }
-      on_close(cb) {}
-    }
-
     class Connection extends MessageEmitter {
       constructor(config) {
         super(config && config.debug);
-        const comm = new ColabComm("imjoy_rpc");
-        comm.on_msg(msg => {
-          const data = msg.content.data;
-          const buffer_paths = data.__buffer_paths__ || [];
-          delete data.__buffer_paths__;
-          const buffers = msg.buffers || [];
-          // decode buffers from base64
-          for (let i = 0; i < buffers.length; i++) {
-            buffers[i] = Uint8Array.from(atob(buffers[i]), c => c.charCodeAt(0))
-          }
-          put_buffers(data, buffer_paths, buffers);
-
-          if (data.type === "log" || data.type === "info") {
-            console.log(data.message);
-          } else if (data.type === "error") {
-            console.error(data.message);
-          } else {
-            if (data.peer_id) {
-              this._peer_id = data.peer_id
+        google.colab.kernel.comms.open('imjoy_rpc', {}).then((comm) => {
+          setTimeout(async () => {
+            for await (const msg of comm.messages) {
+              const data = msg.data;
+              const buffer_paths = data.__buffer_paths__ || [];
+              delete data.__buffer_paths__;
+              put_buffers(data, buffer_paths, msg.buffers || []);
+              if (data.type === "log" || data.type === "info") {
+                console.log(data.message);
+              } else if (data.type === "error") {
+                console.error(data.message);
+              } else {
+                if (data.peer_id) {
+                  this._peer_id = data.peer_id
+                }
+                this._fire(data.type, data);
+              }
             }
-            this._fire(data.type, data);
-          }
-        });
-        this.comm = comm;
-      }
-      connect() {
-        this.comm.send({
-          type: 'new_connection'
+          }, 0)
+          this.comm = comm;
+        }).catch((e) => {
+          console.error("failed to connect to imjoy plugin")
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('app').parentNode.innerHTML =
+            "Execute this cell again to see the ImJoy plugin";
         })
       }
+      connect() {}
       disconnect() {}
       emit(data) {
         data.peer_id = this._peer_id;
         const split = remove_buffers(data);
         split.state.__buffer_paths__ = split.buffer_paths;
-        const buffers = split.buffers
-        // encode buffers to base64
-        for (let i = 0; i < buffers.length; i++) {
-          buffers[i] = btoa(String.fromCharCode(...buffers[i]));
-        }
-        this.comm.send(split.state, buffers);
+        this.comm.send(split.state, {
+          buffers: split.buffers
+        });
       }
     };
 

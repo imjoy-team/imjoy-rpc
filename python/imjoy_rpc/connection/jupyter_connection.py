@@ -5,7 +5,6 @@ import logging
 from IPython import get_ipython
 from IPython.display import display, HTML, Javascript
 
-from ipykernel.comm import Comm
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
 import contextvars
