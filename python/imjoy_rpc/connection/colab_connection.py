@@ -23,35 +23,6 @@ colab_html = open(
 ).read()
 
 
-class Comm:
-    def __init__(self, target_name="imjoy_rpc", data=None):
-        self.target_name = target_name
-        self._msg_callbacks = []
-        self.comm_id = str(uuid.uuid4())
-        google.colab.output.register_callback(
-            "comm_message_" + self.target_name, self.handle_comm_msg
-        )
-
-    def handle_comm_msg(self, msg, buffers=None):
-        for cb in self._msg_callbacks:
-            try:
-                cb({"content": {"data": msg}, "buffers": buffers})
-            except Exception as e:
-                logger.error("%s", e)
-
-    def send(self, msg, buffers=None):
-        google.colab.output.eval_js(
-            {"target_name": self.target_name, "msg": msg, "buffers": buffers},
-            ignore_result=True,
-        )
-
-    def on_msg(self, cb):
-        self._msg_callbacks.append(cb)
-
-    def on_close(self, cb):
-        pass
-
-
 class ColabManager:
     def __init__(self, rpc_context):
         self.default_config = rpc_context.default_config
@@ -94,18 +65,14 @@ class ColabManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
-    def start(self):
-        self.comm = Comm("imjoy_rpc")
-        connection_id.set(self.comm.comm_id)
-        self.connection = ColabConnection(self.default_config, self.comm)
-        self.connection.on("new_connection", self._create_new_connection)
+    def start(self, target="imjoy_rpc"):
+        get_ipython().kernel.comm_manager.register_target(
+            target, self._create_new_connection
+        )
 
-    def _create_new_connection(self, open_msg):
-        # reset comm and connection
-        self.start()
-
-        comm = self.comm
-        connection = self.connection
+    def _create_new_connection(self, comm, open_msg):
+        connection_id.set(comm.comm_id)
+        connection = ColabCommConnection(self.default_config, comm, open_msg)
 
         def initialize(data):
             self.clients[comm.comm_id] = dotdict()
@@ -139,8 +106,8 @@ class ColabManager:
         )
 
 
-class ColabConnection(MessageEmitter):
-    def __init__(self, config, comm):
+class ColabCommConnection(MessageEmitter):
+    def __init__(self, config, comm, open_msg):
         self.config = dotdict(config or {})
         super().__init__(logger)
         self.channel = self.config.get("channel") or "imjoy_rpc"
@@ -152,25 +119,12 @@ class ColabConnection(MessageEmitter):
         def msg_cb(msg):
             data = msg["content"]["data"]
             # TODO: remove the exception for "initialize"
-            if (
-                data.get("peer_id") == self.peer_id
-                or data.get("type") == "initialize"
-                or data.get("type") == "new_connection"
-            ):
+            if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
                 if "type" in data:
                     if "__buffer_paths__" in data:
                         buffer_paths = data["__buffer_paths__"]
                         del data["__buffer_paths__"]
-
-                        # decode buffers from base64 encoding
-                        buffers = msg["buffers"]
-                        if buffers:
-                            for i in range(len(buffers)):
-                                buffers[i] = base64.decodebytes(buffers[i]).encode(
-                                    "ascii"
-                                )
-
-                        put_buffers(data, buffer_paths, buffers)
+                        put_buffers(data, buffer_paths, msg["buffers"])
                     self._fire(data["type"], data)
             else:
                 logger.warn(
@@ -189,10 +143,6 @@ class ColabConnection(MessageEmitter):
 
     def emit(self, msg):
         msg, buffer_paths, buffers = remove_buffers(msg)
-        # encode buffers into base64
-        for i in range(len(buffers)):
-            buffers[i] = base64.encodebytes(buffers[i]).decode("ascii")
-
         if len(buffers) > 0:
             msg["__buffer_paths__"] = buffer_paths
             self.comm.send(msg, buffers=buffers)
