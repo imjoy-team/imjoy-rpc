@@ -16,6 +16,7 @@ logger = logging.getLogger("JupyterConnection")
 
 connection_id = contextvars.ContextVar("connection_id")
 
+
 class JupyterCommManager:
     def __init__(self, rpc_context):
         self.default_config = rpc_context.default_config
@@ -23,7 +24,9 @@ class JupyterCommManager:
         self.interface = None
         self.rpc_context = rpc_context
         self._codecs = {}
-        self.kernel_id = re.search('kernel-(.*).json', ipykernel.connect.get_connection_file()).group(1)
+        self.kernel_id = re.search(
+            "kernel-(.*).json", ipykernel.connect.get_connection_file()
+        ).group(1)
         # for loading plugin from source code,
         # we can benifit from the syntax highlighting for HTML()
         self.register_codec({"name": "HTML", "type": HTML, "encoder": lambda x: x.data})
@@ -44,7 +47,13 @@ class JupyterCommManager:
         self.interface = interface
         for k in self.clients:
             self.clients[k].rpc.set_interface(interface, self.default_config)
-        display(Javascript('window.connectPlugin && window.connectPlugin("{}")'.format(self.kernel_id)))
+        display(
+            Javascript(
+                'window.connectPlugin && window.connectPlugin("{}")'.format(
+                    self.kernel_id
+                )
+            )
+        )
         display(HTML('<div id="{}"></div>'.format(config.id)))
 
     def register_codec(self, config):
