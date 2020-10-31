@@ -600,6 +600,7 @@ class RPC(MessageEmitter):
                     object_id = str(uuid.uuid4())
                     self._object_store[object_id] = a_object
 
+                has_function = False
                 for key in keys:
                     if isinstance(key, str) and key.startswith("_"):
                         continue
@@ -610,12 +611,14 @@ class RPC(MessageEmitter):
                         else key,
                         object_id,
                     )
+                    if callable(a_object_norm[key]):
+                        has_function = True
                     if isarray:
                         b_object.append(encoded)
                     else:
                         b_object[key] = encoded
                 # TODO: how to despose list object? create a wrapper for list?
-                if not isarray:
+                if not isarray and has_function:
                     b_object["_rintf"] = object_id
                 # remove interface when closed
                 if "on" in a_object_norm and callable(a_object_norm["on"]):
