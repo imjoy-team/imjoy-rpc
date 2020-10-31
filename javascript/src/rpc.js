@@ -613,6 +613,8 @@ export class RPC extends MessageEmitter {
       } else {
         throw Error("Unsupported interface type");
       }
+
+      let hasFunction = false;
       // encode interfaces
       if (aObject._rintf || asInterface) {
         if (!objectId) {
@@ -629,9 +631,12 @@ export class RPC extends MessageEmitter {
             typeof asInterface === "string" ? asInterface + "." + k : k,
             objectId
           );
+          if (typeof aObject[k] === "function") {
+            hasFunction = true;
+          }
         }
         // object id for dispose the object remotely
-        bObject._rintf = objectId;
+        if (hasFunction) bObject._rintf = objectId;
         // remove interface when closed
         if (aObject.on && typeof aObject.on === "function") {
           aObject.on("close", () => {
@@ -764,6 +769,7 @@ export class RPC extends MessageEmitter {
           aObject = await this._decode(aObject, withPromise);
           aObject._rtype = temp;
         }
+        delete aObject._rintf;
         bObject = aObject;
       }
     } else if (aObject.constructor === Object || Array.isArray(aObject)) {
