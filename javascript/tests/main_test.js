@@ -263,7 +263,7 @@ describe("RPC", async () => {
     );
     const count = Object.keys(core._object_store).length;
     const pcount = Object.keys(plugin._object_store).length;
-    const obj = await api.echo({ _rintf: true, foo: "bar" });
+    const obj = await api.echo({ _rintf: true, foo: function() {} });
     expect(Object.keys(core._object_store).length).to.equal(count + 1);
     expect(Object.keys(plugin._object_store).length).to.equal(pcount + 1);
     await api.disposeObject(obj);

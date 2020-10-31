@@ -614,7 +614,7 @@ export class RPC extends MessageEmitter {
         throw Error("Unsupported interface type");
       }
 
-      hasFunction = false;
+      let hasFunction = false;
       // encode interfaces
       if (aObject._rintf || asInterface) {
         if (!objectId) {
@@ -769,6 +769,7 @@ export class RPC extends MessageEmitter {
           aObject = await this._decode(aObject, withPromise);
           aObject._rtype = temp;
         }
+        delete aObject._rintf;
         bObject = aObject;
       }
     } else if (aObject.constructor === Object || Array.isArray(aObject)) {
