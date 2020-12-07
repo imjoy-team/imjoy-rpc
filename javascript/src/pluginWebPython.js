@@ -45,14 +45,130 @@ async function importScripts() {
   }
 }
 
+window.TimeoutPromise = function(time) {
+  var promise = new Promise(function(resolve, reject) {
+    window.setTimeout(function() {
+      resolve(time);
+    }, time);
+  });
+  return promise;
+};
+
+window.RequestAnimationFramePromise = function() {
+  var promise = new Promise(function(resolve, reject) {
+    window.requestAnimationFrame(function(timestamp) {
+      resolve(timestamp);
+    });
+  });
+  return promise;
+};
+
 const startup_script = `
-from js import api
+from js import RequestAnimationFramePromise
+from functools import partial 
+from inspect import isawaitable
+
+class PromiseException(RuntimeError):
+    pass
+
+class WebLoop:
+    def __init__(self):
+        self.coros = []
+    def call_soon(self, coro, resolve=None, reject=None):
+        self.step(coro, resolve, reject)
+    def step(self, coro, resolve, reject, arg=None):
+        try:
+            x = coro.send(arg) 
+            x = x.then(partial(self.step, coro, resolve, reject))
+            x.catch(partial(self.fail,coro, resolve, reject))
+        except StopIteration as result:
+            if callable(resolve):
+                resolve(result.value)
+        except Exception as e:
+            if callable(reject):
+                reject(e)
+
+    def fail(self, coro,arg=None):
+        try:
+            coro.throw(PromiseException(arg))
+        except StopIteration:
+            pass
+    
+    def request_animation_frame(self):
+        if not hasattr(self, "raf_event"):
+            self.raf_event = RAFEvent()
+        return self.raf_event
+
+
+class RAFEvent:
+    def __init__(self):
+        self.awaiters = []
+        self.promise = None
+    def __await__(self):
+        if self.promise is None:
+            self.promise = RequestAnimationFramePromise()
+        x = yield self.promise
+        self.promise = None
+        return x
+`;
+
+const init_imjoy_script = `
+from js import api, Object
 import sys
 from types import ModuleType
+import copy
+
+class dotdict(dict):  # pylint: disable=invalid-name
+    """Access dictionary attributes with dot.notation."""
+
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __hash__(self):
+        # TODO: is there any performance impact?
+        return hash(tuple(sorted(self.items())))
+
+    def __deepcopy__(self, memo=None):
+        """Make a deep copy."""
+        return dotdict(copy.deepcopy(dict(self), memo=memo))
+
+
+class WrappedPromise:
+    def __init__(self, promise):
+        self.promise = promise
+        try:
+            self.then = promise.then
+            self.catch = promise.catch
+            self.finally_ = promise.finally_
+        except:
+            self.then = lambda f: f(None)
+            self.catch = lambda f: f(None)
+            self.finally_ = lambda f: f(None)
+
+    def __await__(self):
+        x = yield self.promise
+        return x
+
+wrapped_api = dotdict()
+for k in Object.keys(api):
+    if callable(api[k]) and k not in ['export', 'registerCodec']:
+        func = api[k]
+        def remote_method(*arguments, **kwargs):
+            arguments = list(arguments)
+            # wrap keywords to a dictionary and pass to the last argument
+            if kwargs:
+                arguments = arguments + [kwargs]
+            return WrappedPromise(func(*arguments))
+        
+        wrapped_api[k] = remote_method
+    else:
+        wrapped_api[k] = api[k]
+
 m = ModuleType("imjoy")
 sys.modules[m.__name__] = m
 m.__file__ = m.__name__ + ".py"
-m.api = api
+m.api = wrapped_api
 `;
 
 let _export_plugin_api = null;
@@ -61,6 +177,7 @@ const execute_python_code = function(code) {
     if (!_export_plugin_api) {
       _export_plugin_api = window.api.export;
       window.api.export = function(p) {
+        window.pyodide.runPython(startup_script);
         if (typeof p === "object") {
           const _api = {};
           for (let k in p) {
@@ -73,11 +190,25 @@ const execute_python_code = function(code) {
           const _api = {};
           const getattr = window.pyodide.pyimport("getattr");
           const hasattr = window.pyodide.pyimport("hasattr");
+          const WebLoop = window.pyodide.pyimport("WebLoop");
+          const isawaitable = window.pyodide.pyimport("isawaitable");
+          const loop = WebLoop();
           for (let k of Object.getOwnPropertyNames(p)) {
             if (!k.startsWith("_") && hasattr(p, k)) {
               const func = getattr(p, k);
               _api[k] = function() {
-                return func(...Array.prototype.slice.call(arguments));
+                return new Promise((resolve, reject) => {
+                  try {
+                    const ret = func(...Array.prototype.slice.call(arguments));
+                    if (isawaitable(ret)) {
+                      loop.call_soon(ret, resolve, reject);
+                    } else {
+                      resolve(ret);
+                    }
+                  } catch (e) {
+                    reject(e);
+                  }
+                });
               };
             }
           }
@@ -87,7 +218,7 @@ const execute_python_code = function(code) {
         }
       };
     }
-    window.pyodide.runPython(startup_script);
+    window.pyodide.runPython(init_imjoy_script);
     window.pyodide.runPython(code.content);
   } catch (e) {
     throw e;
