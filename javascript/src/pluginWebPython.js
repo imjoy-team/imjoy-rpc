@@ -115,6 +115,7 @@ class RAFEvent:
 const init_imjoy_script = `
 from js import api, Object
 import sys
+from functools import partial 
 from types import ModuleType
 import copy
 
@@ -153,15 +154,14 @@ class WrappedPromise:
 wrapped_api = dotdict()
 for k in Object.keys(api):
     if callable(api[k]) and k not in ['export', 'registerCodec']:
-        func = api[k]
-        def remote_method(*arguments, **kwargs):
+        def remote_method(func, *arguments, **kwargs):
             arguments = list(arguments)
             # wrap keywords to a dictionary and pass to the last argument
             if kwargs:
                 arguments = arguments + [kwargs]
             return WrappedPromise(func(*arguments))
-        
-        wrapped_api[k] = remote_method
+        # this has to be partial, otherwise it crashes
+        wrapped_api[k] = partial(remote_method, api[k])
     else:
         wrapped_api[k] = api[k]
 
@@ -178,11 +178,28 @@ const execute_python_code = function(code) {
       _export_plugin_api = window.api.export;
       window.api.export = function(p) {
         window.pyodide.runPython(startup_script);
+        const WebLoop = window.pyodide.pyimport("WebLoop");
+        const isawaitable = window.pyodide.pyimport("isawaitable");
+        const loop = WebLoop();
         if (typeof p === "object") {
           const _api = {};
           for (let k in p) {
             if (!k.startsWith("_")) {
-              _api[k] = p[k];
+              const func = p[k];
+              _api[k] = function() {
+                return new Promise((resolve, reject) => {
+                  try {
+                    const ret = func(...Array.prototype.slice.call(arguments));
+                    if (isawaitable(ret)) {
+                      loop.call_soon(ret, resolve, reject);
+                    } else {
+                      resolve(ret);
+                    }
+                  } catch (e) {
+                    reject(e);
+                  }
+                });
+              };
             }
           }
           _export_plugin_api(_api);
@@ -190,9 +207,6 @@ const execute_python_code = function(code) {
           const _api = {};
           const getattr = window.pyodide.pyimport("getattr");
           const hasattr = window.pyodide.pyimport("hasattr");
-          const WebLoop = window.pyodide.pyimport("WebLoop");
-          const isawaitable = window.pyodide.pyimport("isawaitable");
-          const loop = WebLoop();
           for (let k of Object.getOwnPropertyNames(p)) {
             if (!k.startsWith("_") && hasattr(p, k)) {
               const func = getattr(p, k);
