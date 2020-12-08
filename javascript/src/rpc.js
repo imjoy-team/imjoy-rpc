@@ -766,11 +766,9 @@ export class RPC extends MessageEmitter {
         if (aObject._rintf) {
           const temp = aObject._rtype;
           delete aObject._rtype;
-          aObject = await this._decode(aObject, withPromise);
-          aObject._rtype = temp;
-        }
-        delete aObject._rintf;
-        bObject = aObject;
+          bObject = await this._decode(aObject, withPromise);
+          bObject._rtype = temp;
+        } else bObject = aObject;
       }
     } else if (aObject.constructor === Object || Array.isArray(aObject)) {
       const isarray = Array.isArray(aObject);
