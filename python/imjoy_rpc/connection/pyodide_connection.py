@@ -142,6 +142,7 @@ class PyodideConnectionManager:
         self.interface = None
         self.rpc_context = rpc_context
         self._codecs = {}
+        self.default_config["allow_execution"] = True
 
         # Set the event loop for RPC
         # This is needed because Pyodide does not support the default loop of asyncio
