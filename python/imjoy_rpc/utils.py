@@ -283,6 +283,16 @@ def setup_connection(_rpc_context, connection_type, logger=None):
         manager.start(
             _rpc_context.default_config.get("plugin_server", "http://127.0.0.1:9988")
         )
+    elif connection_type == "pyodide":
+        if logger:
+            logger.info("Using colab connection for imjoy-rpc")
+        from .connection.pyodide_connection import PyodideConnectionManager
+
+        manager = PyodideConnectionManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            export=manager.set_interface, registerCodec=manager.register_codec
+        )
+        manager.start()
     else:
         if logger:
             logger.info(
@@ -304,4 +314,10 @@ def type_of_script():
             if "terminal" in ipy_str:
                 return "ipython"
         except:
-            return "terminal"
+            try:
+                import js
+                import pyodide
+
+                return "pyodide"
+            except:
+                return "terminal"
