@@ -148,10 +148,7 @@ class RPC(MessageEmitter):
 
         self._fire("interfaceAvailable")
 
-    def send_interface(self):
-        """Send interface."""
-        if self._local_api is None:
-            raise Exception("interface is not set.")
+    def _get_local_api(self):
         if isinstance(self._local_api, dict):
             api = {
                 a: self._local_api[a]
@@ -166,6 +163,13 @@ class RPC(MessageEmitter):
             }
         else:
             raise Exception("unsupported api export")
+        return api
+
+    def send_interface(self):
+        """Send interface."""
+        if self._local_api is None:
+            raise Exception("interface is not set.")
+        api = self._get_local_api()
 
         if "exit" in api:
             ext = api["exit"]
@@ -380,7 +384,7 @@ class RPC(MessageEmitter):
                 t = data["code"]["type"]
                 if t == "script":
                     content = data["code"]["content"]
-                    exec(content, self._local_api)
+                    exec(content, self._get_local_api())
                 elif t == "requirements":
                     pass
                 else:
