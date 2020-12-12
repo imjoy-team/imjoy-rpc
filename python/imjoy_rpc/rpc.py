@@ -380,7 +380,7 @@ class RPC(MessageEmitter):
                 t = data["code"]["type"]
                 if t == "script":
                     content = data["code"]["content"]
-                    exec(content, self._local)
+                    exec(content, self._local_api)
                 elif t == "requirements":
                     pass
                 else:
