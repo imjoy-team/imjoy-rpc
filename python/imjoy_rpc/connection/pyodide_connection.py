@@ -9,12 +9,12 @@ from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
 import contextvars
 
+import js
+
 try:
     from js import self as jsGlobal
 except:
     from js import window as jsGlobal
-
-from js import Array, Object
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Pyodide Connection")
@@ -24,7 +24,8 @@ connection_id = contextvars.ContextVar("connection_id")
 
 class EventSimulator(asyncio.AbstractEventLoop):
     """A simple event-driven simulator, using async/await
-    Author: @damonjw, see Gist: https://gist.github.com/damonjw/35aac361ca5d313ee9bf79e00261f4ea
+    Adapted from the Gist made by @damonjw
+    https://gist.github.com/damonjw/35aac361ca5d313ee9bf79e00261f4ea
     """
 
     def __init__(self):
@@ -33,6 +34,20 @@ class EventSimulator(asyncio.AbstractEventLoop):
         self._immediate = []
         self._scheduled = []
         self._exc = None
+        self._setup_timeout_promise()
+
+    def _setup_timeout_promise(self):
+        js.eval(
+            """
+        // check if in a web-worker
+        if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
+            self._timeoutPromise = function(time){return new Promise((resolve)=>{setTimeout(resolve, time);});}
+        } else {
+            window._timeoutPromise = function(time){return new Promise((resolve)=>{setTimeout(resolve, time);});}
+        }
+        """
+        )
+        self.timeout_promise = js._timeoutPromise
 
     def get_debug(self):
         return False
@@ -42,7 +57,19 @@ class EventSimulator(asyncio.AbstractEventLoop):
 
     def run_forever(self):
         self._running = True
-        while (self._immediate or self._scheduled) and self._running:
+        try:
+            self._do_tasks()
+            # execute for every 10ms (or longer)
+            self.timeout_promise(10).then(lambda x: self.run_forever())
+        except Exception as exp:
+            self._running = False
+
+    def run_until_complete(self, future):
+        asyncio.ensure_future(future)
+        self._do_tasks()
+
+    def _do_tasks(self):
+        if self._immediate or self._scheduled:
             if self._immediate:
                 h = self._immediate[0]
                 self._immediate = self._immediate[1:]
@@ -54,9 +81,6 @@ class EventSimulator(asyncio.AbstractEventLoop):
                 h._run()
             if self._exc is not None:
                 raise self._exc
-
-    def run_until_complete(self, future):
-        raise NotImplementedError
 
     def _timer_handle_cancelled(self, handle):
         pass
@@ -123,6 +147,8 @@ class PyodideConnectionManager:
         # This is needed because Pyodide does not support the default loop of asyncio
         loop = EventSimulator()
         asyncio.set_event_loop(loop)
+        # This will not block, because we used setTimeout to execute it
+        loop.run_forever()
 
     def get_ident(self):
         return connection_id.get(default=None)
@@ -194,9 +220,9 @@ class PyodideConnectionManager:
 
 
 def decode_jsproxy(obj):
-    isarray = Array.isArray(obj)
+    isarray = js.Array.isArray(obj)
     bobj = [] if isarray else {}
-    for k in Object.keys(obj):
+    for k in js.Object.keys(obj):
         if isinstance(obj[k], (int, float, bool, str, bytes)) or obj[k] is None:
             if isarray:
                 bobj.append(obj[k])
