@@ -17,7 +17,8 @@ export const dtypeToTypedArray = {
   float64: "Float64Array",
   array: "Array"
 };
-export const typedArrayToDtype = {
+
+export const typedArrayToDtypeMapping = {
   Int8Array: "int8",
   Int16Array: "int16",
   Int32Array: "int32",
@@ -28,6 +29,25 @@ export const typedArrayToDtype = {
   Float64Array: "float64",
   Array: "array"
 };
+
+const typedArrayToDtypeKeys = [];
+for (const arrType of Object.keys(typedArrayToDtypeMapping)) {
+  typedArrayToDtypeKeys.push(eval(arrType));
+}
+
+export function typedArrayToDtype(obj) {
+  let dtype = typedArrayToDtypeMapping[obj.constructor.name];
+  if (!dtype) {
+    const pt = Object.getPrototypeOf(obj);
+    for (const arrType of typedArrayToDtypeKeys) {
+      if (pt instanceof arrType) {
+        dtype = typedArrayToDtypeMapping[arrType.name];
+        break;
+      }
+    }
+  }
+  return dtype;
+}
 
 function cacheUrlInServiceWorker(url) {
   return new Promise(function(resolve, reject) {
