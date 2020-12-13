@@ -30,8 +30,6 @@ requirements += '\ncontextvars;python_version<"3.7"'
 requirements += '\naiocontextvars;python_version<"3.7"'
 requirements += "\n"
 
-test_requirements = read("requirements_test.txt")
-
 setup(
     name="imjoy-rpc",
     version=VERSION,
@@ -47,8 +45,8 @@ setup(
     install_requires=requirements,
     extras_require={
         "full": ["numpy", "zarr"],
-        "jupyter": ["ipykernel", "numpy"],
-        "socketio": ["python-socketio[client]", "numpy"],
+        "jupyter": ["numpy", "ipykernel"],
+        "socketio": ["numpy", "python-socketio[client]"],
     },
     zip_safe=False,
 )
