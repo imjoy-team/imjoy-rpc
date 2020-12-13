@@ -728,7 +728,7 @@ export class RPC extends MessageEmitter {
           if (Array.isArray(aObject._rvalue)) {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
-          const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
+          const arraytype = dtypeToTypedArray[aObject._rdtype];
           bObject = tf.tensor(
             new arraytype(aObject._rvalue),
             aObject._rshape,
@@ -752,7 +752,7 @@ export class RPC extends MessageEmitter {
           bObject._path = aObject._rpath;
         }
       } else if (aObject._rtype === "typedarray") {
-        const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
+        const arraytype = dtypeToTypedArray[aObject._rdtype];
         if (!arraytype)
           throw new Error("unsupported dtype: " + aObject._rdtype);
         bObject = new arraytype(aObject._rvalue);
