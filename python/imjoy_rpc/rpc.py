@@ -285,14 +285,14 @@ class RPC(MessageEmitter):
         return remote_callback
 
     def set_remote_interface(self, api):
-        """Set remote."""
+        """Set remote interface."""
         _remote = self._decode(api, False)
         self._remote_interface = _remote
         self._fire("remoteReady")
-        self._run_with_context(self._set_local_api, _remote)
+        self._run_with_context(self._set_remote_api, _remote)
 
-    def _set_local_api(self, _remote):
-        """Set local API."""
+    def _set_remote_api(self, _remote):
+        """Set remote API."""
         self.rpc_context.api = _remote
         self.rpc_context.api.utils = dotdict()
         self.rpc_context.api.WORK_DIR = self.work_dir
@@ -380,7 +380,9 @@ class RPC(MessageEmitter):
                 t = data["code"]["type"]
                 if t == "script":
                     content = data["code"]["content"]
-                    exec(content, self._local)
+                    # TODO: fix the imjoy module such that it will
+                    # stick to the current context api
+                    exec(content)
                 elif t == "requirements":
                     pass
                 else:
