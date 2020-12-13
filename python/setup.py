@@ -45,7 +45,6 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=requirements,
-    tests_require=requirements + test_requirements,
     extras_require={
         "full": ["numpy", "zarr"],
         "jupyter": ["ipykernel", "numpy"],
