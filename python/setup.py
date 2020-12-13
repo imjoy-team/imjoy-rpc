@@ -46,6 +46,10 @@ setup(
     include_package_data=True,
     install_requires=requirements,
     tests_require=requirements + test_requirements,
-    extras_require={"jupyter": "ipykernel", "socketio": "python-socketio[client]"},
+    extras_require={
+        "full": ["numpy", "zarr"],
+        "jupyter": ["ipykernel", "numpy"],
+        "socketio": ["python-socketio[client]", "numpy"],
+    },
     zip_safe=False,
 )

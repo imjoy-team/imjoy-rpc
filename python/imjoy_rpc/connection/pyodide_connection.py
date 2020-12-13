@@ -185,6 +185,13 @@ class PyodideConnectionManager:
     def start(self, target="imjoy_rpc"):
         self._create_new_connection(target)
 
+    def init(self, config=None):
+        # register a minimal plugin api
+        def setup():
+            pass
+
+        self.set_interface({"setup": setup}, config)
+
     def _create_new_connection(self, target):
         client_id = str(uuid.uuid4())
         connection_id.set(client_id)
@@ -204,6 +211,7 @@ class PyodideConnectionManager:
 
             def patch_api(_):
                 api = rpc.get_remote() or dotdict()
+                api.init = self.init
                 api.export = self.set_interface
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object

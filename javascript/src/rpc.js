@@ -72,6 +72,13 @@ export class RPC extends MessageEmitter {
       peer_id: this._connection.peer_id
     });
   }
+  
+  setConfig(config) {
+    if (config)
+      for (const k of Object.keys(config)) {
+        this.config[k] = config[k];
+      }
+  }
   /**
    * Set a handler to be called when received a responce from the
    * remote site reporting that the previously provided interface
