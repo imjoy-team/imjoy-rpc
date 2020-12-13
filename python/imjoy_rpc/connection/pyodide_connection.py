@@ -4,6 +4,7 @@ import logging
 import re
 import heapq
 import asyncio
+import traceback
 
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
@@ -263,6 +264,9 @@ class PyodideConnection(MessageEmitter):
             # TODO: remove the exception for "initialize"
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
                 if "type" in data:
+                    if data["type"] == "execute":
+                        self.execute(data)
+                        return
                     self._fire(data["type"], data)
             else:
                 logger.warn(
@@ -272,6 +276,25 @@ class PyodideConnection(MessageEmitter):
                 )
 
         jsGlobal.addEventListener("message", msg_cb)
+
+    def execute(self, data):
+        try:
+            t = data["code"]["type"]
+            if t == "script":
+                content = data["code"]["content"]
+                exec(content)
+            elif t == "requirements":
+                import micropip
+
+                for r in data["code"]["requirements"]:
+                    micropip.install(r)
+            else:
+                raise Exception("unsupported type")
+            self.emit({"type": "executed"})
+        except Exception as e:
+            traceback_error = traceback.format_exc()
+            logger.error("error during execution: %s", traceback_error)
+            self.emit({"type": "executed", "error": traceback_error})
 
     def connect(self):
         pass
