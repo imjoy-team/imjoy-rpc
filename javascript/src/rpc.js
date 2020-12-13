@@ -15,6 +15,7 @@ const ArrayBufferView = Object.getPrototypeOf(
   Object.getPrototypeOf(new Uint8Array())
 ).constructor;
 
+
 function _appendBuffer(buffer1, buffer2) {
   const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
   tmp.set(new Uint8Array(buffer1), 0);
@@ -313,7 +314,7 @@ export class RPC extends MessageEmitter {
   }
 
   _ndarray(typedArray, shape, dtype) {
-    const _dtype = typedArrayToDtype[typedArray.constructor.name];
+    const _dtype = typedArrayToDtype(typedArray);
     if (dtype && dtype !== _dtype) {
       throw "dtype doesn't match the type of the array: " +
         _dtype +
@@ -524,7 +525,7 @@ export class RPC extends MessageEmitter {
       nj.NdArray &&
       aObject instanceof nj.NdArray
     ) {
-      const dtype = typedArrayToDtype[aObject.selection.data.constructor.name];
+      const dtype = typedArrayToDtype(aObject.selection.data);
       if (aObject._transfer || _transfer) {
         transferables.push(aObject.selection.data.buffer);
         delete aObject._transfer;
@@ -573,7 +574,7 @@ export class RPC extends MessageEmitter {
         transferables.push(aObject.buffer);
         delete aObject._transfer;
       }
-      const dtype = typedArrayToDtype[aObject.constructor.name];
+      const dtype = typedArrayToDtype(aObject);
       bObject = {
         _rtype: "typedarray",
         _rvalue: aObject.buffer,
