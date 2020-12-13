@@ -26,14 +26,6 @@ API_VERSION = "0.2.3"
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
 
-try:
-    import numpy as np
-
-    NUMPY = np
-except:
-    NUMPY = False
-    logger.warn("failed to import numpy, ndarray encoding/decoding will not work")
-
 
 def index_object(obj, ids):
     if isinstance(ids, str):
@@ -86,6 +78,8 @@ class RPC(MessageEmitter):
         if connection is not None:
             self._connection = connection
             self._setup_handlers(connection)
+
+        self.check_modules()
 
     def init(self):
         logger.info("%s initialized", self.config.name)
@@ -147,6 +141,22 @@ class RPC(MessageEmitter):
         self._local_api = dotdict(api) if isinstance(api, dict) else api
 
         self._fire("interfaceAvailable")
+
+        # we might installed modules when solving requirements
+        # so let's check it again
+        self.check_modules()
+
+    def check_modules(self,):
+        """Check if all the modules exists."""
+        try:
+            import numpy as np
+
+            self.NUMPY_MODULE = np
+        except:
+            self.NUMPY_MODULE = False
+            logger.warn(
+                "failed to import numpy, ndarray encoding/decoding will not work"
+            )
 
     def send_interface(self):
         """Send interface."""
@@ -546,7 +556,9 @@ class RPC(MessageEmitter):
                 b_object = encoded_obj
                 return b_object
 
-        if NUMPY and isinstance(a_object, (NUMPY.ndarray, NUMPY.generic)):
+        if self.NUMPY_MODULE and isinstance(
+            a_object, (self.NUMPY_MODULE.ndarray, self.NUMPY_MODULE.generic)
+        ):
             v_bytes = a_object.tobytes()
             b_object = {
                 "_rtype": "ndarray",
@@ -680,8 +692,8 @@ class RPC(MessageEmitter):
                         raise Exception(
                             "Unsupported data type: " + str(type(a_object["_rvalue"]))
                         )
-                    if NUMPY:
-                        b_object = NUMPY.frombuffer(
+                    if self.NUMPY_MODULE:
+                        b_object = self.NUMPY_MODULE.frombuffer(
                             a_object["_rvalue"], dtype=a_object["_rdtype"]
                         ).reshape(tuple(a_object["_rshape"]))
 
@@ -705,8 +717,8 @@ class RPC(MessageEmitter):
                         "Unsupported blob value type: " + str(type(a_object["_rvalue"]))
                     )
             elif a_object["_rtype"] == "typedarray":
-                if NUMPY:
-                    b_object = NUMPY.frombuffer(
+                if self.NUMPY_MODULE:
+                    b_object = self.NUMPY_MODULE.frombuffer(
                         a_object["_rvalue"], dtype=a_object["_rdtype"]
                     )
                 else:

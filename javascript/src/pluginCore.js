@@ -42,6 +42,10 @@ export function connectRPC(connection, config) {
         codecs[config["name"]] = config;
       }
     };
+    api.init = function(config) {
+      // register a minimal plugin api
+      rpc.setInterface({ setup() {} }, config);
+    };
     api.disposeObject = function(obj) {
       rpc.disposeObject(obj);
     };
