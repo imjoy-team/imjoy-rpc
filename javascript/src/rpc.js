@@ -72,7 +72,7 @@ export class RPC extends MessageEmitter {
       peer_id: this._connection.peer_id
     });
   }
-  
+
   setConfig(config) {
     if (config)
       for (const k of Object.keys(config)) {
