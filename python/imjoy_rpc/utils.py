@@ -251,6 +251,8 @@ class ContextLocal(Local):
 
 
 def encode_zarr_store(zobj):
+    import zarr
+
     path_prefix = f"{zobj.path}/" if zobj.path else ""
 
     def getItem(key, options=None):
@@ -273,22 +275,20 @@ def encode_zarr_store(zobj):
 
 
 def register_default_codecs(options=None):
+    from imjoy_rpc import api
+
     if options is None or "zarr-array" in options:
+        import zarr
+
         api.registerCodec(
-            {
-                "name": "zarr-array",
-                "type": zarr.Array,
-                "encoder": self.encode_zarr_store,
-            }
+            {"name": "zarr-array", "type": zarr.Array, "encoder": encode_zarr_store,}
         )
 
     if options is None or "zarr-group" in options:
+        import zarr
+
         api.registerCodec(
-            {
-                "name": "zarr-group",
-                "type": zarr.Group,
-                "encoder": self.encode_zarr_store,
-            }
+            {"name": "zarr-group", "type": zarr.Group, "encoder": encode_zarr_store,}
         )
 
 

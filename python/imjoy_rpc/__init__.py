@@ -3,7 +3,15 @@ import sys
 import logging
 
 from werkzeug.local import Local, LocalProxy
-from .utils import ContextLocal, setup_connection, type_of_script, dotdict
+from .utils import (
+    ContextLocal,
+    setup_connection,
+    type_of_script,
+    dotdict,
+    register_default_codecs,
+)
+
+__all__ = ["api", "register_default_codecs"]
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("ImJoy-RPC")
