@@ -143,6 +143,7 @@ class PyodideConnectionManager:
         self.interface = None
         self.rpc_context = rpc_context
         self._codecs = {}
+        self.rpc_id = "pyodide_rpc"
         self.default_config["allow_execution"] = True
 
         # Set the event loop for RPC
@@ -163,7 +164,7 @@ class PyodideConnectionManager:
         config.version = config.version or "0.1.0"
         config.api_version = config.api_version or "0.2.3"
         config.description = config.description or "[TODO: add description]"
-        config.id = str(uuid.uuid4())
+        config.id = self.rpc_id
         self.default_config = config
         self.interface = interface
         for k in self.clients:
@@ -196,7 +197,7 @@ class PyodideConnectionManager:
             if cfg.get("credential_required") is not None:
                 result = config.verify_credential(cfg["credential"])
                 cfg["auth"] = result["auth"]
-            cfg["id"] = config["id"]
+            cfg["id"] = self.rpc_id
             rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs,)
             rpc.set_interface(self.interface)
             rpc.init()
@@ -282,7 +283,7 @@ class PyodideConnection(MessageEmitter):
             t = data["code"]["type"]
             if t == "script":
                 content = data["code"]["content"]
-                exec(content)
+                js.pyodide.runPython(content)
             elif t == "requirements":
                 import micropip
 

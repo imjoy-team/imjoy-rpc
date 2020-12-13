@@ -380,6 +380,8 @@ class RPC(MessageEmitter):
                 t = data["code"]["type"]
                 if t == "script":
                     content = data["code"]["content"]
+                    # TODO: fix the imjoy module such that it will
+                    # stick to the current context api
                     exec(content)
                 elif t == "requirements":
                     pass

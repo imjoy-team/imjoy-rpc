@@ -219,14 +219,16 @@ class MessageEmitter:
 
 
 class ContextLocal(Local):
-    def __init__(self):
+    def __init__(self, default_context_id=None):
+        if default_context_id is None:
+            default_context_id = "_"
         object.__setattr__(
             self, "__context_id__", contextvars.ContextVar("context_id", default=None)
         )
         object.__setattr__(self, "__thread_lock__", threading.Lock())
         object.__setattr__(self, "__storage__", {})
         object.__setattr__(self, "__ident_func__", self.__get_ident)
-        object.__setattr__(self, "__default_context_id__", "_")
+        object.__setattr__(self, "__default_context_id__", default_context_id)
 
     def set_default_context(self, context_id):
         object.__setattr__(self, "__default_context_id__", context_id)
