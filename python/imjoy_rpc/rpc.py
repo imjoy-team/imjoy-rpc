@@ -304,8 +304,10 @@ class RPC(MessageEmitter):
     def _set_remote_api(self, _remote):
         """Set remote API."""
         self.rpc_context.api = _remote
-        self.rpc_context.api.utils = dotdict()
         self.rpc_context.api.WORK_DIR = self.work_dir
+        if "config" not in self.rpc_context.api:
+            self.rpc_context.api.config = dotdict()
+        self.rpc_context.api.config.work_dir = self.work_dir
 
     def _log(self, info):
         self._connection.emit({"type": "log", "message": info})
