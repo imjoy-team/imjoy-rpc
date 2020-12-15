@@ -259,6 +259,23 @@ def decode_jsproxy(obj):
     return bobj
 
 
+def wrap_promise(promise):
+    loop = asyncio.get_event_loop()
+    fut = loop.create_future()
+    promise.then(fut.set_result).catch(fut.set_exception)
+    return fut
+
+
+def install_requirements(requirements, resolve, reject):
+    import micropip
+
+    promises = []
+    for r in requirements:
+        p = micropip.install(r)
+        promises.append(p)
+    js.Promise.all(promises).then(resolve).catch(reject)
+
+
 class PyodideConnection(MessageEmitter):
     def __init__(self, config):
         self.config = dotdict(config or {})
@@ -292,14 +309,18 @@ class PyodideConnection(MessageEmitter):
             if t == "script":
                 content = data["code"]["content"]
                 js.pyodide.runPython(content)
+                self.emit({"type": "executed"})
             elif t == "requirements":
-                import micropip
 
-                for r in data["code"]["requirements"]:
-                    micropip.install(r)
+                def success(result):
+                    self.emit({"type": "executed"})
+
+                def fail(error):
+                    self.emit({"type": "executed", "error": str(error)})
+
+                install_requirements(data["code"]["requirements"], success, fail)
             else:
                 raise Exception("unsupported type")
-            self.emit({"type": "executed"})
         except Exception as e:
             traceback_error = traceback.format_exc()
             logger.error("error during execution: %s", traceback_error)
