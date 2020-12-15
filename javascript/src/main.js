@@ -9,7 +9,6 @@
  */
 import PluginWorker from "./plugin.webworker.js";
 import setupIframe from "./pluginIframe.js";
-import setupWebPython from "./pluginWebPython.js";
 import { setupServiceWorker, randId } from "./utils.js";
 
 export { RPC, API_VERSION } from "./rpc.js";
@@ -205,11 +204,6 @@ export function setupRPC(config) {
           // fallback to iframe
           setupIframe(config);
         }
-      } else if (
-        config.type === "web-python" ||
-        config.type === "web-python-window"
-      ) {
-        setupWebPython(config);
       } else if (
         ["rpc-window", "rpc-worker", "iframe", "window"].includes(config.type)
       ) {
