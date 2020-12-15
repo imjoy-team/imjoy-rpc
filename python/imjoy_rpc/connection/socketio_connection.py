@@ -50,6 +50,13 @@ class SocketIOManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
+    def init(self, config=None):
+        # register a minimal plugin api
+        def setup():
+            pass
+
+        self.set_interface({"setup": setup}, config)
+
     def start(self, url):
         sio = socketio.AsyncClient()
 
@@ -88,6 +95,7 @@ class SocketIOManager:
 
             def patch_api(_):
                 api = rpc.get_remote() or dotdict()
+                api.init = self.init
                 api.export = self.set_interface
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object

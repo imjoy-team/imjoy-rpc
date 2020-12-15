@@ -250,6 +250,48 @@ class ContextLocal(Local):
         return ident
 
 
+def encode_zarr_store(zobj):
+    import zarr
+
+    path_prefix = f"{zobj.path}/" if zobj.path else ""
+
+    def getItem(key, options=None):
+        return zobj.store[path_prefix + key]
+
+    def setItem(key, value):
+        zobj.store[path_prefix + key] = value
+
+    def containsItem(key, options=None):
+        if path_prefix + key in zobj.store:
+            return True
+
+    return {
+        "_rintf": True,
+        "_rtype": "zarr-array" if isinstance(zobj, zarr.Array) else "zarr-group",
+        "getItem": getItem,
+        "setItem": setItem,
+        "containsItem": containsItem,
+    }
+
+
+def register_default_codecs(options=None):
+    from imjoy_rpc import api
+
+    if options is None or "zarr-array" in options:
+        import zarr
+
+        api.registerCodec(
+            {"name": "zarr-array", "type": zarr.Array, "encoder": encode_zarr_store,}
+        )
+
+    if options is None or "zarr-group" in options:
+        import zarr
+
+        api.registerCodec(
+            {"name": "zarr-group", "type": zarr.Group, "encoder": encode_zarr_store,}
+        )
+
+
 def setup_connection(_rpc_context, connection_type, logger=None):
 
     if connection_type == "jupyter":
@@ -259,7 +301,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
 
         manager = JupyterCommManager(_rpc_context)
         _rpc_context.api = dotdict(
-            export=manager.set_interface, registerCodec=manager.register_codec,
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
         )
         manager.start()
     elif connection_type == "colab":
@@ -269,7 +313,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
 
         manager = ColabManager(_rpc_context)
         _rpc_context.api = dotdict(
-            export=manager.set_interface, registerCodec=manager.register_codec
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
         )
         manager.start()
     elif connection_type == "terminal":
@@ -279,7 +325,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
 
         manager = SocketIOManager(_rpc_context)
         _rpc_context.api = dotdict(
-            export=manager.set_interface, registerCodec=manager.register_codec
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
         )
 
         manager.start(
@@ -292,7 +340,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
 
         manager = PyodideConnectionManager(_rpc_context)
         _rpc_context.api = dotdict(
-            export=manager.set_interface, registerCodec=manager.register_codec
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
         )
         manager.start()
     else:

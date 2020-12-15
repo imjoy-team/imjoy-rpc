@@ -111,6 +111,21 @@ The `encoder` function take an object as input and you need to return the repres
 
 The `decoder` function converts the encoded object into the actual object. It will only be called when the `_rtype` of an object matches the `name` of the codec.
 
+### Support Zarr Array encoding
+[Zarr](https://zarr.readthedocs.io/en/stable/) is a more scalable n-dimensional array format that has a numpy-like api and can be used with multiple backends. It is ideally suited for sending large n-dimensional array between imjoy-rpc peers in a lazy fashion. We have an [internal implementation] of codec that can support sending.
+
+To use it, you can call import and call `register_default_codecs`.
+```python
+from imjoy_rpc import register_default_codecs
+register_default_codecs()
+```
+
+If you don't want to register all the default codecs, you can also pass an list of default codec names:
+```python
+from imjoy_rpc import register_default_codecs
+register_default_codecs(['zarr.Array', 'zarr.Group'])
+```
+
 ### Example 1: encoding and decoding custom classes with imjoy-rpc
 In this example, we first define a `Cat` class, then we register a codec to do encoding and decoding of the `Cat` instances.
 

@@ -73,6 +73,13 @@ class JupyterCommManager:
             target, self._create_new_connection
         )
 
+    def init(self, config=None):
+        # register a minimal plugin api
+        def setup():
+            pass
+
+        self.set_interface({"setup": setup}, config)
+
     def _create_new_connection(self, comm, open_msg):
         connection_id.set(comm.comm_id)
         connection = JupyterCommConnection(self.default_config, comm, open_msg)
@@ -91,6 +98,7 @@ class JupyterCommManager:
 
             def patch_api(_):
                 api = rpc.get_remote() or dotdict()
+                api.init = self.init
                 api.export = self.set_interface
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object

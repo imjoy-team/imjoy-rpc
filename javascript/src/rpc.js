@@ -72,6 +72,13 @@ export class RPC extends MessageEmitter {
       peer_id: this._connection.peer_id
     });
   }
+
+  setConfig(config) {
+    if (config)
+      for (const k of Object.keys(config)) {
+        this.config[k] = config[k];
+      }
+  }
   /**
    * Set a handler to be called when received a responce from the
    * remote site reporting that the previously provided interface
@@ -306,7 +313,7 @@ export class RPC extends MessageEmitter {
   }
 
   _ndarray(typedArray, shape, dtype) {
-    const _dtype = typedArrayToDtype[typedArray.constructor.name];
+    const _dtype = typedArrayToDtype(typedArray);
     if (dtype && dtype !== _dtype) {
       throw "dtype doesn't match the type of the array: " +
         _dtype +
@@ -517,7 +524,7 @@ export class RPC extends MessageEmitter {
       nj.NdArray &&
       aObject instanceof nj.NdArray
     ) {
-      const dtype = typedArrayToDtype[aObject.selection.data.constructor.name];
+      const dtype = typedArrayToDtype(aObject.selection.data);
       if (aObject._transfer || _transfer) {
         transferables.push(aObject.selection.data.buffer);
         delete aObject._transfer;
@@ -566,7 +573,7 @@ export class RPC extends MessageEmitter {
         transferables.push(aObject.buffer);
         delete aObject._transfer;
       }
-      const dtype = typedArrayToDtype[aObject.constructor.name];
+      const dtype = typedArrayToDtype(aObject);
       bObject = {
         _rtype: "typedarray",
         _rvalue: aObject.buffer,
@@ -721,7 +728,7 @@ export class RPC extends MessageEmitter {
           if (Array.isArray(aObject._rvalue)) {
             aObject._rvalue = aObject._rvalue.reduce(_appendBuffer);
           }
-          const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
+          const arraytype = dtypeToTypedArray[aObject._rdtype];
           bObject = tf.tensor(
             new arraytype(aObject._rvalue),
             aObject._rshape,
@@ -745,7 +752,7 @@ export class RPC extends MessageEmitter {
           bObject._path = aObject._rpath;
         }
       } else if (aObject._rtype === "typedarray") {
-        const arraytype = eval(dtypeToTypedArray[aObject._rdtype]);
+        const arraytype = dtypeToTypedArray[aObject._rdtype];
         if (!arraytype)
           throw new Error("unsupported dtype: " + aObject._rdtype);
         bObject = new arraytype(aObject._rvalue);

@@ -7,17 +7,18 @@ export function randId() {
 }
 
 export const dtypeToTypedArray = {
-  int8: "Int8Array",
-  int16: "Int16Array",
-  int32: "Int32Array",
-  uint8: "Uint8Array",
-  uint16: "Uint16Array",
-  uint32: "Uint32Array",
-  float32: "Float32Array",
-  float64: "Float64Array",
-  array: "Array"
+  int8: Int8Array,
+  int16: Int16Array,
+  int32: Int32Array,
+  uint8: Uint8Array,
+  uint16: Uint16Array,
+  uint32: Uint32Array,
+  float32: Float32Array,
+  float64: Float64Array,
+  array: Array
 };
-export const typedArrayToDtype = {
+
+export const typedArrayToDtypeMapping = {
   Int8Array: "int8",
   Int16Array: "int16",
   Int32Array: "int32",
@@ -28,6 +29,25 @@ export const typedArrayToDtype = {
   Float64Array: "float64",
   Array: "array"
 };
+
+const typedArrayToDtypeKeys = [];
+for (const arrType of Object.keys(typedArrayToDtypeMapping)) {
+  typedArrayToDtypeKeys.push(eval(arrType));
+}
+
+export function typedArrayToDtype(obj) {
+  let dtype = typedArrayToDtypeMapping[obj.constructor.name];
+  if (!dtype) {
+    const pt = Object.getPrototypeOf(obj);
+    for (const arrType of typedArrayToDtypeKeys) {
+      if (pt instanceof arrType) {
+        dtype = typedArrayToDtypeMapping[arrType.name];
+        break;
+      }
+    }
+  }
+  return dtype;
+}
 
 function cacheUrlInServiceWorker(url) {
   return new Promise(function(resolve, reject) {
