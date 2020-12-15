@@ -232,12 +232,18 @@ class RPC(MessageEmitter):
                 # store the key id for removing them from the reference store together
                 resolve.__promise_pair = encoded_promise[0]["_rvalue"]
                 reject.__promise_pair = encoded_promise[1]["_rvalue"]
+
+                if name in ["register", "registerService", "export", "on"]:
+                    args = self.wrap(arguments, as_interface=True)
+                else:
+                    args = self.wrap(arguments)
+
                 call_func = {
                     "type": "method",
                     "target_id": target_id,
                     "name": name,
                     "object_id": plugin_id,
-                    "args": self.wrap(arguments),
+                    "args": args,
                     "promise": encoded_promise,
                 }
                 self._connection.emit(call_func)
@@ -484,9 +490,9 @@ class RPC(MessageEmitter):
             if reject:
                 reject(traceback_error)
 
-    def wrap(self, args):
+    def wrap(self, args, as_interface=False):
         """Wrap arguments."""
-        wrapped = self._encode(args)
+        wrapped = self._encode(args, as_interface=as_interface)
         return wrapped
 
     def _encode(self, a_object, as_interface=False, object_id=None):
@@ -624,7 +630,9 @@ class RPC(MessageEmitter):
                         a_object_norm[key],
                         as_interface + "." + str(key)
                         if isinstance(as_interface, str)
-                        else key,
+                        else str(
+                            key
+                        ),  # we need to convert to a string here, otherwise 0 will not treat as True value
                         object_id,
                     )
                     if callable(a_object_norm[key]):

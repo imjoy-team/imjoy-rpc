@@ -378,7 +378,12 @@ export class RPC extends MessageEmitter {
           wrapped_reject.__promise_pair = encodedPromise[0]._rvalue;
 
           let args = Array.prototype.slice.call(arguments);
-          if (name === "register" || name === "export" || name === "on") {
+          if (
+            name === "register" ||
+            name === "registerService" ||
+            name === "export" ||
+            name === "on"
+          ) {
             args = await me._wrap(args, true);
           } else {
             args = await me._wrap(args);
