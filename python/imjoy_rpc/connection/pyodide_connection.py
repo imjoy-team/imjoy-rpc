@@ -4,6 +4,7 @@ import logging
 import re
 import heapq
 import asyncio
+import time
 import traceback
 
 from imjoy_rpc.rpc import RPC
@@ -11,11 +12,6 @@ from imjoy_rpc.utils import MessageEmitter, dotdict
 import contextvars
 
 import js
-
-try:
-    from js import self as jsGlobal
-except:
-    from js import window as jsGlobal
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Pyodide Connection")
@@ -29,13 +25,15 @@ class EventSimulator(asyncio.AbstractEventLoop):
     https://gist.github.com/damonjw/35aac361ca5d313ee9bf79e00261f4ea
     """
 
-    def __init__(self):
-        self._time = 0
+    def __init__(self, debug=False):
         self._running = False
         self._immediate = []
         self._scheduled = []
+        self._futures = []
         self._exc = None
         self._setup_timeout_promise()
+        self._next_handle = None
+        self._debug = debug
 
     def _setup_timeout_promise(self):
         js.eval(
@@ -51,12 +49,14 @@ class EventSimulator(asyncio.AbstractEventLoop):
         self.timeout_promise = js._timeoutPromise
 
     def get_debug(self):
-        return False
+        return self._debug
 
     def time(self):
-        return self._time
+        return time.time()
 
     def run_forever(self):
+        if self._running:
+            return
         self._running = True
         try:
             self._do_tasks()
@@ -64,24 +64,41 @@ class EventSimulator(asyncio.AbstractEventLoop):
             self.timeout_promise(10).then(lambda x: self.run_forever())
         except Exception as exp:
             self._running = False
+            raise exp
 
     def run_until_complete(self, future):
         asyncio.ensure_future(future)
-        self._do_tasks()
+        if self._running:
+            return
+        self._do_tasks(until_complete=True)
 
-    def _do_tasks(self):
-        if self._immediate or self._scheduled:
-            if self._immediate:
-                h = self._immediate[0]
-                self._immediate = self._immediate[1:]
-            else:
-                h = heapq.heappop(self._scheduled)
-                self._time = h._when
-                h._scheduled = False  # just for asyncio.TimerHandle debugging?
+    def _do_tasks(self, until_complete=False):
+        while len(self._immediate) > 0:
+            h = self._immediate[0]
+            self._immediate = self._immediate[1:]
             if not h._cancelled:
                 h._run()
             if self._exc is not None:
                 raise self._exc
+
+        if self._next_handle is not None:
+            if self._next_handle._cancelled:
+                self._next_handle = None
+
+        if self._scheduled and self._next_handle is None:
+            h = heapq.heappop(self._scheduled)
+            h._scheduled = True
+            self._next_handle = h
+
+        if self._next_handle is not None and self._next_handle._when <= self.time():
+            h = self._next_handle
+            self._next_handle = None
+            self._immediate.append(h)
+
+        if until_complete and (
+            self._immediate or self._scheduled or self._next_handle or self._futures
+        ):
+            self.timeout_promise(10).then(lambda x: self._do_tasks(until_complete))
 
     def _timer_handle_cancelled(self, handle):
         pass
@@ -112,10 +129,10 @@ class EventSimulator(asyncio.AbstractEventLoop):
     def call_later(self, delay, callback, *args):
         if delay < 0:
             raise Exception("Can't schedule in the past")
-        return self.call_at(self._time + delay, callback, *args)
+        return self.call_at(self.time() + delay, callback, *args)
 
     def call_at(self, when, callback, *args):
-        if when < self._time:
+        if when < self.time():
             raise Exception("Can't schedule in the past")
         h = asyncio.TimerHandle(when, callback, args, self)
         heapq.heappush(self._scheduled, h)
@@ -133,7 +150,14 @@ class EventSimulator(asyncio.AbstractEventLoop):
         return asyncio.Task(wrapper(), loop=self)
 
     def create_future(self):
-        return asyncio.Future(loop=self)
+        fut = asyncio.Future(loop=self)
+
+        def remove_fut(*args):
+            self._futures.remove(fut)
+
+        fut.add_done_callback(remove_fut)
+        self._futures.append(fut)
+        return fut
 
 
 class PyodideConnectionManager:
@@ -301,7 +325,7 @@ class PyodideConnection(MessageEmitter):
                     )
                 )
 
-        jsGlobal.addEventListener("message", msg_cb)
+        js.self.addEventListener("message", msg_cb)
 
     def execute(self, data):
         try:
@@ -333,4 +357,4 @@ class PyodideConnection(MessageEmitter):
         pass
 
     def emit(self, msg):
-        jsGlobal.postMessage(msg)
+        js.self.postMessage(msg)
