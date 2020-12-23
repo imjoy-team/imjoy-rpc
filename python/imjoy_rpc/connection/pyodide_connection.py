@@ -55,8 +55,6 @@ class EventSimulator(asyncio.AbstractEventLoop):
         return time.time()
 
     def run_forever(self):
-        if self._running:
-            return
         self._running = True
         try:
             self._do_tasks()
