@@ -1,7 +1,6 @@
 import uuid
 import sys
 import logging
-import re
 import heapq
 import asyncio
 import time
@@ -25,7 +24,7 @@ class EventSimulator(asyncio.AbstractEventLoop):
     https://gist.github.com/damonjw/35aac361ca5d313ee9bf79e00261f4ea
     """
 
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, interval=10):
         self._running = False
         self._immediate = []
         self._scheduled = []
@@ -34,6 +33,8 @@ class EventSimulator(asyncio.AbstractEventLoop):
         self._setup_timeout_promise()
         self._next_handle = None
         self._debug = debug
+        self._stop = False
+        self._interval = interval
 
     def _setup_timeout_promise(self):
         js.eval(
@@ -55,29 +56,39 @@ class EventSimulator(asyncio.AbstractEventLoop):
         return time.time()
 
     def run_forever(self):
-        self._running = True
-        try:
-            self._do_tasks()
-            # execute for every 10ms (or longer)
-            self.timeout_promise(10).then(lambda x: self.run_forever())
-        except Exception as exp:
-            self._running = False
-            raise exp
+        self._stop = False
+        if asyncio.get_event_loop() == self:
+            asyncio._set_running_loop(self)
+        if not self._running:
+            self._do_tasks(forever=True)
 
     def run_until_complete(self, future):
         asyncio.ensure_future(future)
-        if self._running:
-            return
-        self._do_tasks(until_complete=True)
+        if asyncio.get_event_loop() == self:
+            asyncio._set_running_loop(self)
+        self._stop = False
+        if not self._running:
+            self._do_tasks(until_complete=True)
 
-    def _do_tasks(self, until_complete=False):
+    def _do_tasks(self, until_complete=False, forever=False):
+        self._running = True
+        if self._exc is not None:
+            self._quit_running()
+            raise self._exc
+        if self._stop:
+            self._quit_running()
+            return
         while len(self._immediate) > 0:
             h = self._immediate[0]
             self._immediate = self._immediate[1:]
             if not h._cancelled:
                 h._run()
             if self._exc is not None:
+                self._quit_running()
                 raise self._exc
+            if self._stop:
+                self._quit_running()
+                return
 
         if self._next_handle is not None:
             if self._next_handle._cancelled:
@@ -93,10 +104,22 @@ class EventSimulator(asyncio.AbstractEventLoop):
             self._next_handle = None
             self._immediate.append(h)
 
-        if until_complete and (
-            self._immediate or self._scheduled or self._next_handle or self._futures
+        if forever or (
+            until_complete
+            and (
+                self._immediate or self._scheduled or self._next_handle or self._futures
+            )
         ):
-            self.timeout_promise(10).then(lambda x: self._do_tasks(until_complete))
+            self.timeout_promise(self._interval).then(
+                lambda x: self._do_tasks(until_complete=until_complete, forever=forever)
+            )
+        else:
+            self._quit_running()
+
+    def _quit_running(self):
+        if asyncio.get_event_loop() == self:
+            asyncio._set_running_loop(None)
+        self._running = False
 
     def _timer_handle_cancelled(self, handle):
         pass
@@ -108,13 +131,18 @@ class EventSimulator(asyncio.AbstractEventLoop):
         return not self._running
 
     def stop(self):
-        self._running = False
+        self._stop = True
+        self._quit_running()
 
     def close(self):
-        self._running = False
+        self._stop = True
+        self._quit_running()
 
     def shutdown_asyncgens(self):
-        pass
+        raise NotImplementedError
+
+    def shutdown_default_executor(self):
+        raise NotImplementedError
 
     def call_exception_handler(self, context):
         self._exc = context.get("exception", None)
