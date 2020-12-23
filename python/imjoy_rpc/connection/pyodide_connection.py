@@ -73,10 +73,10 @@ class EventSimulator(asyncio.AbstractEventLoop):
     def _do_tasks(self, until_complete=False, forever=False):
         self._running = True
         if self._exc is not None:
-            self._quite_running()
+            self._quit_running()
             raise self._exc
         if self._stop:
-            self._quite_running()
+            self._quit_running()
             return
         while len(self._immediate) > 0:
             h = self._immediate[0]
@@ -84,10 +84,10 @@ class EventSimulator(asyncio.AbstractEventLoop):
             if not h._cancelled:
                 h._run()
             if self._exc is not None:
-                self._quite_running()
+                self._quit_running()
                 raise self._exc
             if self._stop:
-                self._quite_running()
+                self._quit_running()
                 return
 
         if self._next_handle is not None:
@@ -114,9 +114,9 @@ class EventSimulator(asyncio.AbstractEventLoop):
                 lambda x: self._do_tasks(until_complete=until_complete, forever=forever)
             )
         else:
-            self._quite_running()
+            self._quit_running()
 
-    def _quite_running(self):
+    def _quit_running(self):
         if asyncio.get_event_loop() == self:
             asyncio._set_running_loop(None)
         self._running = False
@@ -132,11 +132,11 @@ class EventSimulator(asyncio.AbstractEventLoop):
 
     def stop(self):
         self._stop = True
-        self._quite_running()
+        self._quit_running()
 
     def close(self):
         self._stop = True
-        self._quite_running()
+        self._quit_running()
 
     def shutdown_asyncgens(self):
         raise NotImplementedError
