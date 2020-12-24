@@ -16,11 +16,9 @@ logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Pyodide Connection")
 
 connection_id = contextvars.ContextVar("connection_id")
-
-
-class EventSimulator(asyncio.AbstractEventLoop):
-    """A simple event-driven simulator, using async/await
-    Adapted from the Gist made by @damonjw
+class WebLoop(asyncio.AbstractEventLoop):
+    """A simple custom loop for asyncio
+    Adapted from the EventSimulator made by @damonjw
     https://gist.github.com/damonjw/35aac361ca5d313ee9bf79e00261f4ea
     """
 
@@ -29,25 +27,14 @@ class EventSimulator(asyncio.AbstractEventLoop):
         self._immediate = []
         self._scheduled = []
         self._futures = []
-        self._exc = None
-        self._setup_timeout_promise()
         self._next_handle = None
         self._debug = debug
         self._stop = False
         self._interval = interval
-
-    def _setup_timeout_promise(self):
-        js.eval(
-            """
-        // check if in a web-worker
-        if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
-            self._timeoutPromise = function(time){return new Promise((resolve)=>{setTimeout(resolve, time);});}
-        } else {
-            window._timeoutPromise = function(time){return new Promise((resolve)=>{setTimeout(resolve, time);});}
-        }
-        """
+        self._timeout_promise = js.eval(
+            "self._timeoutPromise = function(time){return new Promise((resolve)=>{setTimeout(resolve, time);});}"
         )
-        self.timeout_promise = js._timeoutPromise
+        self._exception_handler = self._default_exception_handler
 
     def get_debug(self):
         return self._debug
@@ -72,9 +59,6 @@ class EventSimulator(asyncio.AbstractEventLoop):
 
     def _do_tasks(self, until_complete=False, forever=False):
         self._running = True
-        if self._exc is not None:
-            self._quit_running()
-            raise self._exc
         if self._stop:
             self._quit_running()
             return
@@ -83,9 +67,6 @@ class EventSimulator(asyncio.AbstractEventLoop):
             self._immediate = self._immediate[1:]
             if not h._cancelled:
                 h._run()
-            if self._exc is not None:
-                self._quit_running()
-                raise self._exc
             if self._stop:
                 self._quit_running()
                 return
@@ -110,7 +91,7 @@ class EventSimulator(asyncio.AbstractEventLoop):
                 self._immediate or self._scheduled or self._next_handle or self._futures
             )
         ):
-            self.timeout_promise(self._interval).then(
+            self._timeout_promise(self._interval).then(
                 lambda x: self._do_tasks(until_complete=until_complete, forever=forever)
             )
         else:
@@ -120,6 +101,12 @@ class EventSimulator(asyncio.AbstractEventLoop):
         if asyncio.get_event_loop() == self:
             asyncio._set_running_loop(None)
         self._running = False
+
+    def _default_exception_handler(self, loop, context):
+        js.console.error(context.get("message"))
+
+    def default_exception_handler(self):
+        return self._default_exception_handler
 
     def _timer_handle_cancelled(self, handle):
         pass
@@ -145,7 +132,13 @@ class EventSimulator(asyncio.AbstractEventLoop):
         raise NotImplementedError
 
     def call_exception_handler(self, context):
-        self._exc = context.get("exception", None)
+        self._exception_handler(self, context)
+
+    def set_exception_handler(self, handler):
+        self._exception_handler = handler
+
+    def get_exception_handler(self):
+        return self._exception_handler
 
     def call_soon(self, callback, *args, **kwargs):
         h = asyncio.Handle(callback, args, self)
@@ -162,7 +155,7 @@ class EventSimulator(asyncio.AbstractEventLoop):
             raise Exception("Can't schedule in the past")
         h = asyncio.TimerHandle(when, callback, args, self)
         heapq.heappush(self._scheduled, h)
-        h._scheduled = True  # perhaps just for debugging in asyncio.TimerHandle?
+        h._scheduled = True
         return h
 
     def create_task(self, coro):
@@ -170,8 +163,7 @@ class EventSimulator(asyncio.AbstractEventLoop):
             try:
                 await coro
             except Exception as e:
-                print("Wrapped exception")
-                self._exc = e
+                self.call_exception_handler({"message": traceback.format_exc(), "exception": e})
 
         return asyncio.Task(wrapper(), loop=self)
 
@@ -185,7 +177,6 @@ class EventSimulator(asyncio.AbstractEventLoop):
         self._futures.append(fut)
         return fut
 
-
 class PyodideConnectionManager:
     def __init__(self, rpc_context):
         self.default_config = rpc_context.default_config
@@ -198,7 +189,7 @@ class PyodideConnectionManager:
 
         # Set the event loop for RPC
         # This is needed because Pyodide does not support the default loop of asyncio
-        loop = EventSimulator()
+        loop = WebLoop()
         asyncio.set_event_loop(loop)
         # This will not block, because we used setTimeout to execute it
         loop.run_forever()
