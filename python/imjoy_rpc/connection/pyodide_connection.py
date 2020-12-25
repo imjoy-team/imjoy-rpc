@@ -16,6 +16,8 @@ logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Pyodide Connection")
 
 connection_id = contextvars.ContextVar("connection_id")
+
+
 class WebLoop(asyncio.AbstractEventLoop):
     """A simple custom loop for asyncio
     Adapted from the EventSimulator made by @damonjw
@@ -163,7 +165,9 @@ class WebLoop(asyncio.AbstractEventLoop):
             try:
                 await coro
             except Exception as e:
-                self.call_exception_handler({"message": traceback.format_exc(), "exception": e})
+                self.call_exception_handler(
+                    {"message": traceback.format_exc(), "exception": e}
+                )
 
         return asyncio.Task(wrapper(), loop=self)
 
@@ -176,6 +180,7 @@ class WebLoop(asyncio.AbstractEventLoop):
         fut.add_done_callback(remove_fut)
         self._futures.append(fut)
         return fut
+
 
 class PyodideConnectionManager:
     def __init__(self, rpc_context):
