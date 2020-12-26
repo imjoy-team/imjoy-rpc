@@ -40,6 +40,16 @@ if (typeof workbox !== "undefined") {
     new workbox.strategies.StaleWhileRevalidate()
   );
 
+  workbox.routing.registerRoute(
+    new RegExp("https://cdn.jsdelivr.net/pyodide/v.*"),
+    new workbox.strategies.CacheFirst()
+  );
+
+  workbox.routing.registerRoute(
+    new RegExp("https://files.pythonhosted.org/packages/.*"),
+    new workbox.strategies.CacheFirst()
+  );
+
   var cached_keys = new Set();
   function matchCb(request) {
     return cached_keys.has(request.url.href);
