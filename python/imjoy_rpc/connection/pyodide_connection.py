@@ -393,6 +393,9 @@ class PyodideConnection(MessageEmitter):
                 )
 
         js.self.addEventListener("message", msg_cb)
+        self._timeout_promise = js.eval(
+            "self._timeoutPromise = function(time){return new Promise((resolve)=>{setTimeout(resolve, time);});}"
+        )
 
     def execute(self, data):
         try:
