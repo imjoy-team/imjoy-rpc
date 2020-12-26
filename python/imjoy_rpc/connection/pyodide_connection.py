@@ -17,6 +17,8 @@ logger = logging.getLogger("Pyodide Connection")
 
 connection_id = contextvars.ContextVar("connection_id")
 
+sys.setrecursionlimit(1500)
+
 
 class WebLoop(asyncio.AbstractEventLoop):
     """A simple custom loop for asyncio
@@ -322,6 +324,23 @@ def install_requirements(requirements, resolve, reject):
     js.Promise.all(promises).then(resolve).catch(reject)
 
 
+# This script template is a temporary workaround for the recursion error
+# see https://github.com/iodide-project/pyodide/issues/951
+script_template = """
+try{
+    pyodide.runPython(`%s`);
+} catch(e) {
+    if(e instanceof RangeError){
+        console.log('Trying again due to recursion error...')
+        pyodide.runPython(`%s`);
+    }
+    else{
+        throw e
+    }
+}
+"""
+
+
 class PyodideConnection(MessageEmitter):
     def __init__(self, config):
         self.config = dotdict(config or {})
@@ -348,13 +367,16 @@ class PyodideConnection(MessageEmitter):
                 )
 
         js.self.addEventListener("message", msg_cb)
+        self._timeout_promise = js.eval(
+            "self._timeoutPromise = function(time){return new Promise((resolve)=>{setTimeout(resolve, time);});}"
+        )
 
     def execute(self, data):
         try:
             t = data["code"]["type"]
             if t == "script":
                 content = data["code"]["content"]
-                js.pyodide.runPython(content)
+                js.eval(script_template % (content, content))
                 self.emit({"type": "executed"})
             elif t == "requirements":
 
