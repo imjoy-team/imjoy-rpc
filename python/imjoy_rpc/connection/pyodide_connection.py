@@ -17,6 +17,8 @@ logger = logging.getLogger("Pyodide Connection")
 
 connection_id = contextvars.ContextVar("connection_id")
 
+# TODO: this is too high, we need to find a better approach
+# see here: https://github.com/iodide-project/pyodide/issues/917#issuecomment-751307819
 sys.setrecursionlimit(1500)
 
 
@@ -184,6 +186,29 @@ class WebLoop(asyncio.AbstractEventLoop):
         return fut
 
 
+class WebLoopPolicy(asyncio.DefaultEventLoopPolicy):
+    def __init__(self):
+        self._default_loop = None
+
+    def get_event_loop(self):
+        if self._default_loop is None:
+            self._default_loop = WebLoop()
+        return self._default_loop
+
+    def new_event_loop(self):
+        self._default_loop = WebLoop()
+        return self._default_loop
+
+    def set_event_loop(self, loop):
+        self._default_loop = loop
+
+    def get_child_watcher(self):
+        raise NotImplementedError
+
+    def set_child_watcher(self):
+        raise NotImplementedError
+
+
 class PyodideConnectionManager:
     def __init__(self, rpc_context):
         self.default_config = rpc_context.default_config
@@ -198,6 +223,7 @@ class PyodideConnectionManager:
         # This is needed because Pyodide does not support the default loop of asyncio
         loop = WebLoop()
         asyncio.set_event_loop(loop)
+        asyncio.set_event_loop_policy(WebLoopPolicy())
         # This will not block, because we used setTimeout to execute it
         loop.run_forever()
 
