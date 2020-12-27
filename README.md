@@ -51,7 +51,7 @@ Here is a schema illustrate the process:
 
 ## Data type representation
 
-ImJoy RPC is built on top of two-way transport layer. Currently, we support 4 types of transport layer: [Jupyter comm messages](https://jupyter-notebook.readthedocs.io/en/stable/comms.html), [Pyodide](https://github.com/iodide-project/pyodide), Google Colab, and SocketIO. Data with different types are encoded into a unified representation and send over the transport layer. It will then be decoded into the same or corresponding data type on the other side.
+ImJoy RPC is built on top of two-way transport layer. Currently, we support 4 types of transport layer: [Jupyter comm messages](https://jupyter-notebook.readthedocs.io/en/stable/comms.html), [Pyodide](https://github.com/iodide-project/pyodide), Google Colab, and SocketIO. Data with different types are encoded into a unified representation and sent over the transport layer. It will then be decoded into the same or corresponding data type on the other side.
 
 The data representation is a JSON object (but can contain binary data, e.g. `ArrayBuffer` in JS or `bytes` in Python). The goal is to represent more complex data types with primitive types that are commonly supported by many programming language, including strings, numbers, boolean, bytes, list/array and dictionary/object.
 
