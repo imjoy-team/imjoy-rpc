@@ -12,6 +12,7 @@ from imjoy_rpc.utils import MessageEmitter, dotdict
 
 
 import js
+from js import Array, Object
 from typing import Dict, Tuple, Optional, Awaitable, Callable
 
 logging.basicConfig(stream=sys.stdout)
@@ -507,31 +508,26 @@ class PyodideConnectionManager:
         )
 
 
-def decode_jsproxy(obj):
-    isarray = js.Array.isArray(obj)
-    bobj = [] if isarray else {}
-    for k in js.Object.keys(obj):
-        if isinstance(obj[k], (int, float, bool, str, bytes)) or obj[k] is None:
+def decode_jsproxy(aobj):
+    if isinstance(aobj, (int, float, bool, str, bytes)) or aobj is None:
+        return aobj
+    elif str(type(aobj)) == "<class 'JsProxy'>" and aobj.typeof == "object":
+        isarray = Array.isArray(aobj)
+        bobj = [] if isarray else {}
+
+        for k in Object.keys(aobj):
             if isarray:
-                bobj.append(obj[k])
+                bobj.append(decode_jsproxy(aobj[k]))
             else:
-                bobj[k] = obj[k]
-        elif str(type(obj[k])) == "<class 'JsProxy'>":
-            if isarray:
-                bobj.append(decode_jsproxy(obj[k]))
-            else:
-                bobj[k] = decode_jsproxy(obj[k])
-        elif str(type(obj[k])) == "<class 'memoryview'>":
-            if isarray:
-                bobj.append(obj[k].tobytes())
-            else:
-                bobj[k] = obj[k].tobytes()
-        else:
-            logger.warn(
-                "Skipping decoding object %s with type %s",
-                str(obj[k]),
-                str(type(obj[k])),
-            )
+                bobj[k] = decode_jsproxy(aobj[k])
+        return bobj
+    elif str(type(aobj)) == "<class 'memoryview'>":
+        return aobj.tobytes()
+    else:
+        return aobj
+        logger.warn(
+            "Skipping decoding object %s with type %s", str(aobj), str(type(aobj)),
+        )
 
     return bobj
 
@@ -578,6 +574,15 @@ class PyodideConnection(MessageEmitter):
         self._event_handlers = {}
         self.peer_id = str(uuid.uuid4())
         self.debug = True
+        _is_web_worker = js.eval(
+            "typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope"
+        )
+        if _is_web_worker:
+            self._post_message = js.postMessage
+        else:
+            self._post_message = js.eval(
+                "self._post_message = (msg)=>{parent.postMessage(msg, '*')}"
+            )
 
         def msg_cb(msg):
             data = decode_jsproxy(msg.data)
@@ -627,4 +632,4 @@ class PyodideConnection(MessageEmitter):
         pass
 
     def emit(self, msg):
-        js.self.postMessage(msg)
+        self._post_message(msg)
