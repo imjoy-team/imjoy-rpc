@@ -559,7 +559,15 @@ export class RPC extends MessageEmitter {
       aObject instanceof Date ||
       aObject instanceof RegExp ||
       aObject instanceof ImageData ||
-      (typeof FileList !== "undefined" && aObject instanceof FileList)
+      (typeof FileList !== "undefined" && aObject instanceof FileList) ||
+      (typeof FileSystemDirectoryHandle !== "undefined" &&
+        aObject instanceof FileSystemDirectoryHandle) ||
+      (typeof FileSystemFileHandle !== "undefined" &&
+        aObject instanceof FileSystemFileHandle) ||
+      (typeof FileSystemHandle !== "undefined" &&
+        aObject instanceof FileSystemHandle) ||
+      (typeof FileSystemWritableFileStream !== "undefined" &&
+        aObject instanceof FileSystemWritableFileStream)
     ) {
       bObject = aObject;
       // TODO: avoid object such as DynamicPlugin instance.
