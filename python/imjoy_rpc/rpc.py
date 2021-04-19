@@ -10,6 +10,7 @@ import traceback
 import uuid
 import weakref
 from collections import OrderedDict
+from functools import reduce
 
 from werkzeug.local import Local
 
@@ -44,7 +45,11 @@ def index_object(obj, ids):
 
 class RPC(MessageEmitter):
     def __init__(
-        self, connection, rpc_context, config=None, codecs=None,
+        self,
+        connection,
+        rpc_context,
+        config=None,
+        codecs=None,
     ):
         self.manager_api = {}
         self.services = {}
@@ -93,9 +98,6 @@ class RPC(MessageEmitter):
 
     def start(self):
         self.run_forever()
-
-    def register(self, plugin_path):
-        service = Service(plugin_path)
 
     def disconnect(self, conn):
         pass
@@ -146,7 +148,9 @@ class RPC(MessageEmitter):
         # so let's check it again
         self.check_modules()
 
-    def check_modules(self,):
+    def check_modules(
+        self,
+    ):
         """Check if all the modules exists."""
         try:
             import numpy as np
@@ -157,6 +161,9 @@ class RPC(MessageEmitter):
             logger.warn(
                 "failed to import numpy, ndarray encoding/decoding will not work"
             )
+
+    def request_remote(self):
+        self._connection.emit({"type": "getInterface"})
 
     def send_interface(self):
         """Send interface."""
@@ -391,6 +398,7 @@ class RPC(MessageEmitter):
 
     def _remote_set_handler(self, data):
         self._remote_set = True
+        self._fire("interfaceSetAsRemote")
 
     def _handle_execute(self, data):
         if self.allow_execution:
@@ -412,7 +420,10 @@ class RPC(MessageEmitter):
                 self._connection.emit({"type": "executed", "error": traceback_error})
         else:
             self._connection.emit(
-                {"type": "executed", "error": "execution is not allowed",}
+                {
+                    "type": "executed",
+                    "error": "execution is not allowed",
+                }
             )
             logger.warn("execution is blocked due to allow_execution=False")
 
@@ -658,7 +669,7 @@ class RPC(MessageEmitter):
                     else:
                         b_object[key] = self._encode(a_object_norm[key])
         else:
-            raise Exception("imjoy-rpc: Unsupported data type:" + str(aObject))
+            raise Exception("imjoy-rpc: Unsupported data type:" + str(a_object))
         return b_object
 
     def unwrap(self, args, with_promise):

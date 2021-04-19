@@ -20,6 +20,7 @@ class SocketIOManager:
         self.interface = None
         self.rpc_context = rpc_context
         self._codecs = {}
+        self._on_ready_callback = None
 
     def get_ident(self):
         return connection_id.get(default=None)
@@ -57,39 +58,46 @@ class SocketIOManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def start(self, url):
+    def start(self, url, token=None, on_ready_callback=None):
         sio = socketio.AsyncClient()
+        self.url = url
+        self.client_params = {
+            "headers": {"Authorization": f"Bearer {token}"} if token else {},
+            "socketio_path": "/rtc/socket.io/",
+        }
+        self._on_ready_callback = on_ready_callback
 
         def registered(config):
-            @sio.on(config["channel"] + "-new-client")
-            def on_new_client(client_info):
-                self._create_new_connection(
-                    sio, config["channel"], client_info["channel"]
-                )
+            client_id = str(uuid.uuid4())
+            self._create_new_connection(sio, config["id"], client_id)
 
         @sio.event
         async def connect():
-            await sio.emit("register_plugin", {"id": sio.sid}, callback=registered)
+            logger.info('connected to the server')
+            await sio.emit("register_plugin", self.default_config, callback=registered)
 
         self.sio = sio
-        asyncio.ensure_future(self.sio.connect(url))
+        asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
 
     def _create_new_connection(self, sio, plugin_channel, client_channel):
-
         connection_id.set(client_channel)
         connection = SocketioConnection(
             self.default_config, sio, plugin_channel, client_channel
         )
 
         def initialize(data):
-
             config = self.default_config.copy()
             cfg = self.default_config
             if cfg.get("credential_required") is not None:
-                result = config.verify_credential(cfg["credential"])
+                result = config["verify_credential"](cfg["credential"])
                 cfg["auth"] = result["auth"]
-            cfg["id"] = config["id"]
-            rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs,)
+            cfg["id"] = config.get("id")
+            rpc = RPC(
+                connection,
+                self.rpc_context,
+                config=cfg,
+                codecs=self._codecs,
+            )
             rpc.set_interface(self.interface)
             rpc.init()
 
@@ -101,6 +109,9 @@ class SocketIOManager:
                 api.disposeObject = rpc.dispose_object
 
             rpc.on("remoteReady", patch_api)
+            if self._on_ready_callback:
+                rpc.on("interfaceSetAsRemote", self._on_ready_callback)
+
             self.clients[client_channel] = dotdict()
             self.clients[client_channel].rpc = rpc
 
@@ -124,8 +135,8 @@ class SocketioConnection(MessageEmitter):
         self.client_channel = client_channel
         self.plugin_channel = plugin_channel
 
-        @sio.on(plugin_channel)
-        def on_message(data):
+        @sio.event
+        def plugin_message(data):
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
                 if "type" in data:
                     self._fire(data["type"], data)
@@ -151,4 +162,4 @@ class SocketioConnection(MessageEmitter):
         pass
 
     def emit(self, msg):
-        asyncio.ensure_future(self.sio.emit(self.plugin_channel, msg))
+        asyncio.ensure_future(self.sio.emit("plugin_message", msg))

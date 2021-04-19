@@ -281,14 +281,22 @@ def register_default_codecs(options=None):
         import zarr
 
         api.registerCodec(
-            {"name": "zarr-array", "type": zarr.Array, "encoder": encode_zarr_store,}
+            {
+                "name": "zarr-array",
+                "type": zarr.Array,
+                "encoder": encode_zarr_store,
+            }
         )
 
     if options is None or "zarr-group" in options:
         import zarr
 
         api.registerCodec(
-            {"name": "zarr-group", "type": zarr.Group, "encoder": encode_zarr_store,}
+            {
+                "name": "zarr-group",
+                "type": zarr.Group,
+                "encoder": encode_zarr_store,
+            }
         )
 
 
@@ -331,7 +339,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
         )
 
         manager.start(
-            _rpc_context.default_config.get("plugin_server", "http://127.0.0.1:9988")
+            _rpc_context.default_config.get("server", "http://127.0.0.1:9988"),
+            _rpc_context.default_config.get("token"),
+            _rpc_context.default_config.get("on_ready_callback"),
         )
     elif connection_type == "pyodide":
         if logger:

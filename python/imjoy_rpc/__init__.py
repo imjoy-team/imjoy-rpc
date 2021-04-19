@@ -7,9 +7,9 @@ from .utils import (
     ContextLocal,
     setup_connection,
     type_of_script,
-    dotdict,
     register_default_codecs,
 )
+
 
 __all__ = ["api", "register_default_codecs"]
 
