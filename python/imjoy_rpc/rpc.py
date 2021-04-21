@@ -99,7 +99,7 @@ class RPC(MessageEmitter):
     def start(self):
         self.run_forever()
 
-    def disconnect(self, conn):
+    def disconnect(self, detail):
         pass
 
     def default_exit(self):
@@ -365,10 +365,10 @@ class RPC(MessageEmitter):
 
     def _setup_handlers(self, connection):
         connection.on("init", self.init)
-        connection.on("disconnected", self.disconnect)
         connection.on("execute", self._handle_execute)
         connection.on("method", self._handle_method)
         connection.on("callback", self._handle_callback)
+        connection.on("error", self._handle_error)
         connection.on("disconnected", self._disconnected_hanlder)
         connection.on("getInterface", self._get_interface_handler)
         connection.on("setInterface", self._set_interface_handler)
@@ -384,7 +384,9 @@ class RPC(MessageEmitter):
             self._connection.emit({"type": "disposed", "error": str(e)})
 
     def _disconnected_hanlder(self, data):
+        self.disconnect(data)
         self._connection.disconnect()
+        self._fire("disconnected", data)
 
     def _get_interface_handler(self, data):
         if self._local_api is not None:
@@ -500,6 +502,9 @@ class RPC(MessageEmitter):
             self._connection.emit({"type": "error", "message": traceback_error})
             if reject:
                 reject(traceback_error)
+
+    def _handle_error(self, detail):
+        self._fire('error', detail)
 
     def wrap(self, args, as_interface=False):
         """Wrap arguments."""

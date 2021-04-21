@@ -69,7 +69,7 @@ class SocketIOManager:
 
         def registered(config):
             client_id = str(uuid.uuid4())
-            self._create_new_connection(sio, config["id"], client_id)
+            self._create_new_connection(sio, config["plugin_id"], client_id)
 
         @sio.event
         async def connect():
@@ -79,10 +79,10 @@ class SocketIOManager:
         self.sio = sio
         asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
 
-    def _create_new_connection(self, sio, plugin_channel, client_channel):
+    def _create_new_connection(self, sio, plugin_id, client_channel):
         connection_id.set(client_channel)
         connection = SocketioConnection(
-            self.default_config, sio, plugin_channel, client_channel
+            self.default_config, sio, plugin_id, client_channel
         )
 
         def initialize(data):
@@ -109,11 +109,24 @@ class SocketIOManager:
                 api.disposeObject = rpc.dispose_object
 
             rpc.on("remoteReady", patch_api)
+            
             if self._on_ready_callback:
-                rpc.on("interfaceSetAsRemote", self._on_ready_callback)
+                def ready(_):
+                    self._on_ready_callback(None)
+                def error(detail):
+                    self._on_ready_callback(detail or 'Error')
+                rpc.once("interfaceSetAsRemote", ready)
+                rpc.once("disconnected", error)
+                rpc.on("error", error)
 
             self.clients[client_channel] = dotdict()
             self.clients[client_channel].rpc = rpc
+
+        if self._on_ready_callback:
+            def error(detail):
+                self._on_ready_callback(detail or 'Error')
+            connection.once("disconnected", error)
+            connection.once("error", error)
 
         connection.once("initialize", initialize)
         connection.emit(
@@ -127,13 +140,13 @@ class SocketIOManager:
 
 
 class SocketioConnection(MessageEmitter):
-    def __init__(self, config, sio, plugin_channel, client_channel):
+    def __init__(self, config, sio, plugin_id, client_channel):
         self.config = dotdict(config or {})
         super().__init__(logger)
         self.sio = sio
         self.peer_id = client_channel
         self.client_channel = client_channel
-        self.plugin_channel = plugin_channel
+        self.plugin_id = plugin_id
 
         @sio.event
         def plugin_message(data):
@@ -161,5 +174,10 @@ class SocketioConnection(MessageEmitter):
     def disconnect(self):
         pass
 
+    def _msg_callback(self, data):
+        if not data.get('success'):
+            self._fire('error', data.get('detail'))
+
     def emit(self, msg):
-        asyncio.ensure_future(self.sio.emit("plugin_message", msg))
+        msg['plugin_id'] = self.plugin_id
+        asyncio.ensure_future(self.sio.emit("plugin_message", msg, callback=self._msg_callback))
