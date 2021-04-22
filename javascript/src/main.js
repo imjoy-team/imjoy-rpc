@@ -9,7 +9,7 @@
  */
 import PluginWorker from "./plugin.webworker.js";
 import setupIframe from "./pluginIframe.js";
-import { setupServiceWorker, randId } from "./utils.js";
+import { randId, normalizeConfig } from "./utils.js";
 
 export { RPC, API_VERSION } from "./rpc.js";
 export { version as VERSION } from "../package.json";
@@ -174,28 +174,17 @@ export function waitForInitialization(config) {
 export function setupRPC(config) {
   config = config || {};
   if (!config.name) throw new Error("Please specify a name for your app.");
-  config.version = config.version || "0.1.0";
-  config.description =
-    config.description || `[TODO: add description for ${config.name} ]`;
-  config.type = config.type || "rpc-window";
-  config.id = config.id || randId();
-  config.allow_execution = config.allow_execution || false;
-  if (config.enable_service_worker) {
-    setupServiceWorker(
-      config.base_url,
-      config.target_origin,
-      config.cache_requirements
-    );
-  }
-  if (config.cache_requirements) {
-    delete config.cache_requirements;
-  }
-  // remove functions
-  config = Object.keys(config).reduce((p, c) => {
-    if (typeof config[c] !== "function") p[c] = config[c];
-    return p;
-  }, {});
+  config = normalizeConfig(config);
   return new Promise((resolve, reject) => {
+    const handleEvent = e => {
+      const api = e.detail;
+      if (config.expose_api_globally) {
+        window.api = api;
+      }
+      // imjoy plugin api
+      resolve(api);
+      window.removeEventListener("imjoy_remote_api_ready", handleEvent);
+    };
     if (_inIframe()) {
       if (config.type === "web-worker") {
         try {
@@ -211,21 +200,9 @@ export function setupRPC(config) {
       } else {
         console.error("Unsupported plugin type: " + config.type);
         reject("Unsupported plugin type: " + config.type);
+        return;
       }
-      try {
-        const handleEvent = e => {
-          const api = e.detail;
-          if (config.expose_api_globally) {
-            window.api = api;
-          }
-          // imjoy plugin api
-          resolve(api);
-          window.removeEventListener("imjoy_remote_api_ready", handleEvent);
-        };
-        window.addEventListener("imjoy_remote_api_ready", handleEvent);
-      } catch (e) {
-        reject(e);
-      }
+      window.addEventListener("imjoy_remote_api_ready", handleEvent);
     } else {
       reject(new Error("imjoy-rpc should only run inside an iframe."));
     }

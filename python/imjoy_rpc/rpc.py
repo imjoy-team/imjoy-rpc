@@ -99,8 +99,19 @@ class RPC(MessageEmitter):
     def start(self):
         self.run_forever()
 
+    def reset(self):
+        self._event_handlers = {}
+        self.services = {}
+        self._object_store = {}
+        self._method_weakmap = weakref.WeakKeyDictionary()
+        self._object_weakmap = weakref.WeakKeyDictionary()
+        self._local_api = None
+        self._remote_set = False
+        self._store = ReferenceStore()
+        self._remote_interface = None
+
     def disconnect(self, detail):
-        pass
+        self.reset()
 
     def default_exit(self):
         """Exit default."""
@@ -310,7 +321,12 @@ class RPC(MessageEmitter):
     def set_remote_interface(self, api):
         """Set remote interface."""
         _remote = self._decode(api, False)
-        self._remote_interface = _remote
+        # update existing interface instead of recreating it 
+        if self._remote_interface:
+            for k in _remote:
+                self._remote_interface[k] = _remote[k]
+        else:
+            self._remote_interface = _remote
         self._fire("remoteReady")
         self._run_with_context(self._set_remote_api, _remote)
 
@@ -384,7 +400,7 @@ class RPC(MessageEmitter):
             self._connection.emit({"type": "disposed", "error": str(e)})
 
     def _disconnected_hanlder(self, data):
-        self.disconnect(data)
+        self._fire("beforeDisconnect")
         self._connection.disconnect()
         self._fire("disconnected", data)
 

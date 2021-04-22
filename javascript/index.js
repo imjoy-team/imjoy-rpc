@@ -1,1 +1,1 @@
-module.exports = require('./dist/imjoy-rpc.js');
+module.exports = {imjoyRPC: require('./dist/imjoy-rpc.js'), imjoyRPCSocketIO: require("./dist/imjoy-rpc-socketio")};

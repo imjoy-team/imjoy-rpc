@@ -336,7 +336,10 @@ export class RPC extends MessageEmitter {
    */
   _setRemoteInterface(api) {
     this._decode(api).then(intf => {
-      this._remote_interface = intf;
+      // update existing interface instead of recreating it
+      if (this._remote_interface) {
+        Object.assign(this._remote_interface, intf);
+      } else this._remote_interface = intf;
       this._fire("remoteReady");
       this._reportRemoteSet();
     });
@@ -894,11 +897,24 @@ export class RPC extends MessageEmitter {
     }
   }
 
+  reset() {
+    this._event_handlers = {};
+    this._once_handlers = {};
+    this._remote_interface = null;
+    this._object_store = {};
+    this._method_weakmap = new WeakMap();
+    this._object_weakmap = new WeakMap();
+    this._local_api = null;
+    this._store = new ReferenceStore();
+    this._method_refs = new ReferenceStore();
+  }
+
   /**
    * Sends the notification message and breaks the connection
    */
   disconnect() {
     this._connection.emit({ type: "disconnect" });
+    this.reset();
     setTimeout(() => {
       this._connection.disconnect();
     }, 2000);

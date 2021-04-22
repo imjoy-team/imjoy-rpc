@@ -17,7 +17,7 @@ npm install imjoy-rpc
 ```
 
 ```js
-import * as imjoyRPC from "imjoy-rpc";
+import { imjoyRPC } from 'imjoy-rpc';
 
 imjoyRPC.setupRPC({name: 'My Awesome App'}).then(api => {
 

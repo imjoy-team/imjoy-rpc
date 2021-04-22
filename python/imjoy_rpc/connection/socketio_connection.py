@@ -117,7 +117,7 @@ class SocketIOManager:
                 def ready(_):
                     self._on_ready_callback(None)
                 def error(detail):
-                    self._on_ready_callback(detail or 'Error')
+                    self._on_ready_callback(detail or 'rpc disconnected')
                 rpc.once("interfaceSetAsRemote", ready)
                 rpc.once("disconnected", error)
                 rpc.on("error", error)
@@ -146,11 +146,12 @@ class SocketioConnection(MessageEmitter):
     def __init__(self, config, sio, plugin_id, client_channel):
         self.config = dotdict(config or {})
         super().__init__(logger)
-        self.sio = sio
+        
         self.peer_id = client_channel
         self.client_channel = client_channel
         self.plugin_id = plugin_id
 
+        self.sio = sio
         @sio.event
         def plugin_message(data):
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
@@ -169,6 +170,7 @@ class SocketioConnection(MessageEmitter):
 
         @sio.event
         def disconnect():
+            self.disconnect()
             self._fire("disconnected")
 
     def connect(self):
