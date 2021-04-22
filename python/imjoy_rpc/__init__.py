@@ -36,3 +36,10 @@ class ApiWrapper(object):
 
 _rpc_context.api = ApiWrapper()
 default_config = LocalProxy(_rpc_context, "default_config")
+
+
+def connect_to_server(config):
+    # passing server_url, token and workspace
+    default_config.update(config)
+    setup_connection(_rpc_context, "terminal", logger)
+    _rpc_context.api.__initialized = True

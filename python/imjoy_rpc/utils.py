@@ -339,7 +339,7 @@ def setup_connection(_rpc_context, connection_type, logger=None):
         )
 
         manager.start(
-            _rpc_context.default_config.get("server", "http://127.0.0.1:9988"),
+            _rpc_context.default_config.get("server_url"),
             _rpc_context.default_config.get("token"),
             _rpc_context.default_config.get("on_ready_callback"),
         )
