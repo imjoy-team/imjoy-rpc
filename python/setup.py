@@ -46,7 +46,11 @@ setup(
     extras_require={
         "full": ["numpy", "zarr"],
         "jupyter": ["numpy", "ipykernel"],
-        "socketio": ["numpy", "python-socketio[client]==5.0.4", "python-engineio==4.0.0"],
+        "socketio": [
+            "numpy",
+            "python-socketio[client]==5.0.4",
+            "python-engineio==4.0.0",
+        ],
     },
     zip_safe=False,
 )

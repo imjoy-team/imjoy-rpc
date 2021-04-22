@@ -321,7 +321,7 @@ class RPC(MessageEmitter):
     def set_remote_interface(self, api):
         """Set remote interface."""
         _remote = self._decode(api, False)
-        # update existing interface instead of recreating it 
+        # update existing interface instead of recreating it
         if self._remote_interface:
             for k in _remote:
                 self._remote_interface[k] = _remote[k]
@@ -520,7 +520,7 @@ class RPC(MessageEmitter):
                 reject(traceback_error)
 
     def _handle_error(self, detail):
-        self._fire('error', detail)
+        self._fire("error", detail)
 
     def wrap(self, args, as_interface=False):
         """Wrap arguments."""
