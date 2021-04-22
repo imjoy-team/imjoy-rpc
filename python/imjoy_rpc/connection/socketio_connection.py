@@ -117,10 +117,17 @@ class SocketIOManager:
             if self._on_ready_callback:
 
                 def ready(_):
-                    self._on_ready_callback(None)
+                    self._on_ready_callback(
+                        {"success": True, "detail": rpc.get_remote()}
+                    )
 
                 def error(detail):
-                    self._on_ready_callback(detail or "rpc disconnected")
+                    self._on_ready_callback(
+                        {
+                            "success": False,
+                            "detail": Exception(str(detail or "rpc disconnected")),
+                        }
+                    )
 
                 rpc.once("interfaceSetAsRemote", ready)
                 rpc.once("disconnected", error)

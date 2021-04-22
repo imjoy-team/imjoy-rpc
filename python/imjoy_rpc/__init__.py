@@ -39,7 +39,22 @@ default_config = LocalProxy(_rpc_context, "default_config")
 
 
 def connect_to_server(config):
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    fut = loop.create_future()
     # passing server_url, token and workspace
+    def on_ready_callback(result):
+        if result.get("success"):
+            logger.info("Plugin is now ready")
+            fut.set_result(result.get("detail"))
+        else:
+            logger.error("Plugin failed with error: " + str(result.get("detail")))
+            fut.set_exception(
+                Exception("Plugin failed with error: " + str(result.get("detail")))
+            )
+
     default_config.update(config)
     setup_connection(_rpc_context, "terminal", logger)
     _rpc_context.api.__initialized = True
+    return fut
