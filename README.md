@@ -35,7 +35,7 @@ import { imjoyRPCSocketIO } from 'imjoy-rpc';
 
 imjoyRPCSocketIO.connectToServer({
     name: 'My Awesome App',
-    namespace: "my-namespace",
+    workspace: "my-workspace",
     server_url: "https://api.imjoy.io",
     token: "2s39elrw....",
 }).then((api)=>{
