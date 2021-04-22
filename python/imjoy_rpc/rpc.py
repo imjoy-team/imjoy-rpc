@@ -679,8 +679,9 @@ class RPC(MessageEmitter):
                 # remove interface when closed
                 if "on" in a_object_norm and callable(a_object_norm["on"]):
 
-                    def remove_interface():
-                        del self._object_store[object_id]
+                    def remove_interface(_):
+                        if object_id in self._object_store:
+                            del self._object_store[object_id]
 
                     a_object_norm["on"]("close", remove_interface)
             else:
