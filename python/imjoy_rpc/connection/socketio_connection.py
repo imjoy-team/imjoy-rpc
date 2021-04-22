@@ -63,14 +63,17 @@ class SocketIOManager:
         self.url = url
         self.client_params = {
             "headers": {"Authorization": f"Bearer {token}"} if token else {},
-            "socketio_path": "/rtc/socket.io/",
+            "socketio_path": "/socket.io",
         }
         self._on_ready_callback = on_ready_callback
 
         def registered(config):
-            client_id = str(uuid.uuid4())
-            self._create_new_connection(sio, config["plugin_id"], client_id)
-
+            if config.get('success'):
+                client_id = str(uuid.uuid4())
+                self._create_new_connection(sio, config["plugin_id"], client_id)
+            else:
+                logger.error(config.get('detail'))
+                raise Exception(f"Failed to register plugin: {config.get('detail')}")
         @sio.event
         async def connect():
             logger.info('connected to the server')
