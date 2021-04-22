@@ -33,8 +33,14 @@ If you want to connect to a remote imjoy engine server:
 ```js
 import { imjoyRPCSocketIO } from 'imjoy-rpc';
 
-imjoyRPCSocketIO.setupRPC({name: 'My Awesome App'}).then((api)=>{
+imjoyRPCSocketIO.connectToServer({
+    name: 'My Awesome App',
+    namespace: "my-namespace",
+    server_url: "https://api.imjoy.io",
+    token: "2s39elrw....",
+}).then((api)=>{
  // call api.export to expose your plugin api
+
 })
 ```
 

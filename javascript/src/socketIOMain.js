@@ -10,6 +10,7 @@ import { RPC, API_VERSION } from "./rpc.js";
 import { MessageEmitter, randId, normalizeConfig } from "./utils.js";
 import io from "socket.io-client";
 
+export { setupRPC, waitForInitialization } from "./main.js";
 export { version as VERSION } from "../package.json";
 export { RPC, API_VERSION };
 
@@ -115,7 +116,7 @@ export class Connection extends MessageEmitter {
   }
 }
 
-export function setupRPC(config) {
+export function connectToServer(config) {
   config = config || {};
   if (!config.name) throw new Error("Plugin name is not specified.");
   if (!config.server_url) throw new Error("Server URL is not specified.");
