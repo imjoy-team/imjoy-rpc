@@ -6,9 +6,12 @@
  * connection object for the plugin site
  */
 import { connectRPC } from "./pluginCore.js";
-import { API_VERSION } from "./rpc.js";
+import { RPC, API_VERSION } from "./rpc.js";
 import { MessageEmitter, randId, normalizeConfig } from "./utils.js";
 import io from "socket.io-client";
+
+export { version as VERSION } from "../package.json";
+export { RPC, API_VERSION };
 
 export class Connection extends MessageEmitter {
   constructor(config) {
