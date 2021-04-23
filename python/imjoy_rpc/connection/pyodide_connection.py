@@ -88,12 +88,7 @@ class PyodideConnectionManager:
                 result = config.verify_credential(cfg["credential"])
                 cfg["auth"] = result["auth"]
             cfg["id"] = self.rpc_id
-            rpc = RPC(
-                connection,
-                self.rpc_context,
-                config=cfg,
-                codecs=self._codecs,
-            )
+            rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs)
             rpc.set_interface(self.interface)
             rpc.init()
 
@@ -148,9 +143,7 @@ def decode_jsproxy(aobj):
         return aobj.tobytes()
     else:
         logger.warn(
-            "Skipping decoding object %s with type %s",
-            str(aobj),
-            str(type(aobj)),
+            "Skipping decoding object %s with type %s", str(aobj), str(type(aobj))
         )
         return aobj
 
