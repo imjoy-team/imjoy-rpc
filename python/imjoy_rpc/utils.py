@@ -300,7 +300,13 @@ def register_default_codecs(options=None):
         )
 
 
-def setup_connection(_rpc_context, connection_type, logger=None):
+def setup_connection(
+    _rpc_context,
+    connection_type,
+    logger=None,
+    on_ready_callback=None,
+    on_error_callback=None,
+):
 
     if connection_type == "jupyter":
         if logger:
@@ -313,7 +319,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
             export=manager.set_interface,
             registerCodec=manager.register_codec,
         )
-        manager.start()
+        manager.start(
+            on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+        )
     elif connection_type == "colab":
         if logger:
             logger.info("Using colab connection for imjoy-rpc")
@@ -325,7 +333,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
             export=manager.set_interface,
             registerCodec=manager.register_codec,
         )
-        manager.start()
+        manager.start(
+            on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+        )
     elif connection_type == "terminal":
         if logger:
             logger.info("Using socketio connection for imjoy-rpc")
@@ -337,11 +347,11 @@ def setup_connection(_rpc_context, connection_type, logger=None):
             export=manager.set_interface,
             registerCodec=manager.register_codec,
         )
-
         manager.start(
             _rpc_context.default_config.get("server_url"),
             _rpc_context.default_config.get("token"),
-            _rpc_context.default_config.get("on_ready_callback"),
+            on_ready_callback=on_ready_callback,
+            on_error_callback=on_error_callback,
         )
     elif connection_type == "pyodide":
         if logger:
@@ -354,7 +364,9 @@ def setup_connection(_rpc_context, connection_type, logger=None):
             export=manager.set_interface,
             registerCodec=manager.register_codec,
         )
-        manager.start()
+        manager.start(
+            on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+        )
     else:
         if logger:
             logger.info(

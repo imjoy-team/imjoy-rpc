@@ -20,7 +20,6 @@ class SocketIOManager:
         self.interface = None
         self.rpc_context = rpc_context
         self._codecs = {}
-        self._on_ready_callback = None
 
     def get_ident(self):
         return connection_id.get(default=None)
@@ -58,19 +57,24 @@ class SocketIOManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def start(self, url, token=None, on_ready_callback=None):
+    def start(self, url, token=None, on_ready_callback=None, on_error_callback=None):
         sio = socketio.AsyncClient()
         self.url = url
         self.client_params = {
             "headers": {"Authorization": f"Bearer {token}"} if token else {},
             "socketio_path": "/socket.io",
         }
-        self._on_ready_callback = on_ready_callback
 
         def registered(config):
             if config.get("success"):
                 client_id = str(uuid.uuid4())
-                self._create_new_connection(sio, config["plugin_id"], client_id)
+                self._create_new_connection(
+                    sio,
+                    config["plugin_id"],
+                    client_id,
+                    on_ready_callback,
+                    on_error_callback,
+                )
             else:
                 logger.error(config.get("detail"))
                 raise Exception(f"Failed to register plugin: {config.get('detail')}")
@@ -83,7 +87,9 @@ class SocketIOManager:
         self.sio = sio
         asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
 
-    def _create_new_connection(self, sio, plugin_id, client_channel):
+    def _create_new_connection(
+        self, sio, plugin_id, client_channel, on_ready_callback, on_error_callback
+    ):
         connection_id.set(client_channel)
         connection = SocketioConnection(
             self.default_config, sio, plugin_id, client_channel
@@ -114,35 +120,22 @@ class SocketIOManager:
 
             rpc.on("remoteReady", patch_api)
 
-            if self._on_ready_callback:
+            if on_ready_callback:
 
                 def ready(_):
-                    self._on_ready_callback(
-                        {"success": True, "detail": rpc.get_remote()}
-                    )
-
-                def error(detail):
-                    self._on_ready_callback(
-                        {
-                            "success": False,
-                            "detail": Exception(str(detail or "rpc disconnected")),
-                        }
-                    )
+                    on_ready_callback(rpc.get_remote())
 
                 rpc.once("interfaceSetAsRemote", ready)
-                rpc.once("disconnected", error)
-                rpc.on("error", error)
+            if on_error_callback:
+                rpc.once("disconnected", on_error_callback)
+                rpc.on("error", on_error_callback)
 
             self.clients[client_channel] = dotdict()
             self.clients[client_channel].rpc = rpc
 
-        if self._on_ready_callback:
-
-            def error(detail):
-                self._on_ready_callback(detail or "Error")
-
-            connection.once("disconnected", error)
-            connection.once("error", error)
+        if on_error_callback:
+            connection.once("disconnected", on_error_callback)
+            connection.once("error", on_error_callback)
 
         connection.once("initialize", initialize)
         connection.emit(
