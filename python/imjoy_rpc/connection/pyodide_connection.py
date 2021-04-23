@@ -123,7 +123,7 @@ class WebLoop(asyncio.AbstractEventLoop):
         return js.Promise.new(run)
 
     def _do_tasks(
-        self, until_complete: Optional[bool] = False, forever: Optional[bool] = False,
+        self, until_complete: Optional[bool] = False, forever: Optional[bool] = False
     ):
         """
         Do the tasks
@@ -483,7 +483,7 @@ class PyodideConnectionManager:
                 result = config.verify_credential(cfg["credential"])
                 cfg["auth"] = result["auth"]
             cfg["id"] = self.rpc_id
-            rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs,)
+            rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs)
             rpc.set_interface(self.interface)
             rpc.init()
 
@@ -526,7 +526,7 @@ def decode_jsproxy(aobj):
     else:
         return aobj
         logger.warn(
-            "Skipping decoding object %s with type %s", str(aobj), str(type(aobj)),
+            "Skipping decoding object %s with type %s", str(aobj), str(type(aobj))
         )
 
     return bobj

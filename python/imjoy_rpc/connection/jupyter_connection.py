@@ -92,7 +92,7 @@ class JupyterCommManager:
                 result = config.verify_credential(cfg["credential"])
                 cfg["auth"] = result["auth"]
             cfg["id"] = config["id"]
-            rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs,)
+            rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs)
             rpc.set_interface(self.interface)
             rpc.init()
 
