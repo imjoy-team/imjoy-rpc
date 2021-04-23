@@ -101,7 +101,7 @@ class RPC(MessageEmitter):
     def register(self, plugin_path):
         """Register a plugin."""
         # FIXME: What happens here?
-        service = Service(plugin_path)
+        # service = Service(plugin_path)
 
     def disconnect(self, conn):
         """Disconnect."""
