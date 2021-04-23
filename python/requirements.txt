@@ -1,1 +1,4 @@
-werkzeug
+aiocontextvars==0.2.2; python_version<"3.7"
+contextvars==2.4; python_version<"3.7"
+numpy==1.19.5  # needs to stay compatible with latest tensorflow
+werkzeug==1.0.1
