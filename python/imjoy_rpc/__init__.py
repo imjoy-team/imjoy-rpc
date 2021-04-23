@@ -1,13 +1,13 @@
+"""Provide the ImJoy RPC."""
 import os
 import sys
 import logging
 
-from werkzeug.local import Local, LocalProxy
+from werkzeug.local import LocalProxy
 from .utils import (
     ContextLocal,
     setup_connection,
     type_of_script,
-    dotdict,
     register_default_codecs,
 )
 
