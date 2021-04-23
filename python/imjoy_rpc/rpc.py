@@ -642,9 +642,7 @@ class RPC(MessageEmitter):
                         a_object_norm[key],
                         as_interface + "." + str(key)
                         if isinstance(as_interface, str)
-                        else str(
-                            key
-                        ),
+                        else str(key),
                         # We need to convert to a string here,
                         # otherwise 0 will not be truthy.
                         object_id,
