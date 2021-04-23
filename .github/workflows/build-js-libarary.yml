@@ -22,11 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v2.1.5
         with:
           node-version: ${{ matrix.node-version }}
       - name: Cache dependencies
-        uses: actions/cache@v1
+        uses: actions/cache@v2.1.5
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -37,7 +37,7 @@ jobs:
       - run: npm run test
       - run: npm run build
       - name: Save build output
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v2.2.3
         with:
           name: built-output
           path: ./javascript/dist
