@@ -382,6 +382,8 @@ def type_of_script():
         return "colab"
     except:
         try:
+            from IPython import get_ipython
+
             ipy_str = str(type(get_ipython()))
             if "zmqshell" in ipy_str:
                 return "jupyter"

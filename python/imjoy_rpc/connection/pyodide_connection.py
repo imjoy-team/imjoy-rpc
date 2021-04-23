@@ -147,12 +147,12 @@ def decode_jsproxy(aobj):
     elif str(type(aobj)) == "<class 'memoryview'>":
         return aobj.tobytes()
     else:
-        return aobj
         logger.warn(
             "Skipping decoding object %s with type %s",
             str(aobj),
             str(type(aobj)),
         )
+        return aobj
 
     return bobj
 
