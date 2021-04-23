@@ -43,9 +43,7 @@ def index_object(obj, ids):
 
 
 class RPC(MessageEmitter):
-    def __init__(
-        self, connection, rpc_context, config=None, codecs=None,
-    ):
+    def __init__(self, connection, rpc_context, config=None, codecs=None):
         self.manager_api = {}
         self.services = {}
         self._object_store = {}
@@ -412,7 +410,7 @@ class RPC(MessageEmitter):
                 self._connection.emit({"type": "executed", "error": traceback_error})
         else:
             self._connection.emit(
-                {"type": "executed", "error": "execution is not allowed",}
+                {"type": "executed", "error": "execution is not allowed"}
             )
             logger.warn("execution is blocked due to allow_execution=False")
 

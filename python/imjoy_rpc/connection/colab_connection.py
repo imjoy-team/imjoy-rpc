@@ -89,7 +89,7 @@ class ColabManager:
             if config.get("credential_required") is not None:
                 result = config.verify_credential(config["credential"])
                 config["auth"] = result["auth"]
-            rpc = RPC(connection, self.rpc_context, config=config, codecs=self._codecs,)
+            rpc = RPC(connection, self.rpc_context, config=config, codecs=self._codecs)
             rpc.set_interface(self.interface)
             rpc.init()
 
