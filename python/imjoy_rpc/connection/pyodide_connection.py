@@ -65,8 +65,8 @@ class PyodideConnectionManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
-    def start(self, target="imjoy_rpc"):
-        self._create_new_connection(target)
+    def start(self, target="imjoy_rpc", on_ready_callback=None, on_error_callback=None):
+        self._create_new_connection(target, on_ready_callback, on_error_callback)
 
     def init(self, config=None):
         # register a minimal plugin api
@@ -75,7 +75,7 @@ class PyodideConnectionManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def _create_new_connection(self, target):
+    def _create_new_connection(self, target, on_ready_callback, on_error_callback):
         client_id = str(uuid.uuid4())
         connection_id.set(client_id)
         connection = PyodideConnection(self.default_config)
@@ -106,8 +106,21 @@ class PyodideConnectionManager:
 
             rpc.on("remoteReady", patch_api)
 
+            if on_ready_callback:
+
+                def ready(_):
+                    on_ready_callback(rpc.get_remote())
+
+                rpc.once("interfaceSetAsRemote", ready)
+            if on_error_callback:
+                rpc.once("disconnected", on_error_callback)
+                rpc.on("error", on_error_callback)
+
             self.clients[client_id].rpc = rpc
 
+        if on_error_callback:
+            connection.once("disconnected", on_error_callback)
+            connection.once("error", on_error_callback)
         connection.once("initialize", initialize)
         connection.emit(
             {
