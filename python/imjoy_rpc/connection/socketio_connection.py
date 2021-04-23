@@ -101,6 +101,7 @@ class SocketIOManager:
             if cfg.get("credential_required") is not None:
                 result = config["verify_credential"](cfg["credential"])
                 cfg["auth"] = result["auth"]
+
             cfg["id"] = config.get("id")
             rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs)
             rpc.set_interface(self.interface)
