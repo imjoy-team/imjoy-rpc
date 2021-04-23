@@ -47,6 +47,7 @@ export class RPC extends MessageEmitter {
     this._method_weakmap = new WeakMap();
     this._object_weakmap = new WeakMap();
     this._local_api = null;
+    this._remote_set = false;
     // make sure there is an execute function
     const name = this.config.name;
     this._connection.execute =
@@ -129,7 +130,8 @@ export class RPC extends MessageEmitter {
       }
     }
     this._local_api = _interface;
-    this._fire("interfaceAvailable");
+    if (!this._remote_set) this._fire("interfaceAvailable");
+    else this.send_interface();
   }
 
   /**
@@ -295,6 +297,7 @@ export class RPC extends MessageEmitter {
       }
     });
     this._connection.on("interfaceSetAsRemote", () => {
+      this._remote_set = true;
       this._fire("interfaceSetAsRemote");
     });
     this._connection.on("disconnect", () => {

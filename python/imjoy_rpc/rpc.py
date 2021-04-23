@@ -153,7 +153,10 @@ class RPC(MessageEmitter):
         # store it in a docdict such that the methods are hashable
         self._local_api = dotdict(api) if isinstance(api, dict) else api
 
-        self._fire("interfaceAvailable")
+        if not self._remote_set:
+            self._fire("interfaceAvailable")
+        else:
+            self.send_interface()
 
         # we might installed modules when solving requirements
         # so let's check it again

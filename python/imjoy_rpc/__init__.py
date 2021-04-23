@@ -19,6 +19,7 @@ __all__ = [
     "connect_to_jupyter",
     "connect_to_colab",
     "connect_to_pyodide",
+    "connect",
 ]
 
 logging.basicConfig(stream=sys.stdout)
@@ -30,13 +31,13 @@ api = LocalProxy(_rpc_context, "api")
 _rpc_context.default_config = {}
 
 
-class ApiWrapper(object):
+class ApiWrapper(dict):
     def __init__(self):
         self.__initialized = False
 
     def __getattr__(self, attr):
         if not self.__initialized:
-            connection_type = os.environ.get("IMJOY_RPC_CONNECTION", type_of_script())
+            connection_type = os.environ.get("IMJOY_RPC_CONNECTION") or type_of_script()
             setup_connection(_rpc_context, connection_type, logger)
             self.__initialized = True
         return _rpc_context.api[attr]
@@ -46,9 +47,10 @@ _rpc_context.api = ApiWrapper()
 default_config = LocalProxy(_rpc_context, "default_config")
 
 
-def _connect(connection_type, config={}, **kwargs):
+def _connect(connection_type, config=None, **kwargs):
     import asyncio
 
+    config = config or {}
     config.update(kwargs)
 
     loop = asyncio.get_event_loop()
@@ -56,14 +58,14 @@ def _connect(connection_type, config={}, **kwargs):
     # passing server_url, token and workspace
     def on_ready_callback(result):
         if fut.done():
-            logger.warning("on_ready_callback was called more than once")
             return
         logger.info("Plugin is now ready")
         fut.set_result(result)
 
     def on_error_callback(detail):
         if fut.done():
-            logger.error(str(detail))
+            if detail:
+                logger.error(str(detail))
             return
         logger.error("Plugin failed with error: " + str(detail))
         fut.set_exception(Exception("Plugin failed with error: " + str(detail)))
@@ -77,6 +79,7 @@ def _connect(connection_type, config={}, **kwargs):
         on_error_callback=on_error_callback,
     )
     _rpc_context.api.__initialized = True
+    api.export({})
     return fut
 
 
@@ -84,3 +87,8 @@ connect_to_server = partial(_connect, "terminal")
 connect_to_jupyter = partial(_connect, "jupyter")
 connect_to_colab = partial(_connect, "colab")
 connect_to_pyodide = partial(_connect, "pyodide")
+
+
+def connect(config=None, **kwargs):
+    connection_type = os.environ.get("IMJOY_RPC_CONNECTION") or type_of_script()
+    return _connect(connection_type, config=config, **kwargs)
