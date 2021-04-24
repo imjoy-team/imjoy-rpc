@@ -51,8 +51,11 @@ class PyodideConnectionManager:
         config.id = self.rpc_id
         self.default_config = config
         self.interface = interface
+        futures = []
         for k in self.clients:
-            self.clients[k].rpc.set_interface(interface, self.default_config)
+            fut = self.clients[k].rpc.set_interface(interface, self.default_config)
+            futures.append(fut)
+        return asyncio.gather(*futures)
 
     def register_codec(self, config):
         assert "name" in config

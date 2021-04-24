@@ -132,6 +132,9 @@ export class RPC extends MessageEmitter {
     this._local_api = _interface;
     if (!this._remote_set) this._fire("interfaceAvailable");
     else this.send_interface();
+    return new Promise(resolve => {
+      this.once("interfaceSetAsRemote", resolve);
+    });
   }
 
   /**

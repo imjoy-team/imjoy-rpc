@@ -1,4 +1,5 @@
 """Provide a jupyter connection."""
+import asyncio
 import uuid
 import sys
 import logging
@@ -51,8 +52,10 @@ class JupyterCommManager:
         config.id = str(uuid.uuid4())
         self.default_config = config
         self.interface = interface
+        futures = []
         for k in self.clients:
-            self.clients[k].rpc.set_interface(interface, self.default_config)
+            fut = self.clients[k].rpc.set_interface(interface, self.default_config)
+            futures.append(fut)
         display(
             Javascript(
                 'window.connectPlugin && window.connectPlugin("{}")'.format(
@@ -61,6 +64,7 @@ class JupyterCommManager:
             )
         )
         display(HTML('<div id="{}"></div>'.format(config.id)))
+        return asyncio.gather(*futures)
 
     def register_codec(self, config):
         """Register codec."""

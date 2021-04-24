@@ -1,4 +1,5 @@
 """Provide a colab connection."""
+import asyncio
 import contextvars
 import logging
 import os
@@ -6,11 +7,11 @@ import sys
 import uuid
 
 from IPython import get_ipython
-from IPython.display import display, HTML
+from IPython.display import HTML, display
 
+from imjoy_rpc.connection.jupyter_connection import put_buffers, remove_buffers
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
-from imjoy_rpc.connection.jupyter_connection import put_buffers, remove_buffers
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("ColabConnection")
@@ -52,10 +53,13 @@ class ColabManager:
         config.id = str(uuid.uuid4())
         self.default_config = config
         self.interface = interface
+        futures = []
         for k in self.clients:
-            self.clients[k].rpc.set_interface(interface)
+            fut = self.clients[k].rpc.set_interface(interface, self.default_config)
+            futures.append(fut)
         display(HTML(colab_html))
         display(HTML('<div id="{}"></div>'.format(config.id)))
+        return asyncio.gather(*futures)
 
     def register_codec(self, config):
         """Register codec."""

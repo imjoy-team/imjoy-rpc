@@ -41,8 +41,11 @@ class SocketIOManager:
         config.id = str(uuid.uuid4())
         self.default_config = config
         self.interface = interface
+        futures = []
         for k in self.clients:
-            self.clients[k].rpc.set_interface(interface, self.default_config)
+            fut = self.clients[k].rpc.set_interface(interface, self.default_config)
+            futures.append(fut)
+        return asyncio.gather(*futures)
 
     def register_codec(self, config):
         """Register codec."""
