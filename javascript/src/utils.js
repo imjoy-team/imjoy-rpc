@@ -18,6 +18,30 @@ export const dtypeToTypedArray = {
   array: Array
 };
 
+export function normalizeConfig(config) {
+  config.version = config.version || "0.1.0";
+  config.description =
+    config.description || `[TODO: add description for ${config.name} ]`;
+  config.type = config.type || "rpc-window";
+  config.id = config.id || randId();
+  config.allow_execution = config.allow_execution || false;
+  if (config.enable_service_worker) {
+    setupServiceWorker(
+      config.base_url,
+      config.target_origin,
+      config.cache_requirements
+    );
+  }
+  if (config.cache_requirements) {
+    delete config.cache_requirements;
+  }
+  // remove functions
+  config = Object.keys(config).reduce((p, c) => {
+    if (typeof config[c] !== "function") p[c] = config[c];
+    return p;
+  }, {});
+  return config;
+}
 export const typedArrayToDtypeMapping = {
   Int8Array: "int8",
   Int16Array: "int16",

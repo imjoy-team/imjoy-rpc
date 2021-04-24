@@ -8,14 +8,18 @@ const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
 module.exports = {
   mode: 'development',
   entry: {
-    index: './src/main.js',
+      'imjoyRPC': path.resolve(__dirname, 'src', 'main.js'),
+      'imjoyRPCSocketIO': path.resolve(__dirname, 'src', 'socketIOMain.js'),
   },
   output: {
-    filename: process.env.NODE_ENV === 'production' ? 'imjoy-rpc.min.js' : 'imjoy-rpc.js',
-    path: path.resolve(__dirname, 'dist'),
-    library: 'imjoyRPC',
-    libraryTarget: 'umd',
-    umdNamedDefine: true,
+      path: path.resolve(__dirname, 'dist'),
+      filename(pathData){
+        let name = pathData.chunk.name === 'imjoyRPC' ? 'imjoy-rpc' : 'imjoy-rpc-socketio';
+        return process.env.NODE_ENV === 'production'? name + '.min.js': name + '.js';
+      },
+      library: '[name]',
+      libraryTarget: 'umd',
+      umdNamedDefine: true
   },
   devtool: '#source-maps',
   devServer: {

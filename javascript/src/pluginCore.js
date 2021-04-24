@@ -16,15 +16,6 @@ export function connectRPC(connection, config) {
 
   rpc.on("remoteReady", function() {
     const api = rpc.getRemote() || {};
-    if (api.export) {
-      throw new Error("`export` is a reserved function name");
-    }
-    if (api.onload) {
-      throw new Error("`onload` is a reserved function name");
-    }
-    if (api.dispose) {
-      throw new Error("`dispose` is a reserved function name");
-    }
     api.registerCodec = function(config) {
       if (!config["name"] || (!config["encoder"] && !config["decoder"])) {
         throw new Error(

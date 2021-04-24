@@ -65,33 +65,45 @@ class SocketIOManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def start(self, url):
+    def start(self, url, token=None, on_ready_callback=None, on_error_callback=None):
         """Start."""
         sio = socketio.AsyncClient()
+        self.url = url
+        self.client_params = {
+            "headers": {"Authorization": f"Bearer {token}"} if token else {},
+            "socketio_path": "/socket.io",
+        }
 
         def registered(config):
             """Handle registration."""
-
-            @sio.on(config["channel"] + "-new-client")
-            def on_new_client(client_info):
-                """Handle a new client."""
+            if config.get("success"):
+                client_id = str(uuid.uuid4())
                 self._create_new_connection(
-                    sio, config["channel"], client_info["channel"]
+                    sio,
+                    config["plugin_id"],
+                    client_id,
+                    on_ready_callback,
+                    on_error_callback,
                 )
+            else:
+                logger.error(config.get("detail"))
+                raise Exception(f"Failed to register plugin: {config.get('detail')}")
 
         @sio.event
         async def connect():
-            """Connect."""
-            await sio.emit("register_plugin", {"id": sio.sid}, callback=registered)
+            """Handle connected."""
+            logger.info("connected to the server")
+            await sio.emit("register_plugin", self.default_config, callback=registered)
 
         self.sio = sio
-        asyncio.ensure_future(self.sio.connect(url))
+        asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
 
-    def _create_new_connection(self, sio, plugin_channel, client_channel):
-        """Create a new connection."""
+    def _create_new_connection(
+        self, sio, plugin_id, client_channel, on_ready_callback, on_error_callback
+    ):
         connection_id.set(client_channel)
         connection = SocketioConnection(
-            self.default_config, sio, plugin_channel, client_channel
+            self.default_config, sio, plugin_id, client_channel
         )
 
         def initialize(data):
@@ -99,9 +111,10 @@ class SocketIOManager:
             config = self.default_config.copy()
             cfg = self.default_config
             if cfg.get("credential_required") is not None:
-                result = config.verify_credential(cfg["credential"])
+                result = config["verify_credential"](cfg["credential"])
                 cfg["auth"] = result["auth"]
-            cfg["id"] = config["id"]
+
+            cfg["id"] = config.get("id")
             rpc = RPC(connection, self.rpc_context, config=cfg, codecs=self._codecs)
             rpc.set_interface(self.interface)
             rpc.init()
@@ -115,8 +128,23 @@ class SocketIOManager:
                 api.disposeObject = rpc.dispose_object
 
             rpc.on("remoteReady", patch_api)
+
+            if on_ready_callback:
+
+                def ready(_):
+                    on_ready_callback(rpc.get_remote())
+
+                rpc.once("interfaceSetAsRemote", ready)
+            if on_error_callback:
+                rpc.once("disconnected", on_error_callback)
+                rpc.on("error", on_error_callback)
+
             self.clients[client_channel] = dotdict()
             self.clients[client_channel].rpc = rpc
+
+        if on_error_callback:
+            connection.once("disconnected", on_error_callback)
+            connection.once("error", on_error_callback)
 
         connection.once("initialize", initialize)
         connection.emit(
@@ -132,18 +160,19 @@ class SocketIOManager:
 class SocketioConnection(MessageEmitter):
     """Represent a SocketIO connection."""
 
-    def __init__(self, config, sio, plugin_channel, client_channel):
+    def __init__(self, config, sio, plugin_id, client_channel):
         """Set up instance."""
         self.config = dotdict(config or {})
         super().__init__(logger)
-        self.sio = sio
+
         self.peer_id = client_channel
         self.client_channel = client_channel
-        self.plugin_channel = plugin_channel
+        self.plugin_id = plugin_id
 
-        @sio.on(plugin_channel)
-        def on_message(data):
-            """Handle a message."""
+        self.sio = sio
+
+        @sio.event
+        def plugin_message(data):
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
                 if "type" in data:
                     self._fire(data["type"], data)
@@ -162,6 +191,7 @@ class SocketioConnection(MessageEmitter):
         @sio.event
         def disconnect():
             """Handle disconnection."""
+            self.disconnect()
             self._fire("disconnected")
 
     def connect(self):
@@ -172,6 +202,13 @@ class SocketioConnection(MessageEmitter):
         """Disconnect."""
         pass
 
+    def _msg_callback(self, data):
+        if not data.get("success"):
+            self._fire("error", data.get("detail"))
+
     def emit(self, msg):
         """Emit a message."""
-        asyncio.ensure_future(self.sio.emit(self.plugin_channel, msg))
+        msg["plugin_id"] = self.plugin_id
+        asyncio.ensure_future(
+            self.sio.emit("plugin_message", msg, callback=self._msg_callback)
+        )

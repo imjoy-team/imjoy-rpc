@@ -73,7 +73,7 @@ class RPC(MessageEmitter):
         try:
             # FIXME: What exception do we expect?
             self.loop = asyncio.get_event_loop()
-        except Exception:
+        except RuntimeError:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
 
@@ -94,17 +94,21 @@ class RPC(MessageEmitter):
             }
         )
 
-    def start(self):
-        """Start the RPC."""
-        self.run_forever()
-
-    def register(self, plugin_path):
-        """Register a plugin."""
-        # FIXME: What happens here?
-        # service = Service(plugin_path)
+    def reset(self):
+        """Reset."""
+        self._event_handlers = {}
+        self.services = {}
+        self._object_store = {}
+        self._method_weakmap = weakref.WeakKeyDictionary()
+        self._object_weakmap = weakref.WeakKeyDictionary()
+        self._local_api = None
+        self._remote_set = False
+        self._store = ReferenceStore()
+        self._remote_interface = None
 
     def disconnect(self, conn):
         """Disconnect."""
+        self.reset()
 
     def default_exit(self):
         """Exit default."""
@@ -147,7 +151,10 @@ class RPC(MessageEmitter):
         # store it in a docdict such that the methods are hashable
         self._local_api = dotdict(api) if isinstance(api, dict) else api
 
-        self._fire("interfaceAvailable")
+        if not self._remote_set:
+            self._fire("interfaceAvailable")
+        else:
+            self.send_interface()
 
         # we might installed modules when solving requirements
         # so let's check it again
@@ -164,6 +171,10 @@ class RPC(MessageEmitter):
             logger.warning(
                 "Failed to import numpy, ndarray encoding/decoding will not work"
             )
+
+    def request_remote(self):
+        """Request remote interface."""
+        self._connection.emit({"type": "getInterface"})
 
     def send_interface(self):
         """Send interface."""
@@ -315,7 +326,12 @@ class RPC(MessageEmitter):
     def set_remote_interface(self, api):
         """Set remote interface."""
         _remote = self._decode(api, False)
-        self._remote_interface = _remote
+        # update existing interface instead of recreating it
+        if self._remote_interface:
+            for k in _remote:
+                self._remote_interface[k] = _remote[k]
+        else:
+            self._remote_interface = _remote
         self._fire("remoteReady")
         self._run_with_context(self._set_remote_api, _remote)
 
@@ -370,10 +386,10 @@ class RPC(MessageEmitter):
 
     def _setup_handlers(self, connection):
         connection.on("init", self.init)
-        connection.on("disconnected", self.disconnect)
         connection.on("execute", self._handle_execute)
         connection.on("method", self._handle_method)
         connection.on("callback", self._handle_callback)
+        connection.on("error", self._handle_error)
         connection.on("disconnected", self._disconnected_hanlder)
         connection.on("getInterface", self._get_interface_handler)
         connection.on("setInterface", self._set_interface_handler)
@@ -389,7 +405,9 @@ class RPC(MessageEmitter):
             self._connection.emit({"type": "disposed", "error": str(e)})
 
     def _disconnected_hanlder(self, data):
+        self._fire("beforeDisconnect")
         self._connection.disconnect()
+        self._fire("disconnected", data)
 
     def _get_interface_handler(self, data):
         if self._local_api is not None:
@@ -403,6 +421,7 @@ class RPC(MessageEmitter):
 
     def _remote_set_handler(self, data):
         self._remote_set = True
+        self._fire("interfaceSetAsRemote")
 
     def _handle_execute(self, data):
         if self.allow_execution:
@@ -456,7 +475,7 @@ class RPC(MessageEmitter):
             traceback_error = traceback.format_exc()
             logger.exception("Error during calling method: %s", err)
             self._connection.emit({"type": "error", "message": traceback_error})
-            if reject:
+            if callable(reject):
                 reject(traceback_error)
 
     def _handle_callback(self, data):
@@ -499,8 +518,11 @@ class RPC(MessageEmitter):
             traceback_error = traceback.format_exc()
             logger.exception("error when calling callback function: %s", err)
             self._connection.emit({"type": "error", "message": traceback_error})
-            if reject:
+            if callable(reject):
                 reject(traceback_error)
+
+    def _handle_error(self, detail):
+        self._fire("error", detail)
 
     def wrap(self, args, as_interface=False):
         """Wrap arguments."""
@@ -659,8 +681,9 @@ class RPC(MessageEmitter):
                 # remove interface when closed
                 if "on" in a_object_norm and callable(a_object_norm["on"]):
 
-                    def remove_interface():
-                        del self._object_store[object_id]
+                    def remove_interface(_):
+                        if object_id in self._object_store:
+                            del self._object_store[object_id]
 
                     a_object_norm["on"]("close", remove_interface)
             else:

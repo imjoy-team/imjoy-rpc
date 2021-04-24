@@ -75,11 +75,16 @@ class JupyterCommManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
-    def start(self, target="imjoy_rpc"):
+    def start(self, target="imjoy_rpc", on_ready_callback=None, on_error_callback=None):
         """Start."""
-        get_ipython().kernel.comm_manager.register_target(
-            target, self._create_new_connection
-        )
+
+        def registered(comm, open_msg):
+            """Handle registration."""
+            self._create_new_connection(
+                comm, open_msg, on_ready_callback, on_error_callback
+            )
+
+        get_ipython().kernel.comm_manager.register_target(target, registered)
 
     def init(self, config=None):
         """Initialize the connection."""
@@ -89,7 +94,9 @@ class JupyterCommManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def _create_new_connection(self, comm, open_msg):
+    def _create_new_connection(
+        self, comm, open_msg, on_ready_callback, on_error_callback
+    ):
         """Create a new connection."""
         connection_id.set(comm.comm_id)
         connection = JupyterCommConnection(self.default_config, comm, open_msg)
@@ -116,9 +123,20 @@ class JupyterCommManager:
                 api.disposeObject = rpc.dispose_object
 
             rpc.on("remoteReady", patch_api)
+            if on_ready_callback:
 
+                def ready(_):
+                    on_ready_callback(rpc.get_remote())
+
+                rpc.once("interfaceSetAsRemote", ready)
+            if on_error_callback:
+                rpc.once("disconnected", on_error_callback)
+                rpc.on("error", on_error_callback)
             self.clients[comm.comm_id].rpc = rpc
 
+        if on_error_callback:
+            connection.once("disconnected", on_error_callback)
+            connection.once("error", on_error_callback)
         connection.once("initialize", initialize)
         connection.emit(
             {

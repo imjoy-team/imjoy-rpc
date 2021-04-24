@@ -20,11 +20,27 @@ pip install imjoy-rpc
 npm install imjoy-rpc
 ```
 
+For RPC communication within the browser:
 ```js
-import * as imjoyRPC from 'imjoy-rpc';
+import { imjoyRPC } from 'imjoy-rpc';
 
 imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
  // call api.export to expose your plugin api
+})
+```
+
+If you want to connect to a remote imjoy engine server:
+```js
+import { imjoyRPCSocketIO } from 'imjoy-rpc';
+
+imjoyRPCSocketIO.connectToServer({
+    name: 'My Awesome App',
+    workspace: "my-workspace",
+    server_url: "https://api.imjoy.io",
+    token: "2s39elrw....",
+}).then((api)=>{
+ // call api.export to expose your plugin api
+
 })
 ```
 
