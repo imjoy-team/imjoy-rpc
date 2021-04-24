@@ -351,7 +351,7 @@ class RPC(MessageEmitter):
                             resolve(result)
                         elif result is not None:
                             logger.debug("returned value %s", result)
-                    except Exception as ex:
+                    except Exception:
                         traceback_error = traceback.format_exc()
                         logger.error("error in method %s", traceback_error)
                         self._connection.emit(
@@ -364,7 +364,7 @@ class RPC(MessageEmitter):
             else:
                 if resolve is not None:
                     resolve(result)
-        except Exception as e:
+        except Exception:
             traceback_error = traceback.format_exc()
             logger.error("error in method %s: %s", method_name, traceback_error)
             self._connection.emit({"type": "error", "message": traceback_error})
