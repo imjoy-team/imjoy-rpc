@@ -77,6 +77,7 @@ class JupyterCommManager:
 
     def start(self, target="imjoy_rpc", on_ready_callback=None, on_error_callback=None):
         """Start."""
+
         def registered(comm, open_msg):
             """Registered."""
             self._create_new_connection(
