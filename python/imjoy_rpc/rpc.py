@@ -459,7 +459,7 @@ class RPC(MessageEmitter):
                 self._run_with_context(
                     self._call_method, method, *args, method_name=data["name"]
                 )
-        except Exception as e:
+        except Exception:
             traceback_error = traceback.format_exc()
             logger.error("error during calling method: %s", traceback_error)
             self._connection.emit({"type": "error", "message": traceback_error})
