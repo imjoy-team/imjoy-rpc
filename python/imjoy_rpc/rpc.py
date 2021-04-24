@@ -173,6 +173,7 @@ class RPC(MessageEmitter):
             )
 
     def request_remote(self):
+        """Request remote interface."""
         self._connection.emit({"type": "getInterface"})
 
     def send_interface(self):

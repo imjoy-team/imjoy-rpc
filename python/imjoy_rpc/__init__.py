@@ -33,10 +33,14 @@ _rpc_context.default_config = {}
 
 
 class ApiWrapper(dict):
+    """Represent the wrapped API."""
+
     def __init__(self):
+        """Set up instance."""
         self.__initialized = False
 
     def __getattr__(self, attr):
+        """Return an attribute."""
         if not self.__initialized:
             connection_type = os.environ.get("IMJOY_RPC_CONNECTION") or type_of_script()
             setup_connection(_rpc_context, connection_type, logger)
@@ -49,6 +53,7 @@ default_config = LocalProxy(_rpc_context, "default_config")
 
 
 def _connect(connection_type, config=None, **kwargs):
+    """Connect."""
     import asyncio
 
     config = config or {}
@@ -57,6 +62,7 @@ def _connect(connection_type, config=None, **kwargs):
     loop = asyncio.get_event_loop()
     fut = loop.create_future()
     # passing server_url, token and workspace
+
     def on_ready_callback(result):
         if fut.done():
             return
@@ -64,6 +70,7 @@ def _connect(connection_type, config=None, **kwargs):
         fut.set_result(result)
 
     def on_error_callback(detail):
+        """Handle error."""
         if fut.done():
             if detail:
                 logger.error(str(detail))
@@ -91,5 +98,6 @@ connect_to_pyodide = partial(_connect, "pyodide")
 
 
 def connect(config=None, **kwargs):
+    """Connect."""
     connection_type = os.environ.get("IMJOY_RPC_CONNECTION") or type_of_script()
     return _connect(connection_type, config=config, **kwargs)
