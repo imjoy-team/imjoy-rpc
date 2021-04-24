@@ -12,8 +12,6 @@ import weakref
 from collections import OrderedDict
 from functools import reduce
 
-from werkzeug.local import Local
-
 from .utils import (
     dotdict,
     format_traceback,
@@ -70,7 +68,7 @@ class RPC(MessageEmitter):
 
         try:
             self.loop = asyncio.get_event_loop()
-        except:
+        except RuntimeError:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
 
