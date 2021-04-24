@@ -10,7 +10,7 @@ on:
     branches: [master]
 
 jobs:
-  test-and-build:
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
