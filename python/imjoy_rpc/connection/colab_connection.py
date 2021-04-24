@@ -74,7 +74,7 @@ class ColabManager:
         """Start."""
 
         def registered(comm, open_msg):
-            """Registered."""
+            """Handle registration."""
             self._create_new_connection(
                 comm, open_msg, on_ready_callback, on_error_callback
             )

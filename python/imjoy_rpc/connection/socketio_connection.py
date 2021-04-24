@@ -91,7 +91,7 @@ class SocketIOManager:
 
         @sio.event
         async def connect():
-            """Connected."""
+            """Handle connected."""
             logger.info("connected to the server")
             await sio.emit("register_plugin", self.default_config, callback=registered)
 
