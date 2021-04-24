@@ -1,8 +1,8 @@
-"""Provide utility functions for RPC"""
+"""Provide utility functions for RPC."""
 import sys
 
 if sys.version_info < (3, 7):
-    import aiocontextvars
+    import aiocontextvars  # noqa: F401
 import contextvars
 import asyncio
 import copy
@@ -20,6 +20,7 @@ class dotdict(dict):  # pylint: disable=invalid-name
     __delattr__ = dict.__delitem__
 
     def __hash__(self):
+        """Return the hash."""
         # TODO: is there any performance impact?
         return hash(tuple(sorted(self.items())))
 
@@ -168,16 +169,21 @@ class FuturePromise(Promise, asyncio.Future):
 
 
 class MessageEmitter:
+    """Represent a message emitter."""
+
     def __init__(self, logger=None):
+        """Set up instance."""
         self._event_handlers = {}
         self._logger = logger
 
     def on(self, event, handler):
+        """Register an event handler."""
         if event not in self._event_handlers:
             self._event_handlers[event] = []
         self._event_handlers[event].append(handler)
 
     def once(self, event, handler):
+        """Register an event handler that should only run once."""
         # wrap the handler function,
         # this is needed because setting property
         # won't work for member function of a class instance
@@ -188,6 +194,7 @@ class MessageEmitter:
         self.on(event, wrap_func)
 
     def off(self, event=None, handler=None):
+        """Reset one or all event handlers."""
         if event is None and handler is None:
             self._event_handlers = {}
         elif event is not None and handler is None:
@@ -198,17 +205,19 @@ class MessageEmitter:
                 self._event_handlers[event].remove(handler)
 
     def emit(self, msg):
+        """Emit a message."""
         raise NotImplementedError
 
     def _fire(self, event, data=None):
+        """Fire an event handler."""
         if event in self._event_handlers:
             for handler in self._event_handlers[event]:
                 try:
                     handler(data)
-                except Exception:
+                except Exception as err:
                     traceback_error = traceback.format_exc()
                     if self._logger:
-                        self._logger.error(traceback_error)
+                        self._logger.exception(err)
                     self.emit({"type": "error", "message": traceback_error})
                 finally:
                     if hasattr(handler, "___event_run_once"):
@@ -219,7 +228,10 @@ class MessageEmitter:
 
 
 class ContextLocal(Local):
+    """Represent a local context."""
+
     def __init__(self, default_context_id=None):
+        """Set up instance."""
         if default_context_id is None:
             default_context_id = "_"
         object.__setattr__(
@@ -231,9 +243,11 @@ class ContextLocal(Local):
         object.__setattr__(self, "__default_context_id__", default_context_id)
 
     def set_default_context(self, context_id):
+        """Set the default context."""
         object.__setattr__(self, "__default_context_id__", context_id)
 
     def run_with_context(self, context_id, func, *args, **kwargs):
+        """Run with the context."""
         # make sure we obtain the context with the correct context_id
         with object.__getattribute__(self, "__thread_lock__"):
             object.__getattribute__(self, "__context_id__").set(context_id)
@@ -242,6 +256,7 @@ class ContextLocal(Local):
         ctx.run(func, *args, **kwargs)
 
     def __get_ident(self):
+        """Return the context identity."""
         ident = object.__getattribute__(self, "__context_id__").get()
         if ident is None:
             return object.__getattribute__(self, "__default_context_id__")
@@ -251,6 +266,7 @@ class ContextLocal(Local):
 
 
 def encode_zarr_store(zobj):
+    """Encode the zarr store."""
     import zarr
 
     path_prefix = f"{zobj.path}/" if zobj.path else ""
@@ -275,6 +291,7 @@ def encode_zarr_store(zobj):
 
 
 def register_default_codecs(options=None):
+    """Register default codecs."""
     from imjoy_rpc import api
 
     if options is None or "zarr-array" in options:
@@ -299,7 +316,7 @@ def setup_connection(
     on_ready_callback=None,
     on_error_callback=None,
 ):
-
+    """Set up the connection."""
     if connection_type == "jupyter":
         if logger:
             logger.info("Using jupyter connection for imjoy-rpc")
@@ -368,25 +385,25 @@ def setup_connection(
 
 
 def type_of_script():
+    """Return the type of the script."""
     try:
-        import google.colab.output
+        import google.colab.output  # noqa: F401
 
         return "colab"
-    except:
+    except ImportError:
         try:
             # check if get_ipython exists without exporting it
             # from IPython import get_ipython
-
-            ipy_str = str(type(get_ipython()))
+            ipy_str = str(type(get_ipython()))  # noqa: F821
             if "zmqshell" in ipy_str:
                 return "jupyter"
             if "terminal" in ipy_str:
                 return "ipython"
-        except:
+        except NameError:
             try:
-                import js
-                import pyodide
+                import js  # noqa: F401
+                import pyodide  # noqa: F401
 
                 return "pyodide"
-            except:
+            except ImportError:
                 return "terminal"

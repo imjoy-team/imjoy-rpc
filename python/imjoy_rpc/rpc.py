@@ -1,11 +1,11 @@
+"""Provide the RPC."""
 import asyncio
 import inspect
+import io
 import logging
 import os
-import io
 import sys
 import threading
-import time
 import traceback
 import uuid
 import weakref
@@ -13,11 +13,11 @@ from collections import OrderedDict
 from functools import reduce
 
 from .utils import (
-    dotdict,
-    format_traceback,
-    ReferenceStore,
     FuturePromise,
     MessageEmitter,
+    ReferenceStore,
+    dotdict,
+    format_traceback,
 )
 
 API_VERSION = "0.2.3"
@@ -27,6 +27,7 @@ logger = logging.getLogger("RPC")
 
 
 def index_object(obj, ids):
+    """Index an object."""
     if isinstance(ids, str):
         return index_object(obj, ids.split("."))
     elif len(ids) == 0:
@@ -42,7 +43,10 @@ def index_object(obj, ids):
 
 
 class RPC(MessageEmitter):
+    """Represent the RPC."""
+
     def __init__(self, connection, rpc_context, config=None, codecs=None):
+        """Set up instance."""
         self.manager_api = {}
         self.services = {}
         self._object_store = {}
@@ -67,6 +71,7 @@ class RPC(MessageEmitter):
         super().__init__(self._remote_logger)
 
         try:
+            # FIXME: What exception do we expect?
             self.loop = asyncio.get_event_loop()
         except RuntimeError:
             self.loop = asyncio.new_event_loop()
@@ -79,6 +84,7 @@ class RPC(MessageEmitter):
         self.check_modules()
 
     def init(self):
+        """Initialize the RPC."""
         logger.info("%s initialized", self.config.name)
         self._connection.emit(
             {
@@ -89,6 +95,7 @@ class RPC(MessageEmitter):
         )
 
     def reset(self):
+        """Reset."""
         self._event_handlers = {}
         self.services = {}
         self._object_store = {}
@@ -99,16 +106,17 @@ class RPC(MessageEmitter):
         self._store = ReferenceStore()
         self._remote_interface = None
 
-    def disconnect(self, detail):
+    def disconnect(self, conn):
+        """Disconnect."""
         self.reset()
 
     def default_exit(self):
         """Exit default."""
         logger.info("Terminating plugin: %s", self.id)
         self.abort.set()
-        # os._exit(0)  # pylint: disable=protected-access
 
     def set_config(self, config):
+        """Set config."""
         if config is not None:
             config = dotdict(config)
         else:
@@ -131,6 +139,7 @@ class RPC(MessageEmitter):
         )
 
     def get_remote(self):
+        """Return the remote interface."""
         return self._remote_interface
 
     def set_interface(self, api, config=None):
@@ -151,16 +160,16 @@ class RPC(MessageEmitter):
         # so let's check it again
         self.check_modules()
 
-    def check_modules(self,):
+    def check_modules(self):
         """Check if all the modules exists."""
         try:
             import numpy as np
 
             self.NUMPY_MODULE = np
-        except:
+        except ImportError:
             self.NUMPY_MODULE = False
-            logger.warn(
-                "failed to import numpy, ndarray encoding/decoding will not work"
+            logger.warning(
+                "Failed to import numpy, ndarray encoding/decoding will not work"
             )
 
     def request_remote(self):
@@ -208,13 +217,17 @@ class RPC(MessageEmitter):
             raise Exception("Object (id={}) not found.".format(object_id))
 
     def dispose_object(self, obj):
+        """Dispose object."""
         if obj in self._object_weakmap:
             object_id = self._object_weakmap[obj]
         else:
             raise Exception("Invalid object")
 
         def pfunc(resolve, reject):
+            """Handle plugin function."""
+
             def handle_disposed(data):
+                """Handle disposed."""
                 if "error" in data:
                     reject(data["error"])
                 else:
@@ -273,7 +286,8 @@ class RPC(MessageEmitter):
 
                 def pfunc(resolve, reject):
                     encoded_promise = self.wrap([resolve, reject])
-                    # store the key id for removing them from the reference store together
+                    # store the key id
+                    # for removing them from the reference store together
                     resolve.__promise_pair = encoded_promise[0]["_rvalue"]
                     reject.__promise_pair = encoded_promise[1]["_rvalue"]
                     self._connection.emit(
@@ -346,9 +360,9 @@ class RPC(MessageEmitter):
                             resolve(result)
                         elif result is not None:
                             logger.debug("returned value %s", result)
-                    except Exception:
+                    except Exception as err:
                         traceback_error = traceback.format_exc()
-                        logger.error("error in method %s", traceback_error)
+                        logger.exception("Error in method %s", err)
                         self._connection.emit(
                             {"type": "error", "message": traceback_error}
                         )
@@ -359,9 +373,9 @@ class RPC(MessageEmitter):
             else:
                 if resolve is not None:
                     resolve(result)
-        except Exception:
+        except Exception as err:
             traceback_error = traceback.format_exc()
-            logger.error("error in method %s: %s", method_name, traceback_error)
+            logger.error("Error in method %s: %s", method_name, err)
             self._connection.emit({"type": "error", "message": traceback_error})
             if reject is not None:
                 reject(Exception(format_traceback(traceback_error)))
@@ -422,9 +436,9 @@ class RPC(MessageEmitter):
                 else:
                     raise Exception("unsupported type")
                 self._connection.emit({"type": "executed"})
-            except Exception as e:
+            except Exception as err:
                 traceback_error = traceback.format_exc()
-                logger.error("error during execution: %s", traceback_error)
+                logger.exception("Error during execution: %s", err)
                 self._connection.emit({"type": "executed", "error": traceback_error})
         else:
             self._connection.emit(
@@ -456,9 +470,9 @@ class RPC(MessageEmitter):
                 self._run_with_context(
                     self._call_method, method, *args, method_name=data["name"]
                 )
-        except Exception:
+        except Exception as err:
             traceback_error = traceback.format_exc()
-            logger.error("error during calling method: %s", traceback_error)
+            logger.exception("Error during calling method: %s", err)
             self._connection.emit({"type": "error", "message": traceback_error})
             if callable(reject):
                 reject(traceback_error)
@@ -499,9 +513,9 @@ class RPC(MessageEmitter):
                 self._run_with_context(
                     self._call_method, method, *args, method_name=data["id"]
                 )
-        except Exception as e:
+        except Exception as err:
             traceback_error = traceback.format_exc()
-            logger.error("error when calling callback function: %s", traceback_error)
+            logger.exception("error when calling callback function: %s", err)
             self._connection.emit({"type": "error", "message": traceback_error})
             if callable(reject):
                 reject(traceback_error)
@@ -531,7 +545,7 @@ class RPC(MessageEmitter):
                 }
                 try:
                     self._method_weakmap[a_object] = b_object
-                except:
+                except Exception:
                     pass
             elif a_object in self._method_weakmap:
                 b_object = self._method_weakmap[a_object]
@@ -617,7 +631,7 @@ class RPC(MessageEmitter):
                 "_rtype": "set",
                 "_rvalue": self._encode(list(a_object), as_interface),
             }
-        elif hasattr(a_object, "_rintf") and a_object._rintf == True:
+        elif hasattr(a_object, "_rintf") and a_object._rintf is True:
             b_object = self._encode(a_object, True)
         elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
             b_object = [] if isarray else {}
@@ -649,9 +663,9 @@ class RPC(MessageEmitter):
                         a_object_norm[key],
                         as_interface + "." + str(key)
                         if isinstance(as_interface, str)
-                        else str(
-                            key
-                        ),  # we need to convert to a string here, otherwise 0 will not treat as True value
+                        else str(key),
+                        # We need to convert to a string here,
+                        # otherwise 0 will not be truthy.
                         object_id,
                     )
                     if callable(a_object_norm[key]):
