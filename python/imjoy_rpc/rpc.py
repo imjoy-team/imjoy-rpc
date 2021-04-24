@@ -90,7 +90,6 @@ class RPC(MessageEmitter):
             }
         )
 
-
     def reset(self):
         self._event_handlers = {}
         self.services = {}
