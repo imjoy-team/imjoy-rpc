@@ -160,7 +160,7 @@ class SocketIOManager:
 class SocketioConnection(MessageEmitter):
     """Represent a SocketIO connection."""
 
-    def __init__(self, config, sio, plugin_channel, client_channel):
+    def __init__(self, config, sio, plugin_id, client_channel):
         """Set up instance."""
         self.config = dotdict(config or {})
         super().__init__(logger)
