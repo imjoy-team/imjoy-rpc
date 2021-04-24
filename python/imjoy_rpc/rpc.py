@@ -463,7 +463,7 @@ class RPC(MessageEmitter):
             traceback_error = traceback.format_exc()
             logger.error("error during calling method: %s", traceback_error)
             self._connection.emit({"type": "error", "message": traceback_error})
-            if reject:
+            if callable(reject):
                 reject(traceback_error)
 
     def _handle_callback(self, data):
@@ -506,7 +506,7 @@ class RPC(MessageEmitter):
             traceback_error = traceback.format_exc()
             logger.error("error when calling callback function: %s", traceback_error)
             self._connection.emit({"type": "error", "message": traceback_error})
-            if reject:
+            if callable(reject):
                 reject(traceback_error)
 
     def _handle_error(self, detail):
