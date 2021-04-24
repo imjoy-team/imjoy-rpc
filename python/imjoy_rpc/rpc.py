@@ -90,8 +90,6 @@ class RPC(MessageEmitter):
             }
         )
 
-    def start(self):
-        self.run_forever()
 
     def reset(self):
         self._event_handlers = {}
