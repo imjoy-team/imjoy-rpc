@@ -205,7 +205,7 @@ class MessageEmitter:
             for handler in self._event_handlers[event]:
                 try:
                     handler(data)
-                except Exception as e:
+                except Exception:
                     traceback_error = traceback.format_exc()
                     if self._logger:
                         self._logger.error(traceback_error)

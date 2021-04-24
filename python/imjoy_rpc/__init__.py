@@ -79,7 +79,7 @@ def _connect(connection_type, config=None, **kwargs):
         on_error_callback=on_error_callback,
     )
     _rpc_context.api.__initialized = True
-    api.export({})
+    _rpc_context.api.export({})
     return fut
 
 
