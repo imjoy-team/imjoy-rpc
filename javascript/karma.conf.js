@@ -20,13 +20,6 @@ module.exports = function (config) {
             // and require all tests in there
             'tests/*_test.js',
             {
-                pattern: 'src/jailed/*',
-                watched: false,
-                included: false,
-                served: true,
-                nocache: false
-            },
-            {
                 pattern: 'src/*.js',
                 watched: false,
                 included: false,
