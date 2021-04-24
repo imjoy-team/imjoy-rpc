@@ -29,7 +29,6 @@ module.exports = function (config) {
         ],
 
         proxies: {
-            "/static/jailed/": "/base/src/jailed/",
             "/plugin-service-worker.js": "/base/src/plugin-service-worker.js"
         },
 
