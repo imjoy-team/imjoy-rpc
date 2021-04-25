@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  check:
+    name: Check versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v2.3.4
+      - name: Get Python version
+        id: python-version
+        run: |
+          echo "::set-output name=version::$(cat python/imjoy_rpc/VERSION | jq -r '.version')"
+      - name: Get Javascript version
+        id: js-version
+        run: |
+          echo "::set-output name=version::$(cat javascript/package.json | jq -r '.version')"
+      - name: Compare versions
+        run: |
+          .github/check-versions.sh "${{ steps.python-version.outputs.version }}" "${{ steps.js-version.outputs.version }}"
+
+  release-python:
+    name: Release Python
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v2.3.4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2.2.2
+        with:
+          python-version: "3.8"
+
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip
+          pip --version
+
+      - name: Go to Python directory
+        run: |
+          cd python
+
+      - name: Install dependencies
+        run: |
+          pip install tox tox-gh-actions
+          pip install -r requirements_pypi.txt
+
+      - name: Test with tox
+        run: tox
+
+      - name: Check if there is a parent commit
+        id: check-parent-commit
+        run: |
+          echo "::set-output name=sha::$(git rev-parse --verify --quiet HEAD^)"
+
+      - name: Detect and tag new version
+        id: check-version
+        if: steps.check-parent-commit.outputs.sha
+        uses: salsify/action-detect-and-tag-new-version@v2.0.1
+        with:
+          version-command: |
+            bash -o pipefail -c "cat imjoy_rpc/VERSION | jq -r '.version'"
+
+      - name: Build package
+        run: |
+          python setup.py sdist bdist_wheel
+
+      - name: Publish package on PyPI
+        if: steps.check-version.outputs.tag
+        uses: pypa/gh-action-pypi-publish@v1.4.2
+        with:
+          user: __token__
+          password: "${{ secrets.PYPI_TOKEN }}"
+
+      - name: Publish the release notes
+        uses: release-drafter/release-drafter@v5.15.0
+        with:
+          publish: "${{ steps.check-version.outputs.tag != '' }}"
+          tag: "${{ steps.check-version.outputs.tag }}"
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+  release-js:
+    name: Release Javascript
+    needs: release-python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 15.5.0
+          registry-url: "https://registry.npmjs.org"
+      - run: npm ci
+      - run: npm run check-format
+      - run: npm run test
+      - run: npm run build
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
