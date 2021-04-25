@@ -50,6 +50,7 @@ def jupyter_server_fixture():
 
 @pytest.fixture(name="websocket_connection")
 def websocket_connection_fixture(jupyter_server):
+    """Websocket connection fixture."""
     url = BASE_URL + "/api/kernels"
     response = requests.post(url)
     kernel = json.loads(response.text)
@@ -63,6 +64,7 @@ def websocket_connection_fixture(jupyter_server):
 
 
 def send_execute_request(code):
+    """Send an execution request to the notebook server."""
     msg_type = "execute_request"
     content = {"code": code, "silent": False}
     hdr = {
@@ -78,6 +80,7 @@ def send_execute_request(code):
 
 
 def execute(ws, code):
+    """Execute python code in a Jupyter notebook."""
     ws.send(json.dumps(send_execute_request(code)))
     # We ignore all the other messages, we just get the code execution output
     msg_type = ""
@@ -95,7 +98,7 @@ def execute(ws, code):
             print(rsp["content"]["text"])
 
 
-test_code = """
+TEST_CODE = """
 import asyncio
 from imjoy_rpc import connect_to_jupyter, api
 
@@ -105,4 +108,5 @@ api.export({})
 
 
 def test_jupyter_rpc(websocket_connection):
-    execute(websocket_connection, test_code)
+    """Testing imjoy rpc in jupyter notebooks."""
+    execute(websocket_connection, TEST_CODE)
