@@ -90,6 +90,8 @@ class SocketIOManager:
                 )
             else:
                 logger.error(config.get("detail"))
+                if on_error_callback:
+                    on_error_callback(config.get("detail"))
                 raise Exception(f"Failed to register plugin: {config.get('detail')}")
 
         @sio.event
@@ -99,7 +101,16 @@ class SocketIOManager:
             await sio.emit("register_plugin", self.default_config, callback=registered)
 
         self.sio = sio
-        asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
+        fut = asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
+
+        def check_error():
+            try:
+                fut.result()
+            except Exception as ex:
+                if on_error_callback:
+                    on_error_callback(ex)
+
+        fut.add_done_callback(check_error)
 
     def _create_new_connection(
         self, sio, plugin_id, client_channel, on_ready_callback, on_error_callback
