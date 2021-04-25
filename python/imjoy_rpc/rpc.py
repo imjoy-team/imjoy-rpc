@@ -563,7 +563,9 @@ class RPC(MessageEmitter):
                 cid = self._store.put(a_object)
                 b_object = {
                     "_rtype": "callback",
-                    "_rname": a_object.__name__,
+                    # Some functions do not have the __name__ attribute
+                    # for example when we use functools.partial to create functions
+                    "_rname": getattr(a_object, "__name__", cid),
                     "_rtarget_id": self._connection.peer_id,
                     "_rvalue": cid,
                 }
