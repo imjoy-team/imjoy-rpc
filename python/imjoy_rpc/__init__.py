@@ -78,16 +78,16 @@ def _connect(connection_type, config=None, **kwargs):
         logger.error("Plugin failed with error: " + str(detail))
         fut.set_exception(Exception("Plugin failed with error: " + str(detail)))
 
-    default_config.update(config)
+    rpc_context = ContextLocal()
+    rpc_context.default_config = config
     setup_connection(
-        _rpc_context,
+        rpc_context,
         connection_type,
         logger=logger,
         on_ready_callback=on_ready_callback,
         on_error_callback=on_error_callback,
     )
-    _rpc_context.api.__initialized = True
-    _rpc_context.api.export({})
+    rpc_context.api.export({})
     return fut
 
 
@@ -98,6 +98,6 @@ connect_to_pyodide = partial(_connect, "pyodide")
 
 
 def connect(config=None, **kwargs):
-    """Connect."""
+    """Connect to an ImJoy core based on the current python environment."""
     connection_type = os.environ.get("IMJOY_RPC_CONNECTION") or type_of_script()
     return _connect(connection_type, config=config, **kwargs)

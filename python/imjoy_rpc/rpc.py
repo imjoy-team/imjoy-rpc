@@ -160,6 +160,15 @@ class RPC(MessageEmitter):
         # so let's check it again
         self.check_modules()
 
+        fut = self.loop.create_future()
+
+        def done(result):
+            if not fut.done():
+                fut.set_result(result)
+
+        self.once("interfaceSetAsRemote", done)
+        return fut
+
     def check_modules(self):
         """Check if all the modules exists."""
         try:
