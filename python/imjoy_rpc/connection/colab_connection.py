@@ -83,7 +83,12 @@ class ColabManager:
                 comm, open_msg, on_ready_callback, on_error_callback
             )
 
-        get_ipython().kernel.comm_manager.register_target(target, registered)
+        try:
+            get_ipython().kernel.comm_manager.register_target(target, registered)
+        except Exception as ex:
+            if on_error_callback:
+                on_error_callback(ex)
+            raise ex
 
     def init(self, config=None):
         """Initialize the connection."""

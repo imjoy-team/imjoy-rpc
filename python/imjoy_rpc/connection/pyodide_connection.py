@@ -69,7 +69,12 @@ class PyodideConnectionManager:
         self._codecs[config["name"]] = dotdict(config)
 
     def start(self, target="imjoy_rpc", on_ready_callback=None, on_error_callback=None):
-        self._create_new_connection(target, on_ready_callback, on_error_callback)
+        try:
+            self._create_new_connection(target, on_ready_callback, on_error_callback)
+        except Exception as ex:
+            if on_error_callback:
+                on_error_callback(ex)
+            raise ex
 
     def init(self, config=None):
         # register a minimal plugin api
