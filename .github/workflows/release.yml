@@ -88,6 +88,7 @@ jobs:
         with:
           user: __token__
           password: "${{ secrets.PYPI_TOKEN }}"
+          packages_dir: python/dist/
 
       - name: Publish the release notes
         uses: release-drafter/release-drafter@v5.15.0
