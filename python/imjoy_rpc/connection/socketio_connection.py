@@ -103,7 +103,7 @@ class SocketIOManager:
         self.sio = sio
         fut = asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
 
-        def check_error():
+        def check_error(_):
             try:
                 fut.result()
             except Exception as ex:
