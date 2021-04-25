@@ -66,15 +66,24 @@ jobs:
         if: steps.check-parent-commit.outputs.sha
         uses: salsify/action-detect-and-tag-new-version@v2.0.1
         with:
+          create-tag: false
           version-command: |
             bash -o pipefail -c "cat python/imjoy_rpc/VERSION | jq -r '.version'"
+
+      - name: Push tag
+        id: tag-version
+        if: steps.check-version.outputs.previous-version != steps.check-version.outputs.current-version
+        uses: mathieudutour/github-tag-action@v5.5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          custom_tag: ${{ steps.check-version.outputs.current-version }}
 
       - name: Build package
         run: |
           python setup.py sdist bdist_wheel
 
       - name: Publish package on PyPI
-        if: steps.check-version.outputs.tag
+        if: steps.tag-version.outputs.new_tag
         uses: pypa/gh-action-pypi-publish@v1.4.2
         with:
           user: __token__
@@ -83,8 +92,8 @@ jobs:
       - name: Publish the release notes
         uses: release-drafter/release-drafter@v5.15.0
         with:
-          publish: "${{ steps.check-version.outputs.tag != '' }}"
-          tag: "${{ steps.check-version.outputs.tag }}"
+          publish: "${{ steps.tag-version.outputs.new_tag != '' }}"
+          tag: "${{ steps.tag-version.outputs.new_tag }}"
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
