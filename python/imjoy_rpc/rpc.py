@@ -565,7 +565,7 @@ class RPC(MessageEmitter):
                     "_rtype": "callback",
                     # Some functions do not have the __name__ attribute
                     # for example when we use functools.partial to create functions
-                    "_rname": a_object.__name__ if hasattr(a_object, '__name__') else cid,
+                    "_rname": getattr(a_object, "__name__", cid),
                     "_rtarget_id": self._connection.peer_id,
                     "_rvalue": cid,
                 }
