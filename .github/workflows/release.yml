@@ -29,6 +29,9 @@ jobs:
     name: Release Python
     needs: check
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
     steps:
       - name: Check out the repository
         uses: actions/checkout@v2.3.4
@@ -44,10 +47,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip --version
-
-      - name: Go to Python directory
-        run: |
-          cd python
 
       - name: Install dependencies
         run: |
@@ -93,6 +92,9 @@ jobs:
     name: Release Javascript
     needs: release-python
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: javascript
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
