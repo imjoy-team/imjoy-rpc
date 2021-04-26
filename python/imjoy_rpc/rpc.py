@@ -336,7 +336,9 @@ class RPC(MessageEmitter):
         """Set remote interface."""
         _remote = self._decode(api, False)
         # update existing interface instead of recreating it
+        # this will preserve the object reference
         if self._remote_interface:
+            self._remote_interface.clear()
             for k in _remote:
                 self._remote_interface[k] = _remote[k]
         else:

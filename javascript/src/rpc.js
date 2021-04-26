@@ -343,7 +343,11 @@ export class RPC extends MessageEmitter {
   _setRemoteInterface(api) {
     this._decode(api).then(intf => {
       // update existing interface instead of recreating it
+      // this will preserve the object reference
       if (this._remote_interface) {
+        // clear the interface
+        for (let k in this._remote_interface) delete this._remote_interface[k];
+        // then assign the new interfaces
         Object.assign(this._remote_interface, intf);
       } else this._remote_interface = intf;
       this._fire("remoteReady");
