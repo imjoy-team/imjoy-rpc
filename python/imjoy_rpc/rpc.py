@@ -106,9 +106,11 @@ class RPC(MessageEmitter):
         self._store = ReferenceStore()
         self._remote_interface = None
 
-    def disconnect(self, conn):
+    def disconnect(self):
         """Disconnect."""
+        self._connection.emit({"type": "disconnect"})
         self.reset()
+        self._connection.disconnect()
 
     def default_exit(self):
         """Exit default."""
@@ -203,19 +205,6 @@ class RPC(MessageEmitter):
             }
         else:
             raise Exception("unsupported api export")
-
-        if "exit" in api:
-            ext = api["exit"]
-
-            def exit_wrapper():
-                try:
-                    ext()
-                finally:
-                    self.default_exit()
-
-            api["exit"] = exit_wrapper
-        else:
-            api["exit"] = self.default_exit
 
         api = self._encode(api, True)
         self._connection.emit({"type": "setInterface", "api": api})
