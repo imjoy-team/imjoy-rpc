@@ -42,12 +42,13 @@ class PyodideConnectionManager:
     def set_interface(self, interface, config=None):
         config = config or self.default_config
         config = dotdict(config)
-        config.name = config.name or "Pyodide"
+        config.id = self.rpc_id
+        config.name = config.name or config.id
         config.allow_execution = config.allow_execution or False
         config.version = config.version or "0.1.0"
         config.api_version = config.api_version or "0.2.3"
         config.description = config.description or "[TODO: add description]"
-        config.id = self.rpc_id
+
         self.default_config = config
         self.interface = interface
         futures = []
