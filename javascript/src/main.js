@@ -173,7 +173,7 @@ export function waitForInitialization(config) {
 
 export function setupRPC(config) {
   config = config || {};
-  if (!config.name) throw new Error("Please specify a name for your app.");
+  config.name = config.name || randId();
   config = normalizeConfig(config);
   return new Promise((resolve, reject) => {
     const handleEvent = e => {

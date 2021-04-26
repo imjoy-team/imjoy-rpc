@@ -33,12 +33,12 @@ class SocketIOManager:
         """Set the interface."""
         config = config or self.default_config
         config = dotdict(config)
-        config.name = config.name or "ImJoy Plugin"
+        config.id = str(uuid.uuid4())
+        config.name = config.name or config.id
         config.allow_execution = config.allow_execution or False
         config.version = config.version or "0.1.0"
         config.api_version = config.api_version or "0.2.3"
         config.description = config.description or "[TODO: add description]"
-        config.id = str(uuid.uuid4())
         self.default_config = config
         self.interface = interface
         futures = []

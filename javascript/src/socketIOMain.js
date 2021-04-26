@@ -118,8 +118,8 @@ export class Connection extends MessageEmitter {
 
 export function connectToServer(config) {
   config = config || {};
-  if (!config.name) throw new Error("Plugin name is not specified.");
   if (!config.server_url) throw new Error("Server URL is not specified.");
+  config.name = config.name || randId();
   config = normalizeConfig(config);
   return new Promise((resolve, reject) => {
     const handleEvent = e => {
