@@ -138,6 +138,7 @@ class SocketIOManager:
                 api = rpc.get_remote() or dotdict()
                 api.init = self.init
                 api.export = self.set_interface
+                api.dispose = rpc.disconnect
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object
 
@@ -214,7 +215,7 @@ class SocketioConnection(MessageEmitter):
 
     def disconnect(self):
         """Disconnect."""
-        pass
+        asyncio.ensure_future(self.sio.disconnect())
 
     def _msg_callback(self, data):
         if not data.get("success"):

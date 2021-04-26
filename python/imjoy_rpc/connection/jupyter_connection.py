@@ -129,6 +129,7 @@ class JupyterCommManager:
                 api = rpc.get_remote() or dotdict()
                 api.init = self.init
                 api.export = self.set_interface
+                api.dispose = rpc.disconnect
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object
 
