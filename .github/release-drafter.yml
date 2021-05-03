@@ -18,8 +18,11 @@ autolabeler:
   - label: "enhancement"
     branch:
       - '/feature\/.+/'
+      - '/add\/.+/'
+      - '/support\/.+/'
     title:
       - "/add/i"
+      - "/support/i"
   - label: "refactoring"
     branch:
       - '/refactor\/.+/'
@@ -27,8 +30,10 @@ autolabeler:
       - "/refactor/i"
   - label: "removal"
     branch:
+      - '/deprecate\/.+/'
       - '/remove\/.+/'
     title:
+      - "/deprecate/i"
       - "/remove/i"
   - label: "testing"
     branch:
