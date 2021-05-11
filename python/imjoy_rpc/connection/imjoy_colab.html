@@ -252,10 +252,11 @@
     window_manager_container: "window-container",
     imjoy_api: {
       alert(plugin, msg) {
-        app.showSnackbar(msg);
+        window.imjoyApp.showSnackbar(msg);
       },
     } // override some imjoy API functions here
   }).then(async app => {
+    window.imjoyApp = app;
     makeResizable();
     // get the api object from the root plugin
     const api = app.imjoy.api;
