@@ -231,6 +231,7 @@
     };
   }
 
+  document.getElementById('init-loader').style.display = 'block';
   loadImJoyBasicApp({
     version: '0.13.74',
     process_url_query: true,
@@ -260,7 +261,6 @@
     makeResizable();
     // get the api object from the root plugin
     const api = app.imjoy.api;
-    document.getElementById('loading').style.display = 'block';
     const connection = new Connection()
     const plugin = await app.imjoy.pm
       .connectPlugin(connection)
@@ -271,12 +271,12 @@
     try {
       if (plugin.api.setup) {
         await plugin.api.setup()
-        
+
       }
     } catch (e) {
       console.error(e)
     } finally {
-      document.getElementById('loading').style.display = 'none';
+      document.getElementById('init-loader').style.display = 'none';
     }
     if (plugin.api.run) {
       await plugin.api.run({
@@ -332,4 +332,4 @@
 <div class="loader" id="loading"></div>
 <div id="window-container" style="z-index: 100;"></div>
 <div id="menu-container" style="z-index: 200"></div>
-<div class="imjoy-loader" id="init-loader"></div>
+<div class="imjoy-loader" style="display:none;" id="init-loader"></div>
