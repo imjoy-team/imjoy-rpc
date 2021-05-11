@@ -250,7 +250,11 @@
     main_container: null,
     menu_container: "menu-container",
     window_manager_container: "window-container",
-    imjoy_api: {} // override some imjoy API functions here
+    imjoy_api: {
+      alert(plugin, msg) {
+        app.showSnackbar(msg);
+      },
+    } // override some imjoy API functions here
   }).then(async app => {
     makeResizable();
     // get the api object from the root plugin
