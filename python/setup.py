@@ -18,7 +18,7 @@ VERSION = json.loads(VERSION_FILE.read_text())["version"]
 REQUIRES = [
     "aiocontextvars; python_version<'3.7'",
     "contextvars; python_version<'3.7'",
-    "werkzeug",
+    "werkzeug<=1.0.1",
 ]
 
 setup(
