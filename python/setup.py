@@ -36,10 +36,13 @@ setup(
     include_package_data=True,
     install_requires=REQUIRES,
     extras_require={
-        "full": ["numpy", "zarr"],
-        "jupyter": ["numpy", "ipykernel"],
-        "socketio": [
+        "full": [
             "numpy",
+            "zarr",
+            "python-engineio>=4.0.0",
+            "python-socketio[client]>=5.0.4",
+        ],
+        "socketio": [
             "python-socketio[client]>=5.0.4",
             "python-engineio>=4.0.0",
         ],
