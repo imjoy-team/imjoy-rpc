@@ -31,6 +31,10 @@ function setupWebWorker(config) {
     throw new Error(
       "web-worker plugin can only work with allow_execution=true"
     );
+  let broadcastChannel = null;
+  if (config.broadcastChannel) {
+    broadcastChannel = new BroadcastChannel(config.broadcastChannel);
+  }
   const worker = new PluginWorker();
   // mixed content warning in Chrome silently skips worker
   // initialization without exception, handling this with timeout
@@ -75,20 +79,28 @@ function setupWebWorker(config) {
         delete m.__transferables__;
       }
     }
-    parent.postMessage(m, config.target_origin || "*", transferables);
+    if (broadcastChannel) broadcastChannel.postMessage(m);
+    else parent.postMessage(m, config.target_origin || "*", transferables);
   });
 
-  window.addEventListener("message", function(e) {
-    let transferables = undefined;
-    const m = e.data;
-    if (m.__transferables__) {
-      transferables = m.__transferables__;
-      delete m.__transferables__;
-    }
-    if (m.peer_id === peer_id) {
-      worker.postMessage(m, transferables);
-    } else if (config.debug) {
-      console.log(`connection peer id mismatch ${m.peer_id} !== ${peer_id}`);
+  (broadcastChannel || window).addEventListener("message", function(e) {
+    if (
+      e.type === "message" &&
+      (broadcastChannel ||
+        config.target_origin === "*" ||
+        e.origin === config.target_origin)
+    ) {
+      let transferables = undefined;
+      const m = e.data;
+      if (m.__transferables__) {
+        transferables = m.__transferables__;
+        delete m.__transferables__;
+      }
+      if (m.peer_id === peer_id) {
+        worker.postMessage(m, transferables);
+      } else if (config.debug) {
+        console.log(`connection peer id mismatch ${m.peer_id} !== ${peer_id}`);
+      }
     }
   });
 }

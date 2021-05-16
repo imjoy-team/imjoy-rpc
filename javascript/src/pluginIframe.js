@@ -54,7 +54,16 @@ export class Connection extends MessageEmitter {
   connect() {
     this.config.target_origin = this.config.target_origin || "*";
     // this will call handleEvent function
-    window.addEventListener("message", this);
+    if (this.config.broadcastChannel) {
+      this.broadcastChannel = new BroadcastChannel(
+        this.config.broadcastChannel
+      );
+    } else {
+      this.broadcastChannel = null;
+    }
+    if (this.broadcastChannel)
+      this.broadcastChannel.addEventListener("message", this);
+    else window.addEventListener("message", this);
     this.emit({
       type: "initialized",
       config: this.config,
@@ -66,7 +75,8 @@ export class Connection extends MessageEmitter {
   handleEvent(e) {
     if (
       e.type === "message" &&
-      (this.config.target_origin === "*" ||
+      (this.broadcastChannel ||
+        this.config.target_origin === "*" ||
         e.origin === this.config.target_origin)
     ) {
       if (e.data.peer_id === this.peer_id) {
@@ -89,7 +99,8 @@ export class Connection extends MessageEmitter {
       transferables = data.__transferables__;
       delete data.__transferables__;
     }
-    parent.postMessage(data, this.config.target_origin, transferables);
+    if (this.broadcastChannel) this.broadcastChannel.postMessage(data);
+    else parent.postMessage(data, this.config.target_origin, transferables);
   }
   async execute(code) {
     try {
