@@ -36,7 +36,9 @@ export class Connection extends MessageEmitter {
         transports: ["websocket", "polling", "flashsocket"],
         withCredentials: false,
         extraHeaders,
-        path: basePath + "socket.io"
+        path:
+          (basePath.endsWith("/") ? basePath.slice(0, -1) : basePath) +
+          "/socket.io"
       });
       socket.on("connect", () => {
         socket.emit("register_plugin", config, result => {

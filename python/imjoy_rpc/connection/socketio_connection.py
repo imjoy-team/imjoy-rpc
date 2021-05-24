@@ -81,7 +81,7 @@ class SocketIOManager:
         """Start."""
         sio = socketio.AsyncClient()
         self.url = url
-        socketio_path = (urlparse(url).path + "/socket.io").replace("//", "/")
+        socketio_path = urlparse(url).path.rstrip("/") + "/socket.io"
         self.client_params = {
             "headers": {"Authorization": f"Bearer {token}"} if token else {},
             "socketio_path": socketio_path,
