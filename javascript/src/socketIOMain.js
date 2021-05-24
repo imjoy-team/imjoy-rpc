@@ -31,11 +31,14 @@ export class Connection extends MessageEmitter {
       if (config.server_token) {
         extraHeaders.Authorization = "Bearer " + config.server_token;
       }
+      const basePath = new URL(url).pathname;
       const socket = io(url, {
         transports: ["websocket", "polling", "flashsocket"],
         withCredentials: false,
         extraHeaders,
-        path: config.server_path || "/socket.io"
+        path:
+          (basePath.endsWith("/") ? basePath.slice(0, -1) : basePath) +
+          "/socket.io"
       });
       socket.on("connect", () => {
         socket.emit("register_plugin", config, result => {
