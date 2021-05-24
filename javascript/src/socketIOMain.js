@@ -31,7 +31,7 @@ export class Connection extends MessageEmitter {
       if (config.server_token) {
         extraHeaders.Authorization = "Bearer " + config.server_token;
       }
-      const basePath = (new URL(url)).pathname
+      const basePath = new URL(url).pathname;
       const socket = io(url, {
         transports: ["websocket", "polling", "flashsocket"],
         withCredentials: false,
