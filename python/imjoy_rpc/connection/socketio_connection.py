@@ -68,13 +68,20 @@ class SocketIOManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def start(self, url, token=None, on_ready_callback=None, on_error_callback=None):
+    def start(
+        self,
+        url,
+        token=None,
+        server_path="/socket.io",
+        on_ready_callback=None,
+        on_error_callback=None,
+    ):
         """Start."""
         sio = socketio.AsyncClient()
         self.url = url
         self.client_params = {
             "headers": {"Authorization": f"Bearer {token}"} if token else {},
-            "socketio_path": "/socket.io",
+            "socketio_path": server_path,
         }
 
         def registered(config):
