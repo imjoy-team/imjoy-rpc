@@ -359,7 +359,6 @@ def setup_connection(
         manager.start(
             _rpc_context.default_config.get("server_url"),
             _rpc_context.default_config.get("token"),
-            server_path=_rpc_context.default_config.get("server_path"),
             on_ready_callback=on_ready_callback,
             on_error_callback=on_error_callback,
         )

@@ -1,12 +1,15 @@
 """Provide a SocketIO connection."""
-import uuid
-import sys
 import asyncio
-import socketio
-import logging
-from imjoy_rpc.utils import MessageEmitter, dotdict
-from imjoy_rpc.rpc import RPC
 import contextvars
+import logging
+import sys
+import uuid
+from urllib.parse import urlparse
+
+import socketio
+
+from imjoy_rpc.rpc import RPC
+from imjoy_rpc.utils import MessageEmitter, dotdict
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("SocketIOConnection")
@@ -72,16 +75,16 @@ class SocketIOManager:
         self,
         url,
         token=None,
-        server_path="/socket.io",
         on_ready_callback=None,
         on_error_callback=None,
     ):
         """Start."""
         sio = socketio.AsyncClient()
         self.url = url
+        socketio_path = (urlparse(url).path + "/socket.io").replace("//", "/")
         self.client_params = {
             "headers": {"Authorization": f"Bearer {token}"} if token else {},
-            "socketio_path": server_path,
+            "socketio_path": socketio_path,
         }
 
         def registered(config):
