@@ -25,7 +25,7 @@ module.exports = {
   devServer: {
     contentBase: path.resolve(__dirname, 'dist'),
     publicPath: '/',
-    port: 9090,
+    port: 9099,
     hot: true,
     headers: {
       "Access-Control-Allow-Origin": "*",
