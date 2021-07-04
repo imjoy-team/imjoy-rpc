@@ -24,6 +24,7 @@ export function normalizeConfig(config) {
     config.description || `[TODO: add description for ${config.name} ]`;
   config.type = config.type || "rpc-window";
   config.id = config.id || randId();
+  config.target_origin = config.target_origin || "*";
   config.allow_execution = config.allow_execution || false;
   if (config.enable_service_worker) {
     setupServiceWorker(
