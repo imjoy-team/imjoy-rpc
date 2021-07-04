@@ -16,7 +16,7 @@ function _htmlToElement(html) {
   return template.content.firstChild;
 }
 
-var _importScript = function(url) {
+function _importScript(url) {
   //url is URL of external file, implementationCode is the code
   //to be called from the file, location is the location to
   //insert the <script> element
@@ -33,7 +33,13 @@ var _importScript = function(url) {
     scriptTag.onerror = reject;
     document.head.appendChild(scriptTag);
   });
-};
+}
+
+async function executeEsModule(content) {
+  const dataUri =
+    "data:text/javascript;charset=utf-8," + encodeURIComponent(content);
+  await import(dataUri);
+}
 
 // support importScripts outside web worker
 async function importScripts() {
@@ -130,6 +136,15 @@ export class Connection extends MessageEmitter {
                   link_node.href = code.requirements[i];
                   document.head.appendChild(link_node);
                 } else if (
+                  code.requirements[i].toLowerCase().endsWith(".mjs") ||
+                  code.requirements[i].startsWith("mjs:")
+                ) {
+                  // import esmodule
+                  if (code.requirements[i].startsWith("mjs:")) {
+                    code.requirements[i] = code.requirements[i].slice(4);
+                  }
+                  await import(code.requirements[i]);
+                } else if (
                   code.requirements[i].toLowerCase().endsWith(".js") ||
                   code.requirements[i].startsWith("js:")
                 ) {
@@ -162,16 +177,19 @@ export class Connection extends MessageEmitter {
           script_node.setAttribute("src", code.src);
           document.head.appendChild(script_node);
         } else {
-          if (
-            code.content &&
-            (!code.attrs.type || code.attrs.type === "text/javascript")
-          ) {
+          if (code.content && code.attrs.lang === "javascript") {
             // document.addEventListener("DOMContentLoaded", function(){
-            eval(code.content);
+            if (code.attrs.type === "module") {
+              await executeEsModule(code.content);
+            } else {
+              eval(code.content);
+            }
             // });
           } else {
             var node = document.createElement("script");
-            node.setAttribute("type", code.attrs.type);
+            for (let k in code.attrs) {
+              node.setAttribute(k, code.attrs[k]);
+            }
             node.appendChild(document.createTextNode(code.content));
             document.body.appendChild(node);
           }
