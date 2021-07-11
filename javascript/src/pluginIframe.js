@@ -38,7 +38,7 @@ function _importScript(url) {
 async function executeEsModule(content) {
   const dataUri =
     "data:text/javascript;charset=utf-8," + encodeURIComponent(content);
-  await import(dataUri);
+  await import(/* webpackIgnore: true */dataUri);
 }
 
 // support importScripts outside web worker
@@ -143,7 +143,7 @@ export class Connection extends MessageEmitter {
                   if (code.requirements[i].startsWith("mjs:")) {
                     code.requirements[i] = code.requirements[i].slice(4);
                   }
-                  await import(code.requirements[i]);
+                  await import(/* webpackIgnore: true */code.requirements[i]);
                 } else if (
                   code.requirements[i].toLowerCase().endsWith(".js") ||
                   code.requirements[i].startsWith("js:")
