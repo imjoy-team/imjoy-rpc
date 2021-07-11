@@ -20,7 +20,7 @@ if (
 async function executeEsModule(content) {
   const dataUri =
     "data:text/javascript;charset=utf-8," + encodeURIComponent(content);
-  await import(/* webpackIgnore: true */dataUri);
+  await import(/* webpackIgnore: true */ dataUri);
 }
 
 /**
