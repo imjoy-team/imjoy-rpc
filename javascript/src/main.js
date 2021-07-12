@@ -9,7 +9,7 @@
  */
 import PluginWorker from "./plugin.webworker.js";
 import setupIframe from "./pluginIframe.js";
-import { randId, normalizeConfig } from "./utils.js";
+import { randId, normalizeConfig, setupServiceWorker } from "./utils.js";
 
 export { RPC, API_VERSION } from "./rpc.js";
 export { version as VERSION } from "../package.json";
@@ -112,6 +112,17 @@ export function waitForInitialization(config) {
     );
   }
   config = config || {};
+  if (config.enable_service_worker) {
+    setupServiceWorker(
+      config.base_url,
+      config.target_origin,
+      config.cache_requirements
+    );
+    config.enable_service_worker = false;
+  }
+  if (config.cache_requirements) {
+    delete config.cache_requirements;
+  }
   const targetOrigin = config.target_origin || "*";
   if (
     config.credential_required &&
@@ -187,6 +198,16 @@ export function setupRPC(config) {
   config = config || {};
   config.name = config.name || randId();
   config = normalizeConfig(config);
+  if (config.enable_service_worker) {
+    setupServiceWorker(
+      config.base_url,
+      config.target_origin,
+      config.cache_requirements
+    );
+  }
+  if (config.cache_requirements) {
+    delete config.cache_requirements;
+  }
   return new Promise((resolve, reject) => {
     const handleEvent = e => {
       const api = e.detail;
