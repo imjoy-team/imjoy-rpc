@@ -26,16 +26,6 @@ export function normalizeConfig(config) {
   config.id = config.id || randId();
   config.target_origin = config.target_origin || "*";
   config.allow_execution = config.allow_execution || false;
-  if (config.enable_service_worker) {
-    setupServiceWorker(
-      config.base_url,
-      config.target_origin,
-      config.cache_requirements
-    );
-  }
-  if (config.cache_requirements) {
-    delete config.cache_requirements;
-  }
   // remove functions
   config = Object.keys(config).reduce((p, c) => {
     if (typeof config[c] !== "function") p[c] = config[c];
