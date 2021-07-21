@@ -9,7 +9,7 @@ import copy
 import uuid
 import traceback
 import threading
-from werkzeug.local import Local
+from .werkzeug.local import Local
 
 
 class dotdict(dict):  # pylint: disable=invalid-name

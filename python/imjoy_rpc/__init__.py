@@ -4,7 +4,7 @@ import sys
 import logging
 from functools import partial
 
-from werkzeug.local import LocalProxy
+from .werkzeug.local import LocalProxy
 from .utils import (
     ContextLocal,
     setup_connection,
