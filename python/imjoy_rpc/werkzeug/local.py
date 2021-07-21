@@ -14,6 +14,7 @@ from functools import update_wrapper
 
 from ._compat import implements_bool
 from ._compat import PY2
+
 # from .wsgi import ClosingIterator
 
 # since each thread has its own greenlet we can just use those as identifiers
