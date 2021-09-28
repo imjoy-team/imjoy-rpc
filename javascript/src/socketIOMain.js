@@ -28,8 +28,8 @@ export class Connection extends MessageEmitter {
         "http://127.0.0.1"
       );
       const extraHeaders = {};
-      if (config.server_token) {
-        extraHeaders.Authorization = "Bearer " + config.server_token;
+      if (config.token) {
+        extraHeaders.Authorization = "Bearer " + config.token;
       }
       const basePath = new URL(url).pathname;
       const socket = io(url, {
