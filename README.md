@@ -20,7 +20,7 @@ pip install imjoy-rpc
 npm install imjoy-rpc
 ```
 
-For RPC communication within the browser:
+For RPC communication within the browser (typically connect from an iframe to the ImJoy core in the parent window):
 ```js
 import { imjoyRPC } from 'imjoy-rpc';
 
@@ -46,6 +46,7 @@ imjoyRPCSocketIO.connectToServer({
 
 #### Browser
 
+To connect to the ImJoy core ( typically from an iframe):
 ```html
 <script src="https://cdn.jsdelivr.net/npm/imjoy-rpc@latest/dist/imjoy-rpc.min.js"></script>
 <script>
@@ -55,6 +56,22 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
 </script>
 ```
 
+
+And for connecting to a remote imjoy engine:
+```html
+<script src="https://cdn.jsdelivr.net/npm/imjoy-rpc@latest/dist/imjoy-rpc-socketio.min.js"></script>
+<script>
+imjoyRPCSocketIO.connectToServer({
+    name: 'My Awesome App',
+    workspace: "my-workspace",
+    server_url: "https://api.imjoy.io",
+    token: "2s39elrw....",
+}).then((api)=>{
+ // call api.export to expose your plugin api
+
+})
+</script>
+```
 
 ### [Jupyter notebook extension](https://github.com/imjoy-team/imjoy-jupyter-extension)
 
