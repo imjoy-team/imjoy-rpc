@@ -32,9 +32,10 @@ export class Connection extends MessageEmitter {
         extraHeaders.Authorization = "Bearer " + config.token;
       }
       const basePath = new URL(url).pathname;
+      // Note: extraHeaders only works for polling transport (the default)
+      // If we switch to websocket only, the headers won't be respected
       const socket = io(url, {
-        transports: ["websocket", "polling", "flashsocket"],
-        withCredentials: false,
+        withCredentials: true,
         extraHeaders,
         path:
           (basePath.endsWith("/") ? basePath.slice(0, -1) : basePath) +
