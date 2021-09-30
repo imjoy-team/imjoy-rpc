@@ -4,6 +4,7 @@ import logging
 import asyncio
 import traceback
 import contextvars
+import pyodide
 
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
@@ -136,30 +137,6 @@ class PyodideConnectionManager:
         )
 
 
-def decode_jsproxy(aobj):
-    if isinstance(aobj, (int, float, bool, str, bytes)) or aobj is None:
-        return aobj
-    elif str(type(aobj)) == "<class 'JsProxy'>" and aobj.typeof == "object":
-        isarray = Array.isArray(aobj)
-        bobj = [] if isarray else {}
-
-        for k in Object.keys(aobj):
-            if isarray:
-                bobj.append(decode_jsproxy(aobj[k]))
-            else:
-                bobj[k] = decode_jsproxy(aobj[k])
-        return bobj
-    elif str(type(aobj)) == "<class 'memoryview'>":
-        return aobj.tobytes()
-    else:
-        logger.warn(
-            "Skipping decoding object %s with type %s", str(aobj), str(type(aobj))
-        )
-        return aobj
-
-    return bobj
-
-
 def wrap_promise(promise):
     loop = asyncio.get_event_loop()
     fut = loop.create_future()
@@ -202,18 +179,10 @@ class PyodideConnection(MessageEmitter):
         self._event_handlers = {}
         self.peer_id = str(uuid.uuid4())
         self.debug = True
-        _is_web_worker = js.eval(
-            "typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope"
-        )
-        if _is_web_worker:
-            self._post_message = js.postMessage
-        else:
-            self._post_message = js.eval(
-                "self._post_message = (msg)=>{parent.postMessage(msg, '*')}"
-            )
+        self._post_message = js.sendMessage
 
         def msg_cb(msg):
-            data = decode_jsproxy(msg.data)
+            data = msg.to_py()
             # TODO: remove the exception for "initialize"
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
                 if "type" in data:
@@ -228,7 +197,7 @@ class PyodideConnection(MessageEmitter):
                     )
                 )
 
-        js.self.addEventListener("message", msg_cb)
+        js.setMessageCallback(pyodide.create_proxy(msg_cb))
 
     def execute(self, data):
         try:
