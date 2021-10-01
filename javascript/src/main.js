@@ -212,11 +212,11 @@ export function setupRPC(config) {
     const handleEvent = e => {
       const api = e.detail;
       if (config.expose_api_globally) {
-        window.api = api;
+        globalThis.api = api;
       }
       // imjoy plugin api
       resolve(api);
-      window.removeEventListener("imjoy_remote_api_ready", handleEvent);
+      globalThis.removeEventListener("imjoy_remote_api_ready", handleEvent);
     };
     if (_inIframe()) {
       if (config.type === "web-worker") {
@@ -235,7 +235,7 @@ export function setupRPC(config) {
         reject("Unsupported plugin type: " + config.type);
         return;
       }
-      window.addEventListener("imjoy_remote_api_ready", handleEvent);
+      globalThis.addEventListener("imjoy_remote_api_ready", handleEvent);
     } else {
       reject(new Error("imjoy-rpc should only run inside an iframe."));
     }

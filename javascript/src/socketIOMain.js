@@ -94,7 +94,7 @@ export class Connection extends MessageEmitter {
     this.emit({
       type: "initialized",
       config: this.config,
-      origin: window.location.origin,
+      origin: globalThis.location.origin,
       peer_id: this.peer_id
     });
     this._fire("connected");
@@ -129,13 +129,13 @@ export function connectToServer(config) {
     const handleEvent = e => {
       const api = e.detail;
       if (config.expose_api_globally) {
-        window.api = api;
+        globalThis.api = api;
       }
       // imjoy plugin api
       resolve(api);
-      window.removeEventListener("imjoy_remote_api_ready", handleEvent);
+      globalThis.removeEventListener("imjoy_remote_api_ready", handleEvent);
     };
-    window.addEventListener("imjoy_remote_api_ready", handleEvent);
+    globalThis.addEventListener("imjoy_remote_api_ready", handleEvent);
     config = config || {};
     config.dedicated_thread = false;
     config.lang = "javascript";
