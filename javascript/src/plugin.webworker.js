@@ -6,7 +6,7 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
-import { MessageEmitter } from "./utils.js";
+import { MessageEmitter, loadRequirementsInWebworker } from "./utils.js";
 
 // make sure this runs inside a webworker
 if (
@@ -58,48 +58,7 @@ class Connection extends MessageEmitter {
   }
   async execute(code) {
     if (code.type === "requirements") {
-      try {
-        if (
-          code.requirements &&
-          (Array.isArray(code.requirements) ||
-            typeof code.requirements === "string")
-        ) {
-          try {
-            if (!Array.isArray(code.requirements)) {
-              code.requirements = [code.requirements];
-            }
-            for (var i = 0; i < code.requirements.length; i++) {
-              if (
-                code.requirements[i].toLowerCase().endsWith(".css") ||
-                code.requirements[i].startsWith("css:")
-              ) {
-                throw "unable to import css in a webworker";
-              } else if (
-                code.requirements[i].toLowerCase().endsWith(".js") ||
-                code.requirements[i].startsWith("js:")
-              ) {
-                if (code.requirements[i].startsWith("js:")) {
-                  code.requirements[i] = code.requirements[i].slice(3);
-                }
-                importScripts(code.requirements[i]);
-              } else if (code.requirements[i].startsWith("http")) {
-                importScripts(code.requirements[i]);
-              } else if (code.requirements[i].startsWith("cache:")) {
-                //ignore cache
-              } else {
-                console.log(
-                  "Unprocessed requirements url: " + code.requirements[i]
-                );
-              }
-            }
-          } catch (e) {
-            throw "failed to import required scripts: " +
-              code.requirements.toString();
-          }
-        }
-      } catch (e) {
-        throw e;
-      }
+      await loadRequirementsInWebworker(code.requirements);
     } else if (code.type === "script") {
       try {
         if (code.attrs.type === "module") {

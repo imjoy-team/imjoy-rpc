@@ -7,7 +7,7 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { API_VERSION } from "./rpc.js";
-import { MessageEmitter, randId } from "./utils.js";
+import { loadRequirementsInWindow, MessageEmitter, randId } from "./utils.js";
 // Create a new, plain <span> element
 function _htmlToElement(html) {
   var template = document.createElement("template");
@@ -16,39 +16,10 @@ function _htmlToElement(html) {
   return template.content.firstChild;
 }
 
-function _importScript(url) {
-  //url is URL of external file, implementationCode is the code
-  //to be called from the file, location is the location to
-  //insert the <script> element
-  return new Promise((resolve, reject) => {
-    var scriptTag = document.createElement("script");
-    scriptTag.src = url;
-    scriptTag.type = "text/javascript";
-    scriptTag.onload = resolve;
-    scriptTag.onreadystatechange = function() {
-      if (this.readyState === "loaded" || this.readyState === "complete") {
-        resolve();
-      }
-    };
-    scriptTag.onerror = reject;
-    document.head.appendChild(scriptTag);
-  });
-}
-
 async function executeEsModule(content) {
   const dataUri =
     "data:text/javascript;charset=utf-8," + encodeURIComponent(content);
   await import(/* webpackIgnore: true */ dataUri);
-}
-
-// support importScripts outside web worker
-async function importScripts() {
-  var args = Array.prototype.slice.call(arguments),
-    len = args.length,
-    i = 0;
-  for (; i < len; i++) {
-    await _importScript(args[i]);
-  }
 }
 
 export class Connection extends MessageEmitter {
@@ -111,65 +82,7 @@ export class Connection extends MessageEmitter {
   async execute(code) {
     try {
       if (code.type === "requirements") {
-        if (
-          code.requirements &&
-          (Array.isArray(code.requirements) ||
-            typeof code.requirements === "string")
-        ) {
-          try {
-            var link_node;
-            code.requirements =
-              typeof code.requirements === "string"
-                ? [code.requirements]
-                : code.requirements;
-            if (Array.isArray(code.requirements)) {
-              for (var i = 0; i < code.requirements.length; i++) {
-                if (
-                  code.requirements[i].toLowerCase().endsWith(".css") ||
-                  code.requirements[i].startsWith("css:")
-                ) {
-                  if (code.requirements[i].startsWith("css:")) {
-                    code.requirements[i] = code.requirements[i].slice(4);
-                  }
-                  link_node = document.createElement("link");
-                  link_node.rel = "stylesheet";
-                  link_node.href = code.requirements[i];
-                  document.head.appendChild(link_node);
-                } else if (
-                  code.requirements[i].toLowerCase().endsWith(".mjs") ||
-                  code.requirements[i].startsWith("mjs:")
-                ) {
-                  // import esmodule
-                  if (code.requirements[i].startsWith("mjs:")) {
-                    code.requirements[i] = code.requirements[i].slice(4);
-                  }
-                  await import(/* webpackIgnore: true */ code.requirements[i]);
-                } else if (
-                  code.requirements[i].toLowerCase().endsWith(".js") ||
-                  code.requirements[i].startsWith("js:")
-                ) {
-                  if (code.requirements[i].startsWith("js:")) {
-                    code.requirements[i] = code.requirements[i].slice(3);
-                  }
-                  await importScripts(code.requirements[i]);
-                } else if (code.requirements[i].startsWith("http")) {
-                  await importScripts(code.requirements[i]);
-                } else if (code.requirements[i].startsWith("cache:")) {
-                  //ignore cache
-                } else {
-                  console.log(
-                    "Unprocessed requirements url: " + code.requirements[i]
-                  );
-                }
-              }
-            } else {
-              throw "unsupported requirements definition";
-            }
-          } catch (e) {
-            throw "failed to import required scripts: " +
-              code.requirements.toString();
-          }
-        }
+        await loadRequirementsInWindow(code.requirements);
       } else if (code.type === "script") {
         if (code.src) {
           var script_node = document.createElement("script");

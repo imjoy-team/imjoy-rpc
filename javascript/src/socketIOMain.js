@@ -7,12 +7,18 @@
  */
 import { connectRPC } from "./pluginCore.js";
 import { RPC, API_VERSION } from "./rpc.js";
-import { MessageEmitter, randId, normalizeConfig } from "./utils.js";
+import {
+  MessageEmitter,
+  randId,
+  normalizeConfig,
+  loadRequirements
+} from "./utils.js";
 import io from "socket.io-client";
 
 export { setupRPC, waitForInitialization } from "./main.js";
 export { version as VERSION } from "../package.json";
 export { RPC, API_VERSION };
+export { loadRequirements };
 
 export class Connection extends MessageEmitter {
   constructor(config) {

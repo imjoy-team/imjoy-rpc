@@ -9,10 +9,16 @@
  */
 import PluginWorker from "./plugin.webworker.js";
 import setupIframe from "./pluginIframe.js";
-import { randId, normalizeConfig, setupServiceWorker } from "./utils.js";
+import {
+  randId,
+  normalizeConfig,
+  setupServiceWorker,
+  loadRequirements
+} from "./utils.js";
 
 export { RPC, API_VERSION } from "./rpc.js";
 export { version as VERSION } from "../package.json";
+export { loadRequirements };
 
 function _inIframe() {
   try {

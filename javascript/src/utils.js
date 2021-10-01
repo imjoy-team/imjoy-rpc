@@ -18,6 +18,139 @@ export const dtypeToTypedArray = {
   array: Array
 };
 
+export async function loadRequirementsInWindow(requirements) {
+  function _importScript(url) {
+    //url is URL of external file, implementationCode is the code
+    //to be called from the file, location is the location to
+    //insert the <script> element
+    return new Promise((resolve, reject) => {
+      var scriptTag = document.createElement("script");
+      scriptTag.src = url;
+      scriptTag.type = "text/javascript";
+      scriptTag.onload = resolve;
+      scriptTag.onreadystatechange = function() {
+        if (this.readyState === "loaded" || this.readyState === "complete") {
+          resolve();
+        }
+      };
+      scriptTag.onerror = reject;
+      document.head.appendChild(scriptTag);
+    });
+  }
+
+  // support importScripts outside web worker
+  async function importScripts() {
+    var args = Array.prototype.slice.call(arguments),
+      len = args.length,
+      i = 0;
+    for (; i < len; i++) {
+      await _importScript(args[i]);
+    }
+  }
+
+  if (
+    requirements &&
+    (Array.isArray(requirements) || typeof requirements === "string")
+  ) {
+    try {
+      var link_node;
+      requirements =
+        typeof requirements === "string" ? [requirements] : requirements;
+      if (Array.isArray(requirements)) {
+        for (var i = 0; i < requirements.length; i++) {
+          if (
+            requirements[i].toLowerCase().endsWith(".css") ||
+            requirements[i].startsWith("css:")
+          ) {
+            if (requirements[i].startsWith("css:")) {
+              requirements[i] = requirements[i].slice(4);
+            }
+            link_node = document.createElement("link");
+            link_node.rel = "stylesheet";
+            link_node.href = requirements[i];
+            document.head.appendChild(link_node);
+          } else if (
+            requirements[i].toLowerCase().endsWith(".mjs") ||
+            requirements[i].startsWith("mjs:")
+          ) {
+            // import esmodule
+            if (requirements[i].startsWith("mjs:")) {
+              requirements[i] = requirements[i].slice(4);
+            }
+            await import(/* webpackIgnore: true */ requirements[i]);
+          } else if (
+            requirements[i].toLowerCase().endsWith(".js") ||
+            requirements[i].startsWith("js:")
+          ) {
+            if (requirements[i].startsWith("js:")) {
+              requirements[i] = requirements[i].slice(3);
+            }
+            await importScripts(requirements[i]);
+          } else if (requirements[i].startsWith("http")) {
+            await importScripts(requirements[i]);
+          } else if (requirements[i].startsWith("cache:")) {
+            //ignore cache
+          } else {
+            console.log("Unprocessed requirements url: " + requirements[i]);
+          }
+        }
+      } else {
+        throw "unsupported requirements definition";
+      }
+    } catch (e) {
+      throw "failed to import required scripts: " + requirements.toString();
+    }
+  }
+}
+
+export async function loadRequirementsInWebworker(requirements) {
+  if (
+    requirements &&
+    (Array.isArray(requirements) || typeof requirements === "string")
+  ) {
+    try {
+      if (!Array.isArray(requirements)) {
+        requirements = [requirements];
+      }
+      for (var i = 0; i < requirements.length; i++) {
+        if (
+          requirements[i].toLowerCase().endsWith(".css") ||
+          requirements[i].startsWith("css:")
+        ) {
+          throw "unable to import css in a webworker";
+        } else if (
+          requirements[i].toLowerCase().endsWith(".js") ||
+          requirements[i].startsWith("js:")
+        ) {
+          if (requirements[i].startsWith("js:")) {
+            requirements[i] = requirements[i].slice(3);
+          }
+          importScripts(requirements[i]);
+        } else if (requirements[i].startsWith("http")) {
+          importScripts(requirements[i]);
+        } else if (requirements[i].startsWith("cache:")) {
+          //ignore cache
+        } else {
+          console.log("Unprocessed requirements url: " + requirements[i]);
+        }
+      }
+    } catch (e) {
+      throw "failed to import required scripts: " + requirements.toString();
+    }
+  }
+}
+
+export function loadRequirements(requirements) {
+  if (
+    typeof WorkerGlobalScope !== "undefined" &&
+    self instanceof WorkerGlobalScope
+  ) {
+    return loadRequirementsInWebworker(requirements);
+  } else {
+    return loadRequirementsInWindow(requirements);
+  }
+}
+
 export function normalizeConfig(config) {
   config.version = config.version || "0.1.0";
   config.description =
@@ -94,21 +227,20 @@ function cacheUrlInServiceWorker(url) {
 }
 
 export async function cacheRequirements(requirements) {
+  requirements = requirements || [];
   if (!Array.isArray(requirements)) {
-    requirementsm.code.requirements = [requirements];
+    requirements = [requirements];
   }
-  if (requirements && requirements.length > 0) {
-    for (let req of requirements) {
-      //remove prefix
-      if (req.startsWith("js:")) req = req.slice(3);
-      if (req.startsWith("css:")) req = req.slice(4);
-      if (req.startsWith("cache:")) req = req.slice(6);
-      if (!req.startsWith("http")) continue;
+  for (let req of requirements) {
+    //remove prefix
+    if (req.startsWith("js:")) req = req.slice(3);
+    if (req.startsWith("css:")) req = req.slice(4);
+    if (req.startsWith("cache:")) req = req.slice(6);
+    if (!req.startsWith("http")) continue;
 
-      await cacheUrlInServiceWorker(req).catch(e => {
-        console.error(e);
-      });
-    }
+    await cacheUrlInServiceWorker(req).catch(e => {
+      console.error(e);
+    });
   }
 }
 
