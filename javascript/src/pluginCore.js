@@ -63,6 +63,9 @@ export function connectRPC(connection, config) {
       self.postMessage({
         type: "imjoy_remote_api_ready"
       });
+      self.dispatchEvent(
+        new CustomEvent("imjoy_remote_api_ready", { detail: api })
+      );
     } else if (typeof window) {
       window.dispatchEvent(
         new CustomEvent("imjoy_remote_api_ready", { detail: api })
