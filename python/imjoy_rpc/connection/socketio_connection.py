@@ -151,6 +151,8 @@ class SocketIOManager:
                 api.dispose = rpc.disconnect
                 api.registerCodec = self.register_codec
                 api.disposeObject = rpc.dispose_object
+                api.register_codec = self.register_codec
+                api.dispose_object = rpc.dispose_object
 
             rpc.on("remoteReady", patch_api)
 
