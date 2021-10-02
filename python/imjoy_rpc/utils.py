@@ -145,10 +145,28 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
 class FuturePromise(Promise, asyncio.Future):
     """Represent a promise as a future."""
 
-    def __init__(self, pfunc, logger=None):
+    def __init__(self, pfunc, logger=None, dispose=None):
         """Set up promise."""
         Promise.__init__(self, pfunc, logger)
         asyncio.Future.__init__(self)
+        self.__dispose = dispose
+        self.__obj = None
+
+    async def __aenter__(self):
+        ret = await self
+        if isinstance(ret, dict):
+            if "__enter__" in ret:
+                ret = await ret["__enter__"]()
+            self.__obj = ret
+        return ret
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.__obj:
+            if "__exit__" in self.__obj:
+                await self.__obj["__exit__"]()
+            if self.__dispose:
+                await self.__dispose(self.__obj)
+            del self.__obj
 
     def resolve(self, result):
         """Resolve promise."""

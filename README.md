@@ -129,6 +129,7 @@ Notes:
     |note: 64-bit integers (signed or unsigned) are not supported|
 
  - `dotdict` in Python is a simple wrapper over `dict` that support using the dot notation to get item, similar to what you can do with Javascript object.
+ - In Python, file instances (inherit from `io.IOBase`) will be automatically encoded.
 
  ## Encoding and decoding custom objects
  For the data or object types that are not in the table above, for example, a custom class, you can support them by register your own `codec`(i.e. encoder and decoder) with `api.registerCodec()`.
@@ -314,7 +315,7 @@ class ImJoyPlugin():
         api.alert(str(slices))
 
         # dispose the array when we don't need it
-        api.disposeObject(array2)
+        api.dispose_object(array2)
 
 api.export(ImJoyPlugin())
 ```
@@ -390,6 +391,14 @@ The two types can be switched automatically or manually:
 
 Note: if a method's name starts with `_`, it will not be sent and mapped remotely.
 
-Importantly, When an object is sent to remote location, the object will be stored in an internal object store. Because the object store will always hold object, it will not be possible for the garbage collector to recycle the resources. To get rid of this issue, you need to dispose the remote object manually by calling `api.disposeObject(obj)` function. This will notify the remote peer to remove the object from the object store, such that the garbage collector can then collect the occupied resources.
+Importantly, When an object is sent to remote location, the object will be stored in an internal object store. Because the object store will always hold object, it will not be possible for the garbage collector to recycle the resources. To get rid of this issue, you need to dispose the remote object manually by calling `api.disposeObject(obj)` function (or `api.dispose_object(obj)` for Python). This will notify the remote peer to remove the object from the object store, such that the garbage collector can then collect the occupied resources.
 
 **Therefore, please always call `api.disposeObject(obj)` when you don't need a remote object anymore.** This is necessary only for those object encoded in `interface` mode.
+
+In Python, if you use `async with` syntax, `api.dispose_object()` will be automatically called when you exit the context. For example:
+```python
+async def run():
+    async with remote_open_file() as remote_file:
+        content = await remote_file.read()
+    # No need to call api.dispose_object(remote_file)
+```

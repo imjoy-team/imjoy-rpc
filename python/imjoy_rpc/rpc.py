@@ -21,6 +21,32 @@ from .utils import (
 )
 
 API_VERSION = "0.2.3"
+ALLOWED_MAGIC_METHODS = ["__enter__", "__exit__"]
+IO_METHODS = [
+    "fileno",
+    "seek",
+    "truncate",
+    "detach",
+    "write",
+    "read",
+    "read1",
+    "readall",
+    "close",
+    "closed",
+    "__enter__",
+    "__exit__",
+    "flush",
+    "isatty",
+    "__iter__",
+    "__next__",
+    "readable",
+    "readline",
+    "readlines",
+    "seekable",
+    "tell",
+    "writable",
+    "writelines",
+]
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
@@ -195,13 +221,13 @@ class RPC(MessageEmitter):
             api = {
                 a: self._local_api[a]
                 for a in self._local_api.keys()
-                if not a.startswith("_")
+                if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
             }
         elif inspect.isclass(type(self._local_api)):
             api = {
                 a: getattr(self._local_api, a)
                 for a in dir(self._local_api)
-                if not a.startswith("_")
+                if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
             }
         else:
             raise Exception("unsupported api export")
@@ -269,7 +295,7 @@ class RPC(MessageEmitter):
                 }
                 self._connection.emit(call_func)
 
-            return FuturePromise(pfunc, self._remote_logger)
+            return FuturePromise(pfunc, self._remote_logger, self.dispose_object)
 
         remote_method.__remote_method = True  # pylint: disable=protected-access
         return remote_method
@@ -302,7 +328,7 @@ class RPC(MessageEmitter):
                         }
                     )
 
-                return FuturePromise(pfunc, self._remote_logger)
+                return FuturePromise(pfunc, self._remote_logger, self.dispose_object)
 
         else:
 
@@ -588,7 +614,7 @@ class RPC(MessageEmitter):
         if isinstance(a_object, tuple):
             a_object = list(a_object)
 
-        if isinstance(a_object, dotdict):
+        if isinstance(a_object, dict):
             a_object = dict(a_object)
 
         # skip if already encoded
@@ -642,10 +668,11 @@ class RPC(MessageEmitter):
             a_object, (io.IOBase, io.TextIOBase, io.BufferedIOBase, io.RawIOBase)
         ):
             b_object = {
-                "_rtype": "blob",
-                "_rvalue": a_object.read(),
-                "_rmime": "application/octet-stream",
+                m: getattr(a_object, m) for m in IO_METHODS if hasattr(a_object, m)
             }
+            b_object["_rintf"] = True
+            b_object = self._encode(b_object)
+
         # NOTE: "typedarray" is not used
         elif isinstance(a_object, OrderedDict):
             b_object = {
@@ -667,7 +694,7 @@ class RPC(MessageEmitter):
                 a_object_norm = {
                     a: getattr(a_object, a)
                     for a in dir(a_object)
-                    if not a.startswith("_")
+                    if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
                 }
                 # always encode class instance as interface
                 as_interface = True
@@ -683,7 +710,9 @@ class RPC(MessageEmitter):
 
                 has_function = False
                 for key in keys:
-                    if isinstance(key, str) and key.startswith("_"):
+                    if isinstance(key, str) and (
+                        key.startswith("_") and key not in ALLOWED_MAGIC_METHODS
+                    ):
                         continue
                     encoded = self._encode(
                         a_object_norm[key],
