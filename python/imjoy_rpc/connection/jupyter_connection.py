@@ -134,6 +134,7 @@ class JupyterCommManager:
                 api.disposeObject = rpc.dispose_object
                 api.register_codec = self.register_codec
                 api.dispose_object = rpc.dispose_object
+                api._rpc = rpc
 
             rpc.on("remoteReady", patch_api)
             if on_ready_callback:

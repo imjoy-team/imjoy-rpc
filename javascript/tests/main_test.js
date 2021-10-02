@@ -170,6 +170,7 @@ function runPlugin(config, plugin_interface, code) {
           api.disposeObject = async function(obj) {
             await core.disposeObject(obj);
           };
+          api._rpc = core;
           resolve({ api, plugin, core });
         });
         core.requestRemote();

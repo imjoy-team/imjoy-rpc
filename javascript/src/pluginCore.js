@@ -54,6 +54,7 @@ export function connectRPC(connection, config) {
     api.dispose = function(_interface) {
       rpc.disconnect();
     };
+    api._rpc = rpc;
 
     if (
       typeof WorkerGlobalScope !== "undefined" &&
