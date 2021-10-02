@@ -264,6 +264,7 @@ class RPC(MessageEmitter):
                     "name": name,
                     "object_id": plugin_id,
                     "args": args,
+                    "with_kwargs": bool(kwargs),
                     "promise": encoded_promise,
                 }
                 self._connection.emit(call_func)
@@ -296,6 +297,7 @@ class RPC(MessageEmitter):
                             "target_id": target_id,
                             # 'object_id'  : self.id,
                             "args": self.wrap(arguments),
+                            "with_kwargs": bool(kwargs),
                             "promise": encoded_promise,
                         }
                     )
@@ -316,6 +318,7 @@ class RPC(MessageEmitter):
                         "target_id": target_id,
                         # 'object_id'  : self.id,
                         "args": self.wrap(arguments),
+                        "with_kwargs": bool(kwargs),
                     }
                 )
 
@@ -349,9 +352,11 @@ class RPC(MessageEmitter):
     def _error(self, error):
         self._connection.emit({"type": "error", "message": error})
 
-    def _call_method(self, method, *args, resolve=None, reject=None, method_name=None):
+    def _call_method(
+        self, method, args, kwargs, resolve=None, reject=None, method_name=None
+    ):
         try:
-            result = method(*args)
+            result = method(*args, **kwargs)
             if result is not None and inspect.isawaitable(result):
 
                 async def _wait(result):
@@ -456,20 +461,29 @@ class RPC(MessageEmitter):
             method = index_object(_interface, data["name"])
             if "promise" in data:
                 args = self.unwrap(data["args"], True)
+                if data.get("with_kwargs"):
+                    kwargs = args.pop()
+                else:
+                    kwargs = {}
                 # args.append({'id': self.id})
                 self._run_with_context(
                     self._call_method,
                     method,
-                    *args,
+                    args,
+                    kwargs,
                     resolve=resolve,
                     reject=reject,
-                    method_name=data["name"]
+                    method_name=data["name"],
                 )
             else:
                 args = self.unwrap(data["args"], True)
+                if data.get("with_kwargs"):
+                    kwargs = args.pop()
+                else:
+                    kwargs = {}
                 # args.append({'id': self.id})
                 self._run_with_context(
-                    self._call_method, method, *args, method_name=data["name"]
+                    self._call_method, method, args, kwargs, method_name=data["name"]
                 )
         except Exception as err:
             traceback_error = traceback.format_exc()
@@ -492,13 +506,18 @@ class RPC(MessageEmitter):
                         "See https://imjoy.io/docs for more details."
                     )
                 args = self.unwrap(data["args"], True)
+                if data.get("with_kwargs"):
+                    kwargs = args.pop()
+                else:
+                    kwargs = {}
                 self._run_with_context(
                     self._call_method,
                     method,
-                    *args,
+                    args,
+                    kwargs,
                     resolve=resolve,
                     reject=reject,
-                    method_name=data["id"]
+                    method_name=data["id"],
                 )
 
             else:
@@ -511,8 +530,12 @@ class RPC(MessageEmitter):
                         "See https://imjoy.io/docs for more details."
                     )
                 args = self.unwrap(data["args"], True)
+                if data.get("with_kwargs"):
+                    kwargs = args.pop()
+                else:
+                    kwargs = {}
                 self._run_with_context(
-                    self._call_method, method, *args, method_name=data["id"]
+                    self._call_method, method, args, kwargs, method_name=data["id"]
                 )
         except Exception as err:
             traceback_error = traceback.format_exc()
