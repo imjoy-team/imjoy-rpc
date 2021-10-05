@@ -394,6 +394,7 @@ export class RPC extends MessageEmitter {
           if (
             name === "register" ||
             name === "registerService" ||
+            name === "register_service" ||
             name === "export" ||
             name === "on"
           ) {

@@ -279,7 +279,7 @@ class RPC(MessageEmitter):
                 resolve.__promise_pair = encoded_promise[0]["_rvalue"]
                 reject.__promise_pair = encoded_promise[1]["_rvalue"]
 
-                if name in ["register", "registerService", "export", "on"]:
+                if name in ["register", "registerService", "register_service", "export", "on"]:
                     args = self.wrap(arguments, as_interface=True)
                 else:
                     args = self.wrap(arguments)
