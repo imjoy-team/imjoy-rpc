@@ -369,6 +369,7 @@ def setup_connection(
             init=manager.init,
             export=manager.set_interface,
             registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
         )
         manager.start(
             on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
@@ -383,6 +384,7 @@ def setup_connection(
             init=manager.init,
             export=manager.set_interface,
             registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
         )
         manager.start(
             on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
@@ -397,6 +399,7 @@ def setup_connection(
             init=manager.init,
             export=manager.set_interface,
             registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
         )
         manager.start(
             _rpc_context.default_config.get("server_url"),
@@ -414,6 +417,7 @@ def setup_connection(
             init=manager.init,
             export=manager.set_interface,
             registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
         )
         manager.start(
             on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
