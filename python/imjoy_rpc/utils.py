@@ -9,7 +9,18 @@ import copy
 import uuid
 import traceback
 import threading
+import string
+import secrets
 from .werkzeug.local import Local
+
+
+def generate_password(length=50):
+    """Generate a password."""
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for i in range(length))
+
+
+_hash_id = generate_password()
 
 
 class dotdict(dict):  # pylint: disable=invalid-name
@@ -21,7 +32,10 @@ class dotdict(dict):  # pylint: disable=invalid-name
 
     def __hash__(self):
         """Return the hash."""
-        # TODO: is there any performance impact?
+        if "_rintf" in self and type(self["_rintf"]) is str:
+            return hash(self["_rintf"] + _hash_id)
+
+        # FIXME: This does not address the issue of inner list
         return hash(tuple(sorted(self.items())))
 
     def __deepcopy__(self, memo=None):
@@ -153,6 +167,7 @@ class FuturePromise(Promise, asyncio.Future):
         self.__obj = None
 
     async def __aenter__(self):
+        """Enter context for async."""
         ret = await self
         if isinstance(ret, dict):
             if "__enter__" in ret:
@@ -161,6 +176,7 @@ class FuturePromise(Promise, asyncio.Future):
         return ret
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit context for async."""
         if self.__obj:
             if "__exit__" in self.__obj:
                 await self.__obj["__exit__"]()
