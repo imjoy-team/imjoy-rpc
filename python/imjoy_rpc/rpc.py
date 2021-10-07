@@ -860,7 +860,10 @@ class RPC(MessageEmitter):
         # object id, used for dispose the object
         if isinstance(a_object, dict) and a_object.get("_rintf"):
             # make the dict hashable
-            if isinstance(b_object, dict) and not isinstance(b_object, dotdict):
-                b_object = dotdict(b_object)
+            if isinstance(b_object, dict):
+                b_object["_rintf"] = a_object.get("_rintf")
+                if not isinstance(b_object, dotdict):
+                    b_object = dotdict(b_object)
+
             self._object_weakmap[b_object] = a_object.get("_rintf")
         return b_object

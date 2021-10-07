@@ -9,7 +9,18 @@ import copy
 import uuid
 import traceback
 import threading
+import string
+import secrets
 from .werkzeug.local import Local
+
+
+def generate_password(length=50):
+    """Generate a password."""
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for i in range(length))
+
+
+hash_id = generate_password()
 
 
 class dotdict(dict):  # pylint: disable=invalid-name
@@ -21,7 +32,10 @@ class dotdict(dict):  # pylint: disable=invalid-name
 
     def __hash__(self):
         """Return the hash."""
-        # TODO: is there any performance impact?
+        if "_rintf" in self and type(self["_rintf"]) is str:
+            return hash(self["_rintf"] + hash_id)
+
+        # FIXME: This does not address the issue of inner list
         return hash(tuple(sorted(self.items())))
 
     def __deepcopy__(self, memo=None):
