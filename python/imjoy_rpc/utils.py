@@ -30,10 +30,18 @@ class dotdict(dict):  # pylint: disable=invalid-name
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
+    def __setattr__(self, name, value):
+        """Set the attribute."""
+        # Make an exception for __rid__
+        if name == "__rid__":
+            super().__setattr__("__rid__", value)
+        else:
+            super().__setitem__(name, value)
+
     def __hash__(self):
         """Return the hash."""
-        if "_rintf" in self and type(self["_rintf"]) is str:
-            return hash(self["_rintf"] + _hash_id)
+        if self.__rid__ and type(self.__rid__) is str:
+            return hash(self.__rid__ + _hash_id)
 
         # FIXME: This does not address the issue of inner list
         return hash(tuple(sorted(self.items())))
