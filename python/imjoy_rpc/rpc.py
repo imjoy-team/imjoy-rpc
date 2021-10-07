@@ -854,6 +854,11 @@ class RPC(MessageEmitter):
                     b_object.append(self._decode(val, with_promise))
                 else:
                     b_object[key] = self._decode(val, with_promise)
+        # make sure we have bytes instead of memoryview, e.g. for Pyodide
+        elif isinstance(a_object, memoryview):
+            b_object = a_object.tobytes()
+        elif isinstance(a_object, bytearray):
+            b_object = bytes(a_object)
         else:
             b_object = a_object
 
