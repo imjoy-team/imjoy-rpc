@@ -861,9 +861,10 @@ class RPC(MessageEmitter):
         if isinstance(a_object, dict) and a_object.get("_rintf"):
             # make the dict hashable
             if isinstance(b_object, dict):
-                b_object["_rintf"] = a_object.get("_rintf")
                 if not isinstance(b_object, dotdict):
                     b_object = dotdict(b_object)
+                # __rid__ is used for hashing the object for removing it afterwards
+                b_object.__rid__ = a_object.get("_rintf")
 
             self._object_weakmap[b_object] = a_object.get("_rintf")
         return b_object
