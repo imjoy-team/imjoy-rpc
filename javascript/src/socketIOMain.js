@@ -29,10 +29,7 @@ export class Connection extends MessageEmitter {
   init() {
     return new Promise((resolve, reject) => {
       const config = this.config;
-      const url = config.server_url.replace(
-        "http://localhost",
-        "http://127.0.0.1"
-      );
+      const url = config.server_url;
       const extraHeaders = {};
       if (config.token) {
         extraHeaders.Authorization = "Bearer " + config.token;
