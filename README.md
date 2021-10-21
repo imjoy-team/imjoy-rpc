@@ -145,6 +145,11 @@ The `encoder` function take an object as input and you need to return the repres
 
 The `decoder` function converts the encoded object into the actual object. It will only be called when the `_rtype` of an object matches the `name` of the codec.
 
+### Remote function calls and arguments
+Remote function call is almost the same as calling a local function. The arguments are mapped directly, for example, you can call a Python function `foo(a, b, c)` from javascript or vise versa. However, since Javascript does not support named arguments as Python does, ImJoy does the following conversion:
+ * For functions defined in Javascript, there is no difference when calling from Python
+ * For functions defined in Python, when calling from Javascript and if the last argument is an object, then it will be automatically converted into keyword arguments when calling the Python function. For example, if you have a Python function defined as `def foo(a, b, c=None):`, in Javascript, you should call it as `foo(9, 10, {c: 33})`.
+
 ### Support Zarr Array encoding
 [Zarr](https://zarr.readthedocs.io/en/stable/) is a more scalable n-dimensional array format that has a numpy-like api and can be used with multiple backends. It is ideally suited for sending large n-dimensional array between imjoy-rpc peers in a lazy fashion. We have an [internal implementation] of codec that can support sending.
 
