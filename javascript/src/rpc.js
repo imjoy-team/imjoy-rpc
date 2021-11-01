@@ -391,12 +391,6 @@ export class RPC extends MessageEmitter {
           wrapped_reject.__promise_pair = encodedPromise[0]._rvalue;
 
           let args = Array.prototype.slice.call(arguments);
-          const argLength = args.length;
-          // if the last argument is an object, mark it as kwargs
-          const withKwargs =
-            argLength > 0 &&
-            typeof args[argLength - 1] === "object" &&
-            args[argLength - 1] !== null;
           if (
             name === "register" ||
             name === "registerService" ||
@@ -417,8 +411,7 @@ export class RPC extends MessageEmitter {
               name: name,
               object_id: objectId,
               args: args,
-              promise: encodedPromise,
-              with_kwargs: withKwargs
+              promise: encodedPromise
             },
             transferables
           );
@@ -872,12 +865,6 @@ export class RPC extends MessageEmitter {
       remoteCallback = function() {
         return new Promise(async (resolve, reject) => {
           const args = await me._wrap(Array.prototype.slice.call(arguments));
-          const argLength = args.length;
-          // if the last argument is an object, mark it as kwargs
-          const withKwargs =
-            argLength > 0 &&
-            typeof args[argLength - 1] === "object" &&
-            args[argLength - 1] !== null;
           const transferables = args.__transferables__;
           if (transferables) delete args.__transferables__;
 
@@ -892,8 +879,7 @@ export class RPC extends MessageEmitter {
                 target_id: targetId,
                 id: cid,
                 args: args,
-                promise: encodedPromise,
-                with_kwargs: withKwargs
+                promise: encodedPromise
               },
               transferables
             );
@@ -906,12 +892,6 @@ export class RPC extends MessageEmitter {
     } else {
       remoteCallback = async function() {
         const args = await me._wrap(Array.prototype.slice.call(arguments));
-        const argLength = args.length;
-        // if the last argument is an object, mark it as kwargs
-        const withKwargs =
-          argLength > 0 &&
-          typeof args[argLength - 1] === "object" &&
-          args[argLength - 1] !== null;
         const transferables = args.__transferables__;
         if (transferables) delete args.__transferables__;
         return me._connection.emit(
@@ -919,8 +899,7 @@ export class RPC extends MessageEmitter {
             type: "callback",
             target_id: targetId,
             id: cid,
-            args: args,
-            with_kwargs: withKwargs
+            args: args
           },
           transferables
         );
