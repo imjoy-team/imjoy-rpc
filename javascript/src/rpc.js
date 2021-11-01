@@ -396,7 +396,8 @@ export class RPC extends MessageEmitter {
           const withKwargs =
             argLength > 0 &&
             typeof args[argLength - 1] === "object" &&
-            args[argLength - 1] !== null;
+            args[argLength - 1] !== null &&
+            args[argLength - 1]._rkwargs;
           if (
             name === "register" ||
             name === "registerService" ||
@@ -877,7 +878,8 @@ export class RPC extends MessageEmitter {
           const withKwargs =
             argLength > 0 &&
             typeof args[argLength - 1] === "object" &&
-            args[argLength - 1] !== null;
+            args[argLength - 1] !== null &&
+            args[argLength - 1]._rkwargs;
           const transferables = args.__transferables__;
           if (transferables) delete args.__transferables__;
 
@@ -911,7 +913,8 @@ export class RPC extends MessageEmitter {
         const withKwargs =
           argLength > 0 &&
           typeof args[argLength - 1] === "object" &&
-          args[argLength - 1] !== null;
+          args[argLength - 1] !== null &&
+          args[argLength - 1]._rkwargs;
         const transferables = args.__transferables__;
         if (transferables) delete args.__transferables__;
         return me._connection.emit(
