@@ -351,6 +351,115 @@ def register_default_codecs(options=None):
         )
 
 
+def setup_js_socketio(config, resolve, reject):
+    """Load socketio in javascript."""
+    from js import eval
+
+    script = """
+    let loadScript;
+    if (
+        typeof WorkerGlobalScope !== "undefined" &&
+        self instanceof WorkerGlobalScope
+    ) {
+        loadScript = async function(url) {
+            importScripts(url);
+        }
+    }
+    else{
+        function _importScript(url) {
+            //url is URL of external file, implementationCode is the code
+            //to be called from the file, location is the location to
+            //insert the <script> element
+            return new Promise((resolve, reject) => {
+            var scriptTag = document.createElement("script");
+            scriptTag.src = url;
+            scriptTag.type = "text/javascript";
+            scriptTag.onload = resolve;
+            scriptTag.onreadystatechange = function() {
+                if (this.readyState === "loaded" || this.readyState === "complete") {
+                resolve();
+                }
+            };
+            scriptTag.onerror = reject;
+            document.head.appendChild(scriptTag);
+            });
+        }
+
+        // support loadScript outside web worker
+        loadScript = async function() {
+            var args = Array.prototype.slice.call(arguments),
+            len = args.length,
+            i = 0;
+            for (; i < len; i++) {
+            await _importScript(args[i]);
+            }
+        }
+    }
+    
+    globalThis.setupJSSocketIo = async function(config, resolve, reject){
+        try{
+            await loadScript("https://cdn.jsdelivr.net/npm/socket.io-client@4.0.1/dist/socket.io.min.js")
+            const toObject = (x) => {
+                if(x===undefined || x===null) return x;
+                return x.toJs({dict_converter : Object.fromEntries})
+            }
+            config = toObject(config)
+            config.server_token=config.token
+            globalThis.config = config
+            const url = config.server_url;
+            const extraHeaders = {};
+            if (config.token) {
+                extraHeaders.Authorization = "Bearer " + config.token;
+            }
+            // const basePath = new URL(url).pathname;
+            // Note: extraHeaders only works for polling transport (the default)
+            // If we switch to websocket only, the headers won't be respected
+            if(globalThis.socket){
+                globalThis.socket.disconnect();
+            }
+            const socket = io(url, {
+                withCredentials: true,
+                extraHeaders,
+            });
+            socket.on("connect", () => {
+                globalThis.sendMessage = function(data){
+                    data = toObject(data)
+                    socket.emit("plugin_message", data)
+                }
+
+                socket.emit("register_plugin", config, async (result) => {
+                    if (!result.success) {
+                        console.error(result.detail);
+                        reject(result.detail);
+                        return;
+                    }
+                    globalThis.setMessageCallback = (cb)=>{
+                        socket.on("plugin_message", cb);
+                    }
+                    console.log("Plugin registered: " + config.name)
+                    resolve();
+                })
+
+                socket.on("connect_error", (error) => {
+                    console.error("connection error", error);
+                    reject(`${error}`);
+                });
+                socket.on("disconnect", () => {
+                    console.error("disconnected");
+                    reject("disconnected");
+                });
+            })
+            globalThis.socket = socket;
+        }
+        catch(e){
+            reject(`${error}`);
+        }
+    }
+    """
+
+    eval(script)(config, resolve, reject)
+
+
 def setup_connection(
     _rpc_context,
     connection_type,
@@ -407,6 +516,30 @@ def setup_connection(
             on_ready_callback=on_ready_callback,
             on_error_callback=on_error_callback,
         )
+    elif connection_type == "pyodide-socketio":
+        if logger:
+            logger.info("Using colab connection for imjoy-rpc")
+        from .connection.pyodide_connection import PyodideConnectionManager
+
+        manager = PyodideConnectionManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
+        )
+
+        def resolve():
+            manager.start(
+                on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+            )
+
+        def reject(error):
+            if on_error_callback:
+                on_error_callback(error)
+
+        setup_js_socketio(_rpc_context.default_config, resolve, reject)
+
     elif connection_type == "pyodide":
         if logger:
             logger.info("Using colab connection for imjoy-rpc")
@@ -438,18 +571,20 @@ def type_of_script():
         return "colab"
     except ImportError:
         try:
-            # check if get_ipython exists without exporting it
-            # from IPython import get_ipython
-            ipy_str = str(type(get_ipython()))  # noqa: F821
-            if "zmqshell" in ipy_str:
-                return "jupyter"
-            if "terminal" in ipy_str:
-                return "ipython"
-        except NameError:
-            try:
-                import js  # noqa: F401
-                import pyodide  # noqa: F401
+            import js  # noqa: F401
+            import pyodide  # noqa: F401
 
-                return "pyodide"
-            except ImportError:
-                return "terminal"
+            return "pyodide"
+        except ImportError:
+            try:
+                # check if get_ipython exists without exporting it
+                # from IPython import get_ipython
+                ipy_str = str(type(get_ipython()))  # noqa: F821
+                if "zmqshell" in ipy_str:
+                    return "jupyter"
+                if "terminal" in ipy_str:
+                    return "ipython"
+                else:
+                    return "unknown"
+            except NameError:
+                return "unknown"
