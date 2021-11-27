@@ -793,6 +793,9 @@ class RPC(MessageEmitter):
                         a_object["_rvalue"] = reduce(
                             (lambda x, y: x + y), a_object["_rvalue"]
                         )
+                    # make sure we have bytes instead of memoryview, e.g. for Pyodide
+                    elif isinstance(a_object["_rvalue"], memoryview):
+                        a_object["_rvalue"] = a_object["_rvalue"].tobytes()
                     elif not isinstance(a_object["_rvalue"], bytes):
                         raise Exception(
                             "Unsupported data type: " + str(type(a_object["_rvalue"]))
