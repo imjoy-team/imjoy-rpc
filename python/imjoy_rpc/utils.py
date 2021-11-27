@@ -395,10 +395,10 @@ def setup_js_socketio(config, resolve, reject):
             }
         }
     }
-    
+    const slib_url = "https://cdn.jsdelivr.net/npm/socket.io-client@4.0.1/dist/socket.io.min.js"
     globalThis.setupJSSocketIo = async function(config, resolve, reject){
         try{
-            await loadScript("https://cdn.jsdelivr.net/npm/socket.io-client@4.0.1/dist/socket.io.min.js")
+            await loadScript(slib_url)
             const toObject = (x) => {
                 if(x===undefined || x===null) return x;
                 return x.toJs({dict_converter : Object.fromEntries})
