@@ -231,5 +231,8 @@ class PyodideConnection(MessageEmitter):
     def disconnect(self):
         pass
 
+    def _on_error(self, detail):
+        self._fire("error", str(detail))
+
     def emit(self, msg):
-        self._post_message(msg)
+        self._post_message(msg, pyodide.create_proxy(self._on_error))

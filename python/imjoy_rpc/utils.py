@@ -423,9 +423,11 @@ def setup_js_socketio(config, resolve, reject):
                 extraHeaders,
             });
             socket.on("connect", () => {
-                globalThis.sendMessage = function(data){
+                globalThis.sendMessage = function(data, on_error){
                     data = toObject(data)
-                    socket.emit("plugin_message", data)
+                    socket.emit("plugin_message", data, result => {
+                        if (!result.success && on_error) on_error(result.detail)
+                    })
                 }
 
                 socket.emit("register_plugin", config, async (result) => {
