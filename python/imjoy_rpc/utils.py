@@ -3,14 +3,19 @@ import sys
 
 if sys.version_info < (3, 7):
     import aiocontextvars  # noqa: F401
-import contextvars
+
 import asyncio
+import contextvars
 import copy
-import uuid
-import traceback
-import threading
-import string
+import io
+import locale
+import os
 import secrets
+import string
+import threading
+import traceback
+import uuid
+
 from .werkzeug.local import Local
 
 
@@ -423,9 +428,11 @@ def setup_js_socketio(config, resolve, reject):
                 extraHeaders,
             });
             socket.on("connect", () => {
-                globalThis.sendMessage = function(data){
+                globalThis.sendMessage = function(data, on_error){
                     data = toObject(data)
-                    socket.emit("plugin_message", data)
+                    socket.emit("plugin_message", data, result => {
+                        if (!result.success && on_error) on_error(result.detail)
+                    })
                 }
 
                 socket.emit("register_plugin", config, async (result) => {
@@ -589,3 +596,153 @@ def type_of_script():
                     return "unknown"
             except NameError:
                 return "unknown"
+
+
+try:
+    from js import eval, location
+
+    sync_xhr = eval(
+        """globalThis.sync_xhr = function(url, start, end){
+        var request = new XMLHttpRequest();
+        request.open('GET', url, false);  // `false` makes the request synchronous
+        if(start !== undefined || end !== undefined){
+            request.setRequestHeader("range", `bytes=${start||0}-${end||0}`)
+        }
+        request.responseType = "arraybuffer";
+        request.send(null);
+        return request
+    }
+    """
+    )
+    IS_PYODIDE = True
+except ImportError:
+    from urllib.request import Request, urlopen
+
+    IS_PYODIDE = False
+
+
+class HTTPFile(io.IOBase):
+    """A virtual file for reading content via HTTP."""
+
+    def __init__(self, url, mode="r", encoding=None, newline=None):
+        """Initialize the http file object."""
+        self._url = url
+        self._pos = 0
+        self._size = None
+        self._mode = mode
+        assert mode in ["r", "rb"]
+        self._encoding = encoding or locale.getpreferredencoding()
+        self._newline = newline or os.linesep
+        # make a request so we can see the self._size
+        self._request_range(0, 0)
+        assert self._size is not None
+        self._chunk = 1024
+
+    def tell(self):
+        """Tell the position of the pointer."""
+        return self._pos
+
+    def read(self, length=-1):
+        """Read the file from the current pointer position."""
+        if self._pos >= self._size:
+            return ""  # EOF
+        if length < 0:
+            end = self._size + length
+        else:
+            end = self._pos + length - 1
+        if end >= self._size:
+            end = self._size - 1
+        result = self._request_range(self._pos, end)
+        self._pos += len(result)
+        if self._mode == "r":
+            return result.decode(self._encoding)
+        return result
+
+    def readline(self, size=-1):
+        """Read a line."""
+        if self._mode == "r":
+            terminator = self._newline
+            result = ""
+        else:
+            terminator = b"\n"
+            result = b""
+        while True:
+            ret = self.read(self._chunk)
+            if ret == "":
+                break
+            if terminator in ret:
+                used = ret.split(terminator)[0] + terminator
+                unused = ret[len(used) :]
+                # rollback
+                self._pos -= len(unused)
+                result += used
+                break
+            result += ret
+
+            if size is not None and size > 0:
+                if len(result) > size:
+                    return result[:size]
+
+        if not result:
+            return ""
+        return result
+
+    def readlines(self, hint=-1):
+        """Read all the lines."""
+        if hint is None or hint < 0:
+            hint = None
+
+        lines = []
+        while True:
+            line = self.readline()
+            if line == "":
+                break
+            else:
+                lines.append(line)
+            if hint and len(lines) >= hint:
+                break
+        return lines
+
+    def seek(self, offset):
+        """Set the pointer position."""
+        self._pos = offset
+        if self._size is not None:
+            if self._pos >= self._size:
+                self._pos = self._size - 1
+
+    def _request_range(self, start, end):
+        assert start <= end
+        if IS_PYODIDE:
+            req = sync_xhr(self._url, start, end)
+            if req.status in [200, 206]:
+                result = req.response.to_py().tobytes()
+                crange = req.getResponseHeader("Content-Range")
+                if crange:
+                    self._size = int(crange.split("/")[1])
+            else:
+                raise Exception(f"Failed to fetch: {req.response.status}")
+        else:
+            req = Request(self._url)
+            req.add_header("range", f"bytes={start}-{end}")
+            response = urlopen(req)
+            if response.getcode() in [200, 206]:
+                crange = response.info().getheader("Content-Range")
+                if crange:
+                    self._size = int(crange.split("/")[1])
+                result = response.read()
+            else:
+                raise Exception(f"Failed to fetch: {response.getcode()}")
+        return result
+
+    def close(self):
+        """Close the file."""
+        self._pos = 0
+
+
+def open_elfinder(path, mode="r", encoding=None, newline=None):
+    """Open an HTTPFile from elFinder."""
+    if not path.startswith("http"):
+        url = location.origin + "/fs" + path
+    else:
+        url = path
+    return HTTPFile(url, mode=mode, encoding=encoding, newline=newline)
