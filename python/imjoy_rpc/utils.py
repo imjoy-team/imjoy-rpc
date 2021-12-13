@@ -662,8 +662,13 @@ class HTTPFile(io.IOBase):
 
     def write(self, content):
         """Write content to file."""
-        if self._mode == "wb":
+        if "a" not in self._mode and "w" not in self._mode:
+            raise Exception(f"write is not supported with mode {self._mode}")
+
+        if "b" in self._mode:
             self._upload(content)
+        else:
+            self._upload(content.encode(self._encoding))
 
     def seekable(self):
         """Whether the file is seekable."""
@@ -740,15 +745,12 @@ class HTTPFile(io.IOBase):
     def _upload(self, content):
         if IS_PYODIDE:
             if self._initial_request and "a" not in self._mode:
-                overwrite = True
+                append = False
             else:
-                overwrite = False
+                append = True
 
             req = _sync_xhr_post(
-                self._url,
-                content,
-                "application/octet-stream",
-                {"overwrite": overwrite, "append": "a"},
+                self._url, content, "application/octet-stream", {"append": append}
             )
             if req.status != 200:
                 raise Exception(f"Failed to write: {req.response}, {req.status}")
