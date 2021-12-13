@@ -601,8 +601,8 @@ def type_of_script():
 try:
     from js import eval, location
 
-    sync_xhr = eval(
-        """globalThis.sync_xhr = function(url, start, end){
+    _sync_xhr_get = eval(
+        """globalThis._sync_xhr_get = function(url, start, end){
         var request = new XMLHttpRequest();
         request.open('GET', url, false);  // `false` makes the request synchronous
         if(start !== undefined || end !== undefined){
@@ -610,6 +610,22 @@ try:
         }
         request.responseType = "arraybuffer";
         request.send(null);
+        return request
+    }
+    """
+    )
+
+    _sync_xhr_post = eval(
+        """globalThis._sync_xhr_post = function(url, rawData, type, config){
+        var request = new XMLHttpRequest();
+        request.open('POST', url, false);  // `false` makes the request synchronous
+        var formData = new FormData();
+        var file = new Blob([new Uint8Array(rawData)],{type});
+        formData.append("file", file);
+        for(let k of Object.keys(config)){
+            formData.append(k, config[k])
+        }
+        request.send(formData);
         return request
     }
     """
@@ -630,17 +646,28 @@ class HTTPFile(io.IOBase):
         self._pos = 0
         self._size = None
         self._mode = mode
-        assert mode in ["r", "rb"]
+        assert mode in ["r", "rb", "w", "wb", "a", "ab"]
         self._encoding = encoding or locale.getpreferredencoding()
         self._newline = newline or os.linesep
-        # make a request so we can see the self._size
-        self._request_range(0, 0)
-        assert self._size is not None
+        if "w" not in self._mode:
+            # make a request so we can see the self._size
+            self._request_range(0, 0)
+            assert self._size is not None
         self._chunk = 1024
+        self._initial_request = True
 
     def tell(self):
         """Tell the position of the pointer."""
         return self._pos
+
+    def write(self, content):
+        """Write content to file."""
+        if self._mode == "wb":
+            self._upload(content)
+
+    def seekable(self):
+        """Whether the file is seekable."""
+        return "w" not in self._mode
 
     def read(self, length=-1):
         """Read the file from the current pointer position."""
@@ -710,17 +737,38 @@ class HTTPFile(io.IOBase):
             if self._pos >= self._size:
                 self._pos = self._size - 1
 
+    def _upload(self, content):
+        if IS_PYODIDE:
+            if self._initial_request and "a" not in self._mode:
+                overwrite = True
+            else:
+                overwrite = False
+
+            req = _sync_xhr_post(
+                self._url,
+                content,
+                "application/octet-stream",
+                {"overwrite": overwrite, "append": "a"},
+            )
+            if req.status != 200:
+                raise Exception(f"Failed to write: {req.response}, {req.status}")
+
+            if self._initial_request:
+                self._initial_request = False
+        else:
+            raise NotImplemented
+
     def _request_range(self, start, end):
         assert start <= end
         if IS_PYODIDE:
-            req = sync_xhr(self._url, start, end)
+            req = _sync_xhr_get(self._url, start, end)
             if req.status in [200, 206]:
                 result = req.response.to_py().tobytes()
                 crange = req.getResponseHeader("Content-Range")
                 if crange:
                     self._size = int(crange.split("/")[1])
             else:
-                raise Exception(f"Failed to fetch: {req.response.status}")
+                raise Exception(f"Failed to fetch: {req.status}")
         else:
             req = Request(self._url)
             req.add_header("range", f"bytes={start}-{end}")
