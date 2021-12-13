@@ -616,15 +616,13 @@ try:
     )
 
     _sync_xhr_post = eval(
-        """globalThis._sync_xhr_post = function(url, rawData, type, config){
+        """globalThis._sync_xhr_post = function(url, rawData, type, append){
         var request = new XMLHttpRequest();
         request.open('POST', url, false);  // `false` makes the request synchronous
         var formData = new FormData();
         var file = new Blob([new Uint8Array(rawData)],{type});
         formData.append("file", file);
-        for(let k of Object.keys(config)){
-            formData.append(k, config[k])
-        }
+        if(append) formData.append("append", "1");
         request.send(formData);
         return request
     }
@@ -662,8 +660,13 @@ class HTTPFile(io.IOBase):
 
     def write(self, content):
         """Write content to file."""
-        if self._mode == "wb":
+        if "a" not in self._mode and "w" not in self._mode:
+            raise Exception(f"write is not supported with mode {self._mode}")
+
+        if "b" in self._mode:
             self._upload(content)
+        else:
+            self._upload(content.encode(self._encoding))
 
     def seekable(self):
         """Whether the file is seekable."""
@@ -740,16 +743,11 @@ class HTTPFile(io.IOBase):
     def _upload(self, content):
         if IS_PYODIDE:
             if self._initial_request and "a" not in self._mode:
-                overwrite = True
+                append = False
             else:
-                overwrite = False
+                append = True
 
-            req = _sync_xhr_post(
-                self._url,
-                content,
-                "application/octet-stream",
-                {"overwrite": overwrite, "append": "a"},
-            )
+            req = _sync_xhr_post(self._url, content, "application/octet-stream", append)
             if req.status != 200:
                 raise Exception(f"Failed to write: {req.response}, {req.status}")
 
