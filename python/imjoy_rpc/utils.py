@@ -754,7 +754,7 @@ class HTTPFile(io.IOBase):
             if self._initial_request:
                 self._initial_request = False
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
     def _request_range(self, start, end):
         assert start <= end
