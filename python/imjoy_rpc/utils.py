@@ -616,15 +616,13 @@ try:
     )
 
     _sync_xhr_post = eval(
-        """globalThis._sync_xhr_post = function(url, rawData, type, config){
+        """globalThis._sync_xhr_post = function(url, rawData, type, append){
         var request = new XMLHttpRequest();
         request.open('POST', url, false);  // `false` makes the request synchronous
         var formData = new FormData();
         var file = new Blob([new Uint8Array(rawData)],{type});
         formData.append("file", file);
-        for(let k of Object.keys(config)){
-            formData.append(k, config[k])
-        }
+        if(append) formData.append("append", "1");
         request.send(formData);
         return request
     }
@@ -749,9 +747,7 @@ class HTTPFile(io.IOBase):
             else:
                 append = True
 
-            req = _sync_xhr_post(
-                self._url, content, "application/octet-stream", {"append": append}
-            )
+            req = _sync_xhr_post(self._url, content, "application/octet-stream", append)
             if req.status != 200:
                 raise Exception(f"Failed to write: {req.response}, {req.status}")
 
