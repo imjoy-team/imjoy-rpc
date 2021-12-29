@@ -471,10 +471,6 @@ export class RPC extends MessageEmitter {
     if (typeof aObject === "function") {
       if (asInterface) {
         if (!objectId) throw new Error("objectId is not specified.");
-        // set the interface function name to unknown if not defined
-        if (!(asInterface instanceof "string")) {
-          asInterface = "unknown";
-        }
         bObject = {
           _rtype: "interface",
           _rtarget_id: this._connection.peer_id,

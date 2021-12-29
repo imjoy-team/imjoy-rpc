@@ -601,9 +601,6 @@ class RPC(MessageEmitter):
             if as_interface:
                 if not object_id:
                     raise Exception("object_id is not specified.")
-                # set the interface function name to unknown if not defined
-                if not isinstance(as_interface, str):
-                    as_interface = "unknown"
                 b_object = {
                     "_rtype": "interface",
                     "_rtarget_id": self._connection.peer_id,
