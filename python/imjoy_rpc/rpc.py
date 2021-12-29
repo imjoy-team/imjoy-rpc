@@ -176,8 +176,30 @@ class RPC(MessageEmitter):
         if config:
             self.set_config(config)
 
-        # store it in a docdict such that the methods are hashable
-        self._local_api = dotdict(api) if isinstance(api, dict) else api
+        # convert and store it in a docdict
+        # such that the methods are hashable
+        if isinstance(api, dict):
+            self._local_api = dotdict(
+                {
+                    a: api[a]
+                    for a in api.keys()
+                    if not a.startswith("_")
+                    or a in ALLOWED_MAGIC_METHODS
+                    or a == "_rintf"
+                }
+            )
+        elif inspect.isclass(type(api)):
+            self._local_api = dotdict(
+                {
+                    a: getattr(api, a)
+                    for a in dir(api)
+                    if not a.startswith("_")
+                    or a in ALLOWED_MAGIC_METHODS
+                    or a == "_rintf"
+                }
+            )
+        else:
+            raise Exception("Invalid api export")
 
         if not self._remote_set:
             self._fire("interfaceAvailable")
@@ -217,22 +239,8 @@ class RPC(MessageEmitter):
         """Send interface."""
         if self._local_api is None:
             raise Exception("interface is not set.")
-        if isinstance(self._local_api, dict):
-            api = {
-                a: self._local_api[a]
-                for a in self._local_api.keys()
-                if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
-            }
-        elif inspect.isclass(type(self._local_api)):
-            api = {
-                a: getattr(self._local_api, a)
-                for a in dir(self._local_api)
-                if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
-            }
-        else:
-            raise Exception("unsupported api export")
 
-        api = self._encode(api, True)
+        api = self._encode(self._local_api, True)
         self._connection.emit({"type": "setInterface", "api": api})
 
     def _dispose_object(self, object_id):
@@ -711,7 +719,17 @@ class RPC(MessageEmitter):
             # encode interfaces
             if (not isarray and a_object_norm.get("_rintf")) or as_interface:
                 if object_id is None:
-                    object_id = str(uuid.uuid4())
+                    _rintf = a_object_norm.get("_rintf")
+                    if _rintf and isinstance(_rintf, str):
+                        object_id = _rintf  # enable custom object_id
+                    else:
+                        object_id = str(uuid.uuid4())
+                    # Note: object with the same id will be overwritten
+                    if object_id in self._object_store:
+                        logger.warn(
+                            "Overwritting interface object with the same id: %s",
+                            object_id,
+                        )
                     self._object_store[object_id] = a_object
 
                 has_function = False
