@@ -131,7 +131,7 @@ export class RPC extends MessageEmitter {
     }
     this._local_api = _interface;
     if (!this._remote_set) this._fire("interfaceAvailable");
-    else this.send_interface();
+    else this.sendInterface();
     return new Promise(resolve => {
       this.once("interfaceSetAsRemote", resolve);
     });
@@ -471,6 +471,10 @@ export class RPC extends MessageEmitter {
     if (typeof aObject === "function") {
       if (asInterface) {
         if (!objectId) throw new Error("objectId is not specified.");
+        // set the interface function name to unknown if not defined
+        if (!(asInterface instanceof "string")) {
+          asInterface = "unknown";
+        }
         bObject = {
           _rtype: "interface",
           _rtarget_id: this._connection.peer_id,
@@ -661,7 +665,16 @@ export class RPC extends MessageEmitter {
       // encode interfaces
       if (aObject._rintf || asInterface) {
         if (!objectId) {
-          objectId = randId();
+          if (typeof aObject._rintf === "string" && aObject._rintf.length > 0) {
+            objectId = aObject._rintf; // enable custom object id
+          } else {
+            objectId = randId();
+          }
+          // Note: object with the same id will be overwritten
+          if (this._object_store[objectId])
+            console.warn(
+              `Overwritting interface object with the same id: ${objectId}`
+            );
           this._object_store[objectId] = aObject;
         }
         for (let k of keys) {
