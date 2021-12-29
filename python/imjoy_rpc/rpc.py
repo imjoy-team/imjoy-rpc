@@ -719,7 +719,7 @@ class RPC(MessageEmitter):
             # encode interfaces
             if (not isarray and a_object_norm.get("_rintf")) or as_interface:
                 if object_id is None:
-                    _rintf = a_object_norm.get("_rintf")
+                    _rintf = a_object_norm.get("_rintf") if not isarray else None
                     if _rintf and isinstance(_rintf, str):
                         object_id = _rintf  # enable custom object_id
                     else:
