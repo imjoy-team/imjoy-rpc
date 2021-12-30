@@ -26,10 +26,11 @@ module.exports = function (config) {
                 served: true,
                 nocache: false
             },
+            'tests/base_frame.html',
         ],
 
         proxies: {
-            "/plugin-service-worker.js": "/base/src/plugin-service-worker.js"
+            "/plugin-service-worker.js": "/base/src/plugin-service-worker.js",
         },
 
 
@@ -41,7 +42,8 @@ module.exports = function (config) {
         // available preprocessors: https://npmjs.org/browse/keyword/karma-preprocessor
         preprocessors: {
             // add webpack as preprocessor
-            'tests/*_test.js': ['webpack']
+            'tests/*_test.js': ['webpack', 'sourcemap'],
+            'src/*.js': ['webpack', 'sourcemap' ]
         },
 
         webpack: webpackConfig,
@@ -86,12 +88,16 @@ module.exports = function (config) {
 
         // start these browsers
         // available browser launchers: https://npmjs.org/browse/keyword/karma-launcher
-        browsers: ['ChromeHeadlessNoSandbox', 'FirefoxHeadless'],
+        browsers: ['ChromeHeadlessNoSandbox', 'FirefoxHeadless', 'ChromeDebugging'],
 
         customLaunchers: {
             ChromeHeadlessNoSandbox: {
                 base: 'ChromeHeadless',
                 flags: ["--no-sandbox"]
+            },
+            ChromeDebugging: {
+                base: 'Chrome',
+                flags: [ '--remote-debugging-port=9333' ]
             }
         },
 

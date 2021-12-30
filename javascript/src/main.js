@@ -28,6 +28,13 @@ function _inIframe() {
   }
 }
 
+function _inWebWorker() {
+  return (
+    typeof WorkerGlobalScope !== "undefined" &&
+    self instanceof WorkerGlobalScope
+  );
+}
+
 /**
  * Initializes the plugin inside a web worker. May throw an exception
  * in case this was not permitted by the browser.
@@ -112,10 +119,8 @@ function setupWebWorker(config) {
 }
 
 export function waitForInitialization(config) {
-  if (!_inIframe()) {
-    throw new Error(
-      "waitForInitialization (imjoy-rpc) should only run inside an iframe."
-    );
+  if (_inWebWorker()) {
+    globalThis.parent = self;
   }
   config = config || {};
   if (config.enable_service_worker) {
@@ -144,13 +149,13 @@ export function waitForInitialization(config) {
     );
   }
   const done = () => {
-    window.removeEventListener("message", handleEvent);
+    globalThis.removeEventListener("message", handleEvent);
   };
   const peer_id = randId();
   const handleEvent = e => {
     if (
       e.type === "message" &&
-      (targetOrigin === "*" || e.origin === targetOrigin)
+      (!e.origin || targetOrigin === "*" || e.origin === targetOrigin)
     ) {
       if (e.data.type === "initialize") {
         done();
@@ -193,11 +198,20 @@ export function waitForInitialization(config) {
       }
     }
   };
-  window.addEventListener("message", handleEvent);
-  parent.postMessage(
-    { type: "imjoyRPCReady", config: config, peer_id: peer_id },
-    "*"
-  );
+  globalThis.addEventListener("message", handleEvent);
+
+  if (_inWebWorker()) {
+    parent.postMessage({
+      type: "imjoyRPCReady",
+      config: config,
+      peer_id: peer_id
+    });
+  } else {
+    parent.postMessage(
+      { type: "imjoyRPCReady", config: config, peer_id: peer_id },
+      "*"
+    );
+  }
 }
 
 export function setupRPC(config) {
@@ -242,8 +256,13 @@ export function setupRPC(config) {
         return;
       }
       globalThis.addEventListener("imjoy_remote_api_ready", handleEvent);
+    } else if (_inWebWorker()) {
+      // inside a webworker
+      setupIframe(config);
     } else {
-      reject(new Error("imjoy-rpc should only run inside an iframe."));
+      reject(
+        new Error("imjoy-rpc should only run inside an iframe or a webworker.")
+      );
     }
   });
 }
