@@ -1,6 +1,8 @@
 import { expect } from "chai";
 import { RPC } from "../src/rpc.js";
 import { connectRPC } from "../src/pluginCore";
+import { IframeConnection } from "../src/core_connection/iframe_connection";
+import { WebWorkerConnection } from "../src/core_connection/worker_connection";
 
 const plugins = {
   plugin22: {
@@ -409,4 +411,157 @@ describe("RPC", async () => {
     expect(await received_itf.add(9, 3)).to.equal(12);
     expect(await received_itf.add("12", 2)).to.equal("122");
   }).timeout(20000);
+});
+
+async function setupRPC(connection, pluginConfig, scriptSource) {
+  const rpc = new RPC(connection, {
+    name: "imjoy-core"
+  });
+
+  rpc.setInterface(core_interface);
+
+  await new Promise(resolve => {
+    rpc.once("interfaceSetAsRemote", resolve);
+    rpc.sendInterface();
+  });
+
+  if (pluginConfig.allow_execution && scriptSource) {
+    const script = {
+      type: "script",
+      content: scriptSource,
+      attrs: { lang: "javascript" }
+    };
+    await connection.execute(script);
+  }
+
+  const api = await new Promise(resolve => {
+    rpc.once("remoteReady", () => {
+      resolve(rpc.getRemote());
+    });
+    rpc.requestRemote();
+  });
+
+  return api;
+}
+
+const HelloPluginSrc = `
+class Plugin {
+  async setup(){
+    await api.log("hello");
+  }
+  async echo(data){
+    return data
+  }
+};
+api.export(new Plugin())
+`;
+
+const HelloPluginConfig = {
+  name: "test-plugin",
+  type: "iframe"
+};
+
+function initializeIfNeeded(connection, default_config) {
+  connection.once("imjoyRPCReady", async data => {
+    const config = data.config || {};
+    let forwarding_functions = ["close", "on", "off", "emit"];
+    if (["rpc-window", "window"].includes(config.type || default_config.type)) {
+      forwarding_functions = forwarding_functions.concat([
+        "resize",
+        "show",
+        "hide",
+        "refresh"
+      ]);
+    }
+    let credential;
+    if (config.credential_required) {
+      if (!Array.isArray(config.credential_fields)) {
+        throw new Error(
+          "Please specify the `config.credential_fields` as an array of object."
+        );
+      }
+      if (default_config.credential_handler) {
+        credential = await default_config.credential_handler(
+          config.credential_fields
+        );
+      } else {
+        credential = {};
+        for (let k in config.credential_fields) {
+          credential[k.id] = window.prompt(k.label, k.value);
+        }
+      }
+    }
+    connection.emit({
+      type: "initialize",
+      config: {
+        name: default_config.name,
+        type: default_config.type,
+        allow_execution: true,
+        enable_service_worker: true,
+        forwarding_functions: forwarding_functions,
+        expose_api_globally: true,
+        credential: credential
+      },
+      peer_id: data.peer_id
+    });
+  });
+}
+
+function connectPlugin(connection, scriptSource) {
+  return new Promise((resolve, reject) => {
+    connection.on("initialized", async data => {
+      if (data.error) {
+        console.error("Plugin failed to initialize", data.error);
+        throw new Error(data.error);
+      }
+      setupRPC(connection, data.config, scriptSource)
+        .then(resolve)
+        .catch(reject);
+    });
+
+    // TODO: check when this will fire
+    connection.on("failed", e => {
+      console.error("plugin failed", e);
+      reject(e);
+    });
+
+    connection.on("disconnected", details => {
+      console.error("plugin disconnected", details);
+      reject(details);
+    });
+    connection.connect();
+  });
+}
+
+describe("Core Connection", async () => {
+  it("should connect iframe plugin", async () => {
+    const iframe = document.createElement("iframe");
+    iframe.src = "/base/tests/base_frame.html";
+    document.body.appendChild(iframe);
+    const connection = new IframeConnection(iframe);
+    initializeIfNeeded(connection, HelloPluginConfig);
+    const api = await connectPlugin(connection, HelloPluginSrc);
+    expect(await api.echo(33)).to.equal(33);
+  });
+
+  it("should connect webworker plugin", async () => {
+    // Build a worker from an anonymous function body
+    const blobURL = URL.createObjectURL(
+      new Blob(
+        [
+          `
+        const window = self; // hack for the webpack UMD module
+        importScripts("${window.location.origin}/base/src/main.js");
+        self.imjoyRPC=self['src/main'];
+        self.imjoyRPC.waitForInitialization({target_origin: '*'});`
+        ],
+        { type: "application/javascript" }
+      )
+    );
+    const worker = new Worker(blobURL);
+    const connection = new WebWorkerConnection(worker);
+    initializeIfNeeded(connection, HelloPluginConfig);
+    const api = await connectPlugin(connection, HelloPluginSrc);
+    expect(await api.echo(33)).to.equal(33);
+  });
 });
