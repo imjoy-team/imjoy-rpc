@@ -21,10 +21,9 @@ class ImJoyPlugin:
     async def run(self, ctx):
         """Run the plugin."""
         await self._ws.log("hello world")
-    
+
     async def add(self, data):
         return data + 1.0
-
 
 
 async def test_connect_to_server(socketio_server):
@@ -57,7 +56,6 @@ async def test_large_array(socketio_server):
     result = await plugin.add(2.1)
     assert result == 2.1 + 1.0
 
-    large_array = np.zeros([2048, 4], dtype='float32')
-    result = await plugin.add(large_array)
-    assert result == large_array + 1.0
-
+    small_array = np.zeros([2048, 4], dtype="float32")
+    result = await plugin.add(small_array)
+    np.testing.assert_array_equal(result, small_array + 1.0)

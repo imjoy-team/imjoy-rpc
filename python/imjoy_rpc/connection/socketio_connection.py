@@ -110,7 +110,9 @@ class SocketIOManager:
             """Handle connected."""
             if not self.is_reconnect:
                 logger.info("connected to the server")
-                await sio.emit("register_plugin", self.default_config, callback=registered)
+                await sio.emit(
+                    "register_plugin", self.default_config, callback=registered
+                )
                 self.is_reconnect = True
             else:
                 logger.info("Skipping reconnect to the server")
