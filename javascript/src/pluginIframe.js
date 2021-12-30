@@ -16,6 +16,9 @@ function _htmlToElement(html) {
   return template.content.firstChild;
 }
 
+const _inWebWorker =
+  typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+
 async function executeEsModule(content) {
   const dataUri =
     "data:text/javascript;charset=utf-8," + encodeURIComponent(content);
@@ -40,11 +43,11 @@ export class Connection extends MessageEmitter {
     }
     if (this.broadcastChannel)
       this.broadcastChannel.addEventListener("message", this);
-    else window.addEventListener("message", this);
+    else globalThis.addEventListener("message", this);
     this.emit({
       type: "initialized",
       config: this.config,
-      origin: window.location.origin,
+      origin: globalThis.location.origin,
       peer_id: this.peer_id
     });
     this._fire("connected");
@@ -54,6 +57,7 @@ export class Connection extends MessageEmitter {
       e.type === "message" &&
       (this.broadcastChannel ||
         this.config.target_origin === "*" ||
+        !e.origin ||
         e.origin === this.config.target_origin)
     ) {
       if (e.data.peer_id === this.peer_id) {
@@ -67,17 +71,19 @@ export class Connection extends MessageEmitter {
   }
   disconnect() {
     this._fire("beforeDisconnect");
-    window.removeEventListener("message", this);
+    globalThis.removeEventListener("message", this);
     this._fire("disconnected");
   }
   emit(data) {
     let transferables;
-    if (data.__transferables__) {
-      transferables = data.__transferables__;
-      delete data.__transferables__;
-    }
     if (this.broadcastChannel) this.broadcastChannel.postMessage(data);
-    else parent.postMessage(data, this.config.target_origin, transferables);
+    else {
+      if (data.__transferables__) {
+        transferables = data.__transferables__;
+        delete data.__transferables__;
+      } else if (_inWebWorker) self.postMessage(data, transferables);
+      else parent.postMessage(data, this.config.target_origin, transferables);
+    }
   }
   async execute(code) {
     try {
@@ -131,13 +137,17 @@ export class Connection extends MessageEmitter {
       } else {
         throw "unsupported code type.";
       }
-      parent.postMessage({ type: "executed" }, this.config.target_origin);
+      if (_inWebWorker) self.postMessage({ type: "executed" });
+      else parent.postMessage({ type: "executed" }, this.config.target_origin);
     } catch (e) {
       console.error("failed to execute scripts: ", code, e);
-      parent.postMessage(
-        { type: "executed", error: e.stack || String(e) },
-        this.config.target_origin
-      );
+      if (_inWebWorker)
+        self.postMessage({ type: "executed", error: e.stack || String(e) });
+      else
+        parent.postMessage(
+          { type: "executed", error: e.stack || String(e) },
+          this.config.target_origin
+        );
     }
   }
 }
