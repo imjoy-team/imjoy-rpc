@@ -7,7 +7,7 @@ import time
 from imjoy_rpc.utils import MessageEmitter, dotdict
 
 logging.basicConfig(stream=sys.stdout)
-logger = logging.getLogger("core-basic-connection")
+logger = logging.getLogger("core-connection")
 logger.setLevel(logging.WARNING)
 
 all_connections = {}
