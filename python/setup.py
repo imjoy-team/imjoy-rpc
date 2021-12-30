@@ -38,12 +38,13 @@ setup(
         "full": [
             "numpy",
             "zarr",
-            "python-engineio>=4.0.0",
-            "python-socketio[client]>=5.0.4",
+            "python-engineio>=4.1.0",
+            "python-socketio[client]>=5.4.1",
         ],
         "socketio": [
-            "python-socketio[client]>=5.0.4",
-            "python-engineio>=4.0.0",
+            "python-socketio[client]>=5.4.1",
+            "python-engineio>=4.1.0",
+            "msgpack>=1.0.3",
         ],
     },
     zip_safe=False,

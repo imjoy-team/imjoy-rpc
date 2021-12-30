@@ -11,6 +11,8 @@ import uuid
 import weakref
 from collections import OrderedDict
 from functools import reduce
+import msgpack
+import gzip
 
 from .utils import (
     FuturePromise,
@@ -590,6 +592,7 @@ class RPC(MessageEmitter):
     def wrap(self, args, as_interface=False):
         """Wrap arguments."""
         wrapped = self._encode(args, as_interface=as_interface)
+        args = [gzip.compress(msgpack.packb(arg, use_bin_type=True)) if isinstance(arg, dict) and arg.get("_rtype")!= "callback" else arg for arg in wrapped ]
         return wrapped
 
     def _encode(self, a_object, as_interface=False, object_id=None):
@@ -777,6 +780,7 @@ class RPC(MessageEmitter):
     def unwrap(self, args, with_promise):
         """Unwrap arguments."""
         # wraps each callback so that the only one could be called
+        args = [msgpack.unpackb(gzip.decompress(arg), use_list=False, raw=False) if isinstance(arg, bytes) else arg for arg in args]
         result = self._decode(args, with_promise)
         return result
 
