@@ -1,7 +1,7 @@
 """Test the hypha server."""
 import pytest
 from imjoy_rpc import connect_to_server
-from . import SIO_SERVER_URL, find_item
+from . import SIO_SERVER_URL
 import numpy as np
 
 # All test coroutines will be treated as marked.
@@ -12,6 +12,7 @@ class ImJoyPlugin:
     """Represent a test plugin."""
 
     def __init__(self, ws):
+        """Initialize the plugin."""
         self._ws = ws
 
     async def setup(self):
@@ -23,6 +24,7 @@ class ImJoyPlugin:
         await self._ws.log("hello world")
 
     async def add(self, data):
+        """Add function."""
         return data + 1.0
 
 
@@ -43,7 +45,8 @@ async def test_connect_to_server(socketio_server):
     assert len(ws.config.name) == 36
 
 
-async def test_large_array(socketio_server):
+async def test_numpy_array(socketio_server):
+    """Test numpy array."""
     ws = await connect_to_server(
         {"name": "test-plugin", "workspace": "public", "server_url": SIO_SERVER_URL}
     )
