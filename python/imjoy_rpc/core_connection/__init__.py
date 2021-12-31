@@ -47,7 +47,8 @@ def send_as_msgpack(msg, send, accept_encoding):
     else:
 
         async def send_chunks():
-            object_id = str(uuid.uuid4())
+            # Try to use the peer_id as key so one peer can only have one chunk store
+            object_id = msg.get("peer_id", str(uuid.uuid4()))
             chunk_num = int(math.ceil(float(total_size) / CHUNK_SIZE))
             # send chunk by chunk
             for idx in range(chunk_num):
@@ -79,7 +80,8 @@ def decode_msgpack(data, chunk_store):
     dtype = data.get("type")
     if dtype == "msgpack_chunk":
         id_ = data["object_id"]
-        if id_ not in chunk_store:
+        # the chunk object does not exist or it's a starting chunk
+        if id_ not in chunk_store or data["index"] == 0:
             chunk_store[id_] = []
         assert data["index"] == len(chunk_store[id_])
         chunk_store[id_].append(data["data"])
@@ -103,6 +105,9 @@ def decode_msgpack(data, chunk_store):
             decoded["peer_id"] = data.get("peer_id")
         decoded["type"] = data["msg_type"]
         data = decoded
+    elif data.get("peer_id") in chunk_store:
+        # Clear chunk store for the peer if exists
+        del chunk_store[data.get("peer_id")]
 
     return data
 

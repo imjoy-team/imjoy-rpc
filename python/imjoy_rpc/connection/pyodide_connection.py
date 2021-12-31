@@ -185,6 +185,7 @@ class PyodideConnection(MessageEmitter):
         self._send = js.sendMessage
         self.accept_encoding = []
         self.plugin_id = plugin_id
+        self._chunk_store = {}
 
         def msg_cb(msg):
             data = msg.to_py()
