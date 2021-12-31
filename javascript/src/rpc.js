@@ -636,26 +636,7 @@ export class RPC extends MessageEmitter {
       Array.isArray(aObject)
     ) {
       bObject = isarray ? [] : {};
-      let keys;
-      // an object/array
-      if (aObject.constructor === Object || Array.isArray(aObject)) {
-        keys = Object.keys(aObject);
-      }
-      // a class
-      else if (aObject.constructor === Function) {
-        throw new Error("Please instantiate the class before exportting it.");
-      }
-      // instance of a class
-      else if (aObject.constructor.constructor === Function) {
-        keys = Object.getOwnPropertyNames(
-          Object.getPrototypeOf(aObject)
-        ).concat(Object.keys(aObject));
-        // TODO: use a proxy object to represent the actual object
-        // always encode class instance as interface
-        asInterface = true;
-      } else {
-        throw Error("Unsupported interface type");
-      }
+      const keys = Object.keys(aObject);
 
       let hasFunction = false;
       // encode interfaces
@@ -701,22 +682,8 @@ export class RPC extends MessageEmitter {
           bObject[k] = await this._encode(aObject[k]);
         }
       }
-      // for example, browserFS object
-    } else if (typeof aObject === "object") {
-      const keys = Object.getOwnPropertyNames(
-        Object.getPrototypeOf(aObject)
-      ).concat(Object.keys(aObject));
-      const objectId = randId();
-
-      for (let k of keys) {
-        if (["hasOwnProperty", "constructor"].includes(k)) continue;
-        // encode as interface
-        bObject[k] = await this._encode(aObject[k], k, bObject);
-      }
-      // object id, used for dispose the object
-      bObject._rintf = objectId;
     } else {
-      throw "imjoy-rpc: Unsupported data type:" + aObject;
+      throw `imjoy-rpc: Unsupported data type: ${aObject}, you can register a custom codec to encode/decode the object.`;
     }
 
     if (transferables.length > 0) {

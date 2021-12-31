@@ -264,4 +264,6 @@ class SocketioConnection(MessageEmitter):
                 msg["accept_encoding"] = ["msgpack", "gzip"]
             asyncio.ensure_future(self._send(msg))
         else:
-            send_as_msgpack(msg, self._send, self.accept_encoding)
+            asyncio.ensure_future(
+                send_as_msgpack(msg, self._send, self.accept_encoding)
+            )

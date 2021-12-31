@@ -700,20 +700,9 @@ class RPC(MessageEmitter):
             }
         elif hasattr(a_object, "_rintf") and a_object._rintf is True:
             b_object = self._encode(a_object, True)
-        elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
+        elif isinstance(a_object, (list, dict)):
             b_object = [] if isarray else {}
-            if not isinstance(a_object, (list, dict)) and inspect.isclass(
-                type(a_object)
-            ):
-                a_object_norm = {
-                    a: getattr(a_object, a)
-                    for a in dir(a_object)
-                    if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
-                }
-                # always encode class instance as interface
-                as_interface = True
-            else:
-                a_object_norm = a_object
+            a_object_norm = a_object
 
             keys = range(len(a_object_norm)) if isarray else a_object_norm.keys()
             # encode interfaces
@@ -771,7 +760,11 @@ class RPC(MessageEmitter):
                     else:
                         b_object[key] = self._encode(a_object_norm[key])
         else:
-            raise Exception("imjoy-rpc: Unsupported data type:" + str(a_object))
+            raise Exception(
+                "imjoy-rpc: Unsupported data type:"
+                f" {type(a_object)}, you can register a custom"
+                " codec to encode/decode the object."
+            )
         return b_object
 
     def unwrap(self, args, with_promise):

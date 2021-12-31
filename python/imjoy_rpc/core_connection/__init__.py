@@ -19,7 +19,7 @@ all_connections = {}
 CHUNK_SIZE = 1024 * 1000
 
 
-def send_as_msgpack(msg, send, accept_encoding):
+async def send_as_msgpack(msg, send, accept_encoding):
     """Send the message by using msgpack encoding."""
     encoded = {
         "type": "msgpack_data",
@@ -43,36 +43,32 @@ def send_as_msgpack(msg, send, accept_encoding):
     total_size = len(packed)
     if total_size <= CHUNK_SIZE:
         encoded["data"] = packed
-        asyncio.ensure_future(send(encoded))
+        await send(encoded)
     else:
+        # Try to use the peer_id as key so one peer can only have one chunk store
+        object_id = msg.get("peer_id", str(uuid.uuid4()))
+        chunk_num = int(math.ceil(float(total_size) / CHUNK_SIZE))
+        # send chunk by chunk
+        for idx in range(chunk_num):
+            start_byte = idx * CHUNK_SIZE
+            chunk = {
+                "type": "msgpack_chunk",
+                "object_id": object_id,
+                "data": packed[start_byte : start_byte + CHUNK_SIZE],
+                "index": idx,
+                "total": chunk_num,
+            }
+            logger.info(
+                "Sending chunk %d/%d (%d bytes)",
+                idx + 1,
+                chunk_num,
+                total_size,
+            )
+            await send(chunk)
 
-        async def send_chunks():
-            # Try to use the peer_id as key so one peer can only have one chunk store
-            object_id = msg.get("peer_id", str(uuid.uuid4()))
-            chunk_num = int(math.ceil(float(total_size) / CHUNK_SIZE))
-            # send chunk by chunk
-            for idx in range(chunk_num):
-                start_byte = idx * CHUNK_SIZE
-                chunk = {
-                    "type": "msgpack_chunk",
-                    "object_id": object_id,
-                    "data": packed[start_byte : start_byte + CHUNK_SIZE],
-                    "index": idx,
-                    "total": chunk_num,
-                }
-                logger.info(
-                    "Sending chunk %d/%d (%d bytes)",
-                    idx + 1,
-                    chunk_num,
-                    total_size,
-                )
-                await send(chunk)
-
-            # reference the chunked object
-            encoded["chunked_object"] = object_id
-            await send(encoded)
-
-        asyncio.ensure_future(send_chunks())
+        # reference the chunked object
+        encoded["chunked_object"] = object_id
+        await send(encoded)
 
 
 def decode_msgpack(data, chunk_store):
@@ -211,7 +207,9 @@ class BasicConnection(MessageEmitter):
                 msg["accept_encoding"] = ["msgpack", "gzip"]
             asyncio.ensure_future(self._send(msg))
         else:
-            send_as_msgpack(msg, self._send, self.accept_encoding)
+            asyncio.ensure_future(
+                send_as_msgpack(msg, self._send, self.accept_encoding)
+            )
 
     def disconnect(self):
         """Disconnect the plugin."""

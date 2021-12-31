@@ -3,6 +3,8 @@ import os
 import sys
 import logging
 from functools import partial
+from pathlib import Path
+import json
 
 from .werkzeug.local import LocalProxy
 from .utils import (
@@ -22,6 +24,9 @@ __all__ = [
     "connect_to_pyodide",
     "connect",
 ]
+
+
+__version__ = json.loads((Path(__file__).parent / "VERSION").read_text())["version"]
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("ImJoy-RPC")
