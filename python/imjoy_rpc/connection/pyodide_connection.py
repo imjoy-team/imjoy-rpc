@@ -1,20 +1,16 @@
-import uuid
-import sys
-import logging
 import asyncio
-import traceback
 import contextvars
-import pyodide
-import math
-import gzip
-import msgpack
-
-from imjoy_rpc.rpc import RPC
-from imjoy_rpc.utils import MessageEmitter, dotdict
-from imjoy_rpc.core_connection import send_as_msgpack, decode_msgpack
+import logging
+import sys
+import traceback
+import uuid
 
 import js
-from js import Array, Object
+import pyodide
+
+from imjoy_rpc.core_connection import decode_msgpack, send_as_msgpack
+from imjoy_rpc.rpc import RPC
+from imjoy_rpc.utils import MessageEmitter, dotdict
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Pyodide Connection")

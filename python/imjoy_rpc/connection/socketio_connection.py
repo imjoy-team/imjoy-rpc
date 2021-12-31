@@ -1,18 +1,16 @@
 """Provide a SocketIO connection."""
 import asyncio
 import contextvars
-import gzip
 import logging
 import sys
 import uuid
 from urllib.parse import urlparse
 
-import msgpack
 import socketio
 
+from imjoy_rpc.core_connection import decode_msgpack, send_as_msgpack
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
-from imjoy_rpc.core_connection import send_as_msgpack, decode_msgpack
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("SocketIOConnection")
