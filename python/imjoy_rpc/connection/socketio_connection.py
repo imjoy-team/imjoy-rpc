@@ -236,7 +236,6 @@ class SocketioConnection(MessageEmitter):
         @sio.event
         def disconnect():
             """Handle disconnection."""
-            raise Exception("disconnected")
             self.disconnect()
             self._fire("disconnected")
 
