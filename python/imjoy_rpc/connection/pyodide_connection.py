@@ -11,7 +11,7 @@ import msgpack
 
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
-
+from imjoy_rpc.core_connection import send_as_msgpack, decode_msgpack
 
 import js
 from js import Array, Object
@@ -186,39 +186,15 @@ class PyodideConnection(MessageEmitter):
         self._event_handlers = {}
         self.peer_id = str(uuid.uuid4())
         self.debug = True
-        self._post_message = js.sendMessage
+        self._send = js.sendMessage
         self.accept_encoding = []
         self.plugin_id = plugin_id
 
         def msg_cb(msg):
             data = msg.to_py()
-
-            dtype = data.get("type")
-            if dtype == "msgpack_chunk":
-                id_ = data["object_id"]
-                if id_ not in self._chunk_store:
-                    self._chunk_store[id_] = []
-                assert data["index"] == len(self._chunk_store[id_])
-                self._chunk_store[id_].append(data["data"])
+            data = decode_msgpack(data, self._chunk_store)
+            if data is None:
                 return
-
-            if dtype == "msgpack_data":
-                if data.get("chunked_object"):
-                    object_id = data["chunked_object"]
-                    chunks = self._chunk_store[object_id]
-                    del self._chunk_store[object_id]
-                    data["data"] = b"".join(chunks)
-                if data.get("compression"):
-                    if data["compression"] == "gzip":
-                        data["data"] = gzip.decompress(data["data"])
-                    else:
-                        raise Exception(
-                            f"Unsupported compression: {data['compression']}"
-                        )
-                decoded = msgpack.unpackb(data["data"], use_list=False, raw=False)
-                decoded["peer_id"] = data["peer_id"]
-                decoded["type"] = data["msg_type"]
-                data = decoded
 
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
                 if data.get("type") == "initialize":
@@ -272,51 +248,6 @@ class PyodideConnection(MessageEmitter):
             # Notify the server that the plugin supports msgpack decoding
             if msg.get("type") == "initialized":
                 msg["accept_encoding"] = ["msgpack", "gzip"]
-            asyncio.ensure_future(
-                self.sio.emit("plugin_message", msg, callback=self._msg_callback)
-            )
+            asyncio.ensure_future(self._send(msg))
         else:
-            encoded = {
-                "type": "msgpack_data",
-                "msg_type": msg.pop("type"),
-                "plugin_id": msg.pop("plugin_id"),
-            }
-            packed = msgpack.packb(msg, use_bin_type=True)
-
-            total_size = len(packed)
-            if total_size > CHUNK_SIZE and "gzip" in self.accept_encoding:
-                compressed = gzip.compress(packed)
-                # Only send the compressed version
-                # if the compression ratio is > 80%;
-                if len(compressed) <= total_size * 0.8:
-                    packed = compressed
-                    encoded["compression"] = "gzip"
-
-            total_size = len(packed)
-            if total_size <= CHUNK_SIZE:
-                encoded["data"] = packed
-                self._post_message(encoded)
-            else:
-                object_id = str(uuid.uuid4())
-                chunk_num = int(math.ceil(float(total_size) / CHUNK_SIZE))
-                # send chunk by chunk
-                for idx in range(chunk_num):
-                    start_byte = idx * CHUNK_SIZE
-                    chunk = {
-                        "type": "msgpack_chunk",
-                        "object_id": object_id,
-                        "data": packed[start_byte : start_byte + CHUNK_SIZE],
-                        "index": idx,
-                        "total": chunk_num,
-                    }
-                    logger.info(
-                        "Sending chunk %d/%d (%d bytes)",
-                        idx + 1,
-                        chunk_num,
-                        total_size,
-                    )
-                    self._post_message(chunk)
-
-                # reference the chunked object
-                encoded["chunked_object"] = object_id
-                self._post_message(encoded)
+            send_as_msgpack(msg, self._send, self.accept_encoding)

@@ -428,10 +428,20 @@ def setup_js_socketio(config, resolve, reject):
                 extraHeaders,
             });
             socket.on("connect", () => {
-                globalThis.sendMessage = function(data, on_error){
-                    data = toObject(data)
-                    socket.emit("plugin_message", data, result => {
-                        if (!result.success && on_error) on_error(result.detail)
+                globalThis.sendMessage = function(data){
+                    
+                    return new Promise((resolve, reject)=>{
+                        try{
+                            data = toObject(data)
+                            socket.emit("plugin_message", data, result => {
+                                if (!result.success) reject(result.detail)
+                                else resolve(result)
+                            })
+                        }
+                        catch(e){
+                            reject(e)
+                        }
+                        
                     })
                 }
 
