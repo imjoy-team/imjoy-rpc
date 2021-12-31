@@ -427,11 +427,27 @@ def setup_js_socketio(config, resolve, reject):
                 withCredentials: true,
                 extraHeaders,
             });
+            let connected = false;
             socket.on("connect", () => {
-                globalThis.sendMessage = function(data, on_error){
-                    data = toObject(data)
-                    socket.emit("plugin_message", data, result => {
-                        if (!result.success && on_error) on_error(result.detail)
+                if(connected) {
+                    console.warn("Skipping reconnect to the server");
+                    return
+                }
+
+                globalThis.sendMessage = function(data){
+
+                    return new Promise((resolve, reject)=>{
+                        try{
+                            data = toObject(data)
+                            socket.emit("plugin_message", data, result => {
+                                if (!result.success) reject(result.detail)
+                                else resolve(result)
+                            })
+                        }
+                        catch(e){
+                            reject(e)
+                        }
+
                     })
                 }
 
@@ -441,11 +457,12 @@ def setup_js_socketio(config, resolve, reject):
                         reject(result.detail);
                         return;
                     }
+                    connected = true;
                     globalThis.setMessageCallback = (cb)=>{
                         socket.on("plugin_message", cb);
                     }
                     console.log("Plugin registered: " + config.name)
-                    resolve();
+                    resolve(config.plugin_id);
                 })
 
                 socket.on("connect_error", (error) => {
@@ -526,7 +543,7 @@ def setup_connection(
         )
     elif connection_type == "pyodide-socketio":
         if logger:
-            logger.info("Using colab connection for imjoy-rpc")
+            logger.info("Using pyodide-socketio connection for imjoy-rpc")
         from .connection.pyodide_connection import PyodideConnectionManager
 
         manager = PyodideConnectionManager(_rpc_context)
@@ -537,9 +554,11 @@ def setup_connection(
             register_codec=manager.register_codec,
         )
 
-        def resolve():
+        def resolve(plugin_id):
             manager.start(
-                on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+                plugin_id,
+                on_ready_callback=on_ready_callback,
+                on_error_callback=on_error_callback,
             )
 
         def reject(error):
@@ -550,7 +569,7 @@ def setup_connection(
 
     elif connection_type == "pyodide":
         if logger:
-            logger.info("Using colab connection for imjoy-rpc")
+            logger.info("Using pyodide connection for imjoy-rpc")
         from .connection.pyodide_connection import PyodideConnectionManager
 
         manager = PyodideConnectionManager(_rpc_context)

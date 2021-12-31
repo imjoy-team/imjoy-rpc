@@ -1,22 +1,22 @@
-import uuid
-import sys
-import logging
 import asyncio
-import traceback
 import contextvars
-import pyodide
-
-from imjoy_rpc.rpc import RPC
-from imjoy_rpc.utils import MessageEmitter, dotdict
-
+import logging
+import sys
+import traceback
+import uuid
 
 import js
-from js import Array, Object
+import pyodide
+
+from imjoy_rpc.core_connection import decode_msgpack, send_as_msgpack
+from imjoy_rpc.rpc import RPC
+from imjoy_rpc.utils import MessageEmitter, dotdict
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Pyodide Connection")
 
 connection_id = contextvars.ContextVar("connection_id")
+CHUNK_SIZE = 1024 * 512
 
 # TODO: this is too high, we need to find a better approach
 # see here: https://github.com/iodide-project/pyodide/issues/917#issuecomment-751307819
@@ -70,9 +70,9 @@ class PyodideConnectionManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
-    def start(self, target="imjoy_rpc", on_ready_callback=None, on_error_callback=None):
+    def start(self, plugin_id, on_ready_callback=None, on_error_callback=None):
         try:
-            self._create_new_connection(target, on_ready_callback, on_error_callback)
+            self._create_new_connection(plugin_id, on_ready_callback, on_error_callback)
         except Exception as ex:
             if on_error_callback:
                 on_error_callback(ex)
@@ -85,10 +85,10 @@ class PyodideConnectionManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def _create_new_connection(self, target, on_ready_callback, on_error_callback):
+    def _create_new_connection(self, plugin_id, on_ready_callback, on_error_callback):
         client_id = str(uuid.uuid4())
         connection_id.set(client_id)
-        connection = PyodideConnection(self.default_config)
+        connection = PyodideConnection(self.default_config, plugin_id)
 
         def initialize(data):
             self.clients[client_id] = dotdict()
@@ -175,23 +175,27 @@ try{
 
 
 class PyodideConnection(MessageEmitter):
-    def __init__(self, config):
+    def __init__(self, config, plugin_id):
         self.config = dotdict(config or {})
         super().__init__(logger)
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
         self.peer_id = str(uuid.uuid4())
         self.debug = True
-        self._post_message = js.sendMessage
+        self._send = js.sendMessage
+        self.accept_encoding = []
+        self.plugin_id = plugin_id
 
         def msg_cb(msg):
             data = msg.to_py()
-            # TODO: remove the exception for "initialize"
+            data = decode_msgpack(data, self._chunk_store)
+            if data is None:
+                return
+
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
+                if data.get("type") == "initialize":
+                    self.accept_encoding = data.get("accept_encoding", [])
                 if "type" in data:
-                    if data["type"] == "execute":
-                        self.execute(data)
-                        return
                     self._fire(data["type"], data)
             else:
                 logger.warn(
@@ -232,4 +236,14 @@ class PyodideConnection(MessageEmitter):
         pass
 
     def emit(self, msg):
-        self._post_message(msg)
+        msg["plugin_id"] = self.plugin_id
+        if (
+            msg.get("type") in ["initialized", "imjoyRPCReady"]
+            or "msgpack" not in self.accept_encoding
+        ):
+            # Notify the server that the plugin supports msgpack decoding
+            if msg.get("type") == "initialized":
+                msg["accept_encoding"] = ["msgpack", "gzip"]
+            asyncio.ensure_future(self._send(msg))
+        else:
+            send_as_msgpack(msg, self._send, self.accept_encoding)

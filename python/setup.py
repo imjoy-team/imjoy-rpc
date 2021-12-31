@@ -18,6 +18,7 @@ VERSION = json.loads(VERSION_FILE.read_text())["version"]
 REQUIRES = [
     "aiocontextvars; python_version<'3.7'",
     "contextvars; python_version<'3.7'",
+    "msgpack>=1.0.3",
 ]
 
 setup(
@@ -44,7 +45,6 @@ setup(
         "socketio": [
             "python-socketio[client]>=5.4.1",
             "python-engineio>=4.1.0",
-            "msgpack>=1.0.3",
         ],
     },
     zip_safe=False,

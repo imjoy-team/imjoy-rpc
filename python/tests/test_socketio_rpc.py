@@ -59,6 +59,6 @@ async def test_numpy_array(socketio_server):
     result = await plugin.add(2.1)
     assert result == 2.1 + 1.0
 
-    small_array = np.zeros([2048, 4], dtype="float32")
-    result = await plugin.add(small_array)
-    np.testing.assert_array_equal(result, small_array + 1.0)
+    large_array = np.zeros([2048, 2048, 4], dtype="float32")
+    result = await plugin.add(large_array)
+    np.testing.assert_array_equal(result, large_array + 1.0)

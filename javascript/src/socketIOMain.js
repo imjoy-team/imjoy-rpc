@@ -44,13 +44,19 @@ export class Connection extends MessageEmitter {
           (basePath.endsWith("/") ? basePath.slice(0, -1) : basePath) +
           "/socket.io"
       });
+      let connected = false;
       socket.on("connect", () => {
+        if (connected) {
+          console.warn("Skipping reconnect to the server");
+          return;
+        }
         socket.emit("register_plugin", config, result => {
           if (!result.success) {
             console.error(result.detail);
             reject(result.detail);
             return;
           }
+          connected = true;
           this.plugin_id = result.plugin_id;
           socket.on("plugin_message", data => {
             if (data.peer_id === this.peer_id) {
