@@ -82,7 +82,7 @@ class SocketIOManager:
     ):
         """Start."""
         sio = socketio.AsyncClient()
-        self.is_reconnect = False
+        self.connected = False
         self.url = url
         socketio_path = urlparse(url).path.rstrip("/") + "/socket.io"
         self.client_params = {
@@ -93,6 +93,7 @@ class SocketIOManager:
         def registered(config):
             """Handle registration."""
             if config.get("success"):
+                self.connected = True
                 client_id = str(uuid.uuid4())
                 self._create_new_connection(
                     sio,
@@ -110,14 +111,11 @@ class SocketIOManager:
         @sio.event
         async def connect():
             """Handle connected."""
-            if not self.is_reconnect:
-                logger.info("connected to the server")
-                await sio.emit(
-                    "register_plugin", self.default_config, callback=registered
-                )
-                self.is_reconnect = True
-            else:
-                logger.info("Skipping reconnect to the server")
+            if self.connected:
+                logger.warn("Skipping reconnect to the server")
+                return
+            logger.info("connected to the server")
+            await sio.emit("register_plugin", self.default_config, callback=registered)
 
         self.sio = sio
         fut = asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))

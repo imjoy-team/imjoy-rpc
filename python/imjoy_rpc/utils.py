@@ -427,7 +427,13 @@ def setup_js_socketio(config, resolve, reject):
                 withCredentials: true,
                 extraHeaders,
             });
+            let connected = false;
             socket.on("connect", () => {
+                if(connected) {
+                    console.warn("Skipping reconnect to the server");
+                    return
+                }
+
                 globalThis.sendMessage = function(data){
                     
                     return new Promise((resolve, reject)=>{
@@ -451,6 +457,7 @@ def setup_js_socketio(config, resolve, reject):
                         reject(result.detail);
                         return;
                     }
+                    connected = true;
                     globalThis.setMessageCallback = (cb)=>{
                         socket.on("plugin_message", cb);
                     }
