@@ -44,11 +44,11 @@ export class Connection extends MessageEmitter {
           (basePath.endsWith("/") ? basePath.slice(0, -1) : basePath) +
           "/socket.io"
       });
-      let connected=false;
+      let connected = false;
       socket.on("connect", () => {
-        if(connected){
+        if (connected) {
           console.warn("Skipping reconnect to the server");
-          return
+          return;
         }
         socket.emit("register_plugin", config, result => {
           if (!result.success) {
