@@ -526,7 +526,7 @@ def setup_connection(
         )
     elif connection_type == "pyodide-socketio":
         if logger:
-            logger.info("Using colab connection for imjoy-rpc")
+            logger.info("Using pyodide-socketio connection for imjoy-rpc")
         from .connection.pyodide_connection import PyodideConnectionManager
 
         manager = PyodideConnectionManager(_rpc_context)
@@ -550,7 +550,7 @@ def setup_connection(
 
     elif connection_type == "pyodide":
         if logger:
-            logger.info("Using colab connection for imjoy-rpc")
+            logger.info("Using pyodide connection for imjoy-rpc")
         from .connection.pyodide_connection import PyodideConnectionManager
 
         manager = PyodideConnectionManager(_rpc_context)

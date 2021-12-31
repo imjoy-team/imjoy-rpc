@@ -1,8 +1,13 @@
 """Provide the connection."""
 import asyncio
+import gzip
 import logging
+import math
 import sys
 import time
+import uuid
+
+import msgpack
 
 from imjoy_rpc.utils import MessageEmitter, dotdict
 
@@ -11,6 +16,7 @@ logger = logging.getLogger("core-connection")
 logger.setLevel(logging.WARNING)
 
 all_connections = {}
+CHUNK_SIZE = 1024 * 1000
 
 
 class BasicConnection(MessageEmitter):
@@ -27,6 +33,8 @@ class BasicConnection(MessageEmitter):
         self._send = send
         self.peer_id = None
         self.on("initialized", self._initialized)
+        self._chunk_store = {}
+        self.accept_encoding = []
 
     def _initialized(self, data):
         self.plugin_config = data["config"]
@@ -66,6 +74,31 @@ class BasicConnection(MessageEmitter):
 
     def handle_message(self, data):
         """Handle a message."""
+        dtype = data.get("type")
+        if dtype == "msgpack_chunk":
+            id_ = data["object_id"]
+            if id_ not in self._chunk_store:
+                self._chunk_store[id_] = []
+            assert data["index"] == len(self._chunk_store[id_])
+            self._chunk_store[id_].append(data["data"])
+            return
+
+        if dtype == "msgpack_data":
+            if data.get("chunked_object"):
+                object_id = data["chunked_object"]
+                chunks = self._chunk_store[object_id]
+                del self._chunk_store[object_id]
+                data["data"] = b"".join(chunks)
+            if data.get("compression"):
+                if data["compression"] == "gzip":
+                    data["data"] = gzip.decompress(data["data"])
+                else:
+                    raise Exception(f"Unsupported compression: {data['compression']}")
+            decoded = msgpack.unpackb(data["data"], use_list=False, raw=False)
+            decoded["plugin_id"] = data["plugin_id"]
+            decoded["type"] = data["msg_type"]
+            data = decoded
+
         target_id = data.get("target_id")
         if target_id and self.peer_id and target_id != self.peer_id:
             conn = all_connections[target_id]
@@ -78,6 +111,8 @@ class BasicConnection(MessageEmitter):
                     data,
                 )
         else:
+            if data.get("type") == "initialized":
+                self.accept_encoding = data.get("accept_encoding", [])
             self._fire(data["type"], data)
 
     def connect(self):
@@ -98,7 +133,59 @@ class BasicConnection(MessageEmitter):
 
             msg["access_token"] = self._access_token
         msg["peer_id"] = msg.get("peer_id") or self.peer_id
-        asyncio.ensure_future(self._send(msg))
+        if msg.get("type") in ["initialize"] or "msgpack" not in self.accept_encoding:
+            if msg.get("type") == "initialize":
+                # Notify the plugin that the server supports msgpack decoding
+                msg["accept_encoding"] = ["msgpack", "gzip"]
+            asyncio.ensure_future(self._send(msg))
+        else:
+            encoded = {
+                "type": "msgpack_data",
+                "msg_type": msg.pop("type"),
+                "peer_id": msg.pop("peer_id"),
+            }
+            packed = msgpack.packb(msg, use_bin_type=True)
+            total_size = len(packed)
+            if total_size > CHUNK_SIZE and "gzip" in self.accept_encoding:
+                compressed = gzip.compress(packed)
+                # Only send the compressed version
+                # if the compression ratio is > 80%;
+                if len(compressed) <= total_size * 0.8:
+                    packed = compressed
+                    encoded["compression"] = "gzip"
+
+            total_size = len(packed)
+            if total_size <= CHUNK_SIZE:
+                encoded["data"] = packed
+                asyncio.ensure_future(self._send(encoded))
+            else:
+
+                async def send_chunks():
+                    object_id = str(uuid.uuid4())
+                    chunk_num = int(math.ceil(float(total_size) / CHUNK_SIZE))
+                    # send chunk by chunk
+                    for idx in range(chunk_num):
+                        start_byte = idx * CHUNK_SIZE
+                        chunk = {
+                            "type": "msgpack_chunk",
+                            "object_id": object_id,
+                            "data": packed[start_byte : start_byte + CHUNK_SIZE],
+                            "index": idx,
+                            "total": chunk_num,
+                        }
+                        logger.info(
+                            "Sending chunk %d/%d (%d bytes)",
+                            idx + 1,
+                            chunk_num,
+                            total_size,
+                        )
+                        await self._send(chunk)
+
+                    # reference the chunked object
+                    encoded["chunked_object"] = object_id
+                    await self._send(encoded)
+
+                asyncio.ensure_future(send_chunks())
 
     def disconnect(self):
         """Disconnect the plugin."""
