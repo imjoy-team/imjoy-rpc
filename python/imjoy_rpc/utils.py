@@ -580,7 +580,7 @@ def setup_connection(
             register_codec=manager.register_codec,
         )
         manager.start(
-            on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+            None, on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
         )
     else:
         if logger:
