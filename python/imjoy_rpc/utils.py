@@ -445,7 +445,7 @@ def setup_js_socketio(config, resolve, reject):
                         socket.on("plugin_message", cb);
                     }
                     console.log("Plugin registered: " + config.name)
-                    resolve();
+                    resolve(config.plugin_id);
                 })
 
                 socket.on("connect_error", (error) => {
@@ -537,9 +537,11 @@ def setup_connection(
             register_codec=manager.register_codec,
         )
 
-        def resolve():
+        def resolve(plugin_id):
             manager.start(
-                on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+                plugin_id,
+                on_ready_callback=on_ready_callback,
+                on_error_callback=on_error_callback,
             )
 
         def reject(error):

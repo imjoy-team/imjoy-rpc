@@ -74,9 +74,9 @@ class PyodideConnectionManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
-    def start(self, target="imjoy_rpc", on_ready_callback=None, on_error_callback=None):
+    def start(self, plugin_id, on_ready_callback=None, on_error_callback=None):
         try:
-            self._create_new_connection(target, on_ready_callback, on_error_callback)
+            self._create_new_connection(plugin_id, on_ready_callback, on_error_callback)
         except Exception as ex:
             if on_error_callback:
                 on_error_callback(ex)
@@ -89,10 +89,10 @@ class PyodideConnectionManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def _create_new_connection(self, target, on_ready_callback, on_error_callback):
+    def _create_new_connection(self, plugin_id, on_ready_callback, on_error_callback):
         client_id = str(uuid.uuid4())
         connection_id.set(client_id)
-        connection = PyodideConnection(self.default_config)
+        connection = PyodideConnection(self.default_config, plugin_id)
 
         def initialize(data):
             self.clients[client_id] = dotdict()
@@ -179,7 +179,7 @@ try{
 
 
 class PyodideConnection(MessageEmitter):
-    def __init__(self, config):
+    def __init__(self, config, plugin_id):
         self.config = dotdict(config or {})
         super().__init__(logger)
         self.channel = self.config.get("channel") or "imjoy_rpc"
@@ -188,6 +188,7 @@ class PyodideConnection(MessageEmitter):
         self.debug = True
         self._post_message = js.sendMessage
         self.accept_encoding = []
+        self.plugin_id = plugin_id
 
         def msg_cb(msg):
             data = msg.to_py()

@@ -324,7 +324,6 @@ class SocketioConnection(MessageEmitter):
                     # send chunk by chunk
                     for idx in range(chunk_num):
                         start_byte = idx * CHUNK_SIZE
-                        fut = loop.create_future()
                         chunk = {
                             "type": "msgpack_chunk",
                             "object_id": object_id,
@@ -341,10 +340,7 @@ class SocketioConnection(MessageEmitter):
                         await self.sio.emit(
                             "plugin_message", chunk, callback=fut.set_result
                         )
-                        ret = await fut
-                        if not ret.get("success"):
-                            self._fire("error", ret.get("detail"))
-                            return
+
                     # reference the chunked object
                     encoded["chunked_object"] = object_id
                     await self.sio.emit(
