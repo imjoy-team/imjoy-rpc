@@ -435,7 +435,7 @@ def setup_js_socketio(config, resolve, reject):
                 }
 
                 globalThis.sendMessage = function(data){
-                    
+
                     return new Promise((resolve, reject)=>{
                         try{
                             data = toObject(data)
@@ -447,7 +447,7 @@ def setup_js_socketio(config, resolve, reject):
                         catch(e){
                             reject(e)
                         }
-                        
+
                     })
                 }
 
