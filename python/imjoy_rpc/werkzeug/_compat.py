@@ -123,7 +123,6 @@ if PY2:
             return x
         return x.encode(charset, errors)
 
-
 else:
     unichr = chr
     text_type = str
