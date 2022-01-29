@@ -2,7 +2,7 @@ import { RPC, API_VERSION } from "./rpc.js";
 import { assert, loadRequirements, randId } from "./utils.js";
 
 export { RPC, API_VERSION };
-export { version as VERSION } from "../package.json";
+export { version as VERSION } from "../../package.json";
 export { loadRequirements };
 
 class WebsocketRPCConnection {

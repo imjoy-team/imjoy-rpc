@@ -16,7 +16,13 @@ module.exports = {
   output: {
       path: path.resolve(__dirname, 'dist'),
       filename(pathData){
-        let name = pathData.chunk.name === 'imjoyRPC' ? 'imjoy-rpc' : 'imjoy-rpc-socketio';
+        const output_names = {
+          "imjoyRPC": "imjoy-rpc",
+          "imjoyRPCSocketIO": 'imjoy-rpc-socketio',
+          "hyphaRPC": "hypha-rpc",
+          "hyphaWebsocketClient": "hypha-rpc-websocket",
+        }
+        const name = output_names[pathData.chunk.name];
         return process.env.NODE_ENV === 'production'? name + '.min.js': name + '.js';
       },
       library: '[name]',
