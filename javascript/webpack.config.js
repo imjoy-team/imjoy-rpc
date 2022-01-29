@@ -10,6 +10,8 @@ module.exports = {
   entry: {
       'imjoyRPC': path.resolve(__dirname, 'src', 'main.js'),
       'imjoyRPCSocketIO': path.resolve(__dirname, 'src', 'socketIOMain.js'),
+      'hyphaRPC': path.resolve(__dirname, 'src', 'hypha', 'rpc.js'),
+      'hyphaWebsocketClient': path.resolve(__dirname, 'src', 'hypha', 'websocket-client.js'),
   },
   output: {
       path: path.resolve(__dirname, 'dist'),
