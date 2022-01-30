@@ -36,7 +36,7 @@ logger.setLevel(logging.WARNING)
 class WebsocketRPCConnection:
     """Represent a websocket connection."""
 
-    def __init__(self, server_url, client_id, workspace=None, token=None):
+    def __init__(self, server_url, client_id, workspace=None, token=None, timeout=5):
         """Set up instance."""
         self._websocket = None
         self._handle_message = None
@@ -49,6 +49,7 @@ class WebsocketRPCConnection:
         self._server_url = server_url
         self._reconnection_token = None
         self._listen_task = None
+        self._timeout = timeout
 
     def on_message(self, handler):
         """Handle message."""
@@ -68,7 +69,9 @@ class WebsocketRPCConnection:
                 else self._server_url
             )
             logger.info("Receating a new connection to %s", server_url.split("?")[0])
-            self._websocket = await websockets.connect(server_url)
+            self._websocket = await asyncio.wait_for(
+                websockets.connect(server_url), self._timeout
+            )
             self._listen_task = asyncio.ensure_future(self._listen(self._websocket))
         except Exception as exp:
             if hasattr(exp, "status_code") and exp.status_code == 403:
@@ -133,6 +136,7 @@ async def connect_to_server(config):
         client_id,
         workspace=config.get("workspace"),
         token=config.get("token"),
+        timeout=config.get("method_timeout", 5),
     )
     await connection.open()
     rpc = RPC(

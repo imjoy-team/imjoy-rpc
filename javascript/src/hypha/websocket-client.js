@@ -91,7 +91,8 @@ export async function connectToServer(config) {
     config.server_url,
     clientId,
     config.workspace,
-    config.token
+    config.token,
+    config.method_timeout || 5
   );
   await connection.open();
   const rpc = new RPC(connection, {
