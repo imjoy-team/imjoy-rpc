@@ -173,10 +173,11 @@ export class RPC extends MessageEmitter {
           this._connection.set_reconnection_token(
             this._user_info.reconnection_token
           );
+          const reconnection_expires_in = this._user_info.reconnection_expires_in * 0.8;
           console.info(
-            "Set reconnection token: ",
-            this._user_info.reconnection_token
+            `Reconnection token obtained: ${this._user_info.reconnection_token}, will be refreshed in ${reconnection_expires_in} seconds`,
           );
+          setTimeout(this._get_user_info.bind(this), reconnection_expires_in*1000);
         }
       } catch (exp) {
         console.warn(
@@ -686,12 +687,8 @@ export class RPC extends MessageEmitter {
           local_session_id = local_parent + "." + local_session_id;
         }
         let store = self._get_session_store(local_session_id, true);
-        if (!store) {
-          reject(
-            new Error(
-              `Runtime Error: Failed to get session store ${local_session_id}`
-            )
-          );
+        if(!store){
+          reject(new Error(`Runtime Error: Failed to get session store ${local_session_id}`))
           return;
         }
         store["target_id"] = target_id;

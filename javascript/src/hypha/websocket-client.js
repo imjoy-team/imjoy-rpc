@@ -102,10 +102,10 @@ export async function connectToServer(config) {
     api.id = "default";
     api.name = config.name || api.id;
     await rpc.register_service(api, true);
-    const svc = await rpc.get_remote_service(rpc._client_id + ":default");
-    if (svc.setup) {
-      await svc.setup();
-    }
+    // const svc = await rpc.get_remote_service(rpc._client_id + ":default");
+    // if (svc.setup) {
+    //   await svc.setup();
+    // }
   }
 
   async function getPlugin(query) {

@@ -3,26 +3,30 @@ import asyncio
 import inspect
 import io
 import logging
-import os
 import sys
-import threading
 import traceback
-import uuid
 import weakref
 from collections import OrderedDict
-from functools import reduce
+from functools import partial, reduce
+import msgpack
+import math
 
+import shortuuid
 from .utils import (
     FuturePromise,
     MessageEmitter,
-    ReferenceStore,
     dotdict,
     format_traceback,
 )
 
-API_VERSION = "0.2.3"
+CHUNK_SIZE = 1024 * 500
+API_VERSION = "0.3.0"
 ALLOWED_MAGIC_METHODS = ["__enter__", "__exit__"]
-IO_METHODS = [
+IO_PROPS = [
+    "name",  # file name
+    "size",  # size in bytes
+    "path",  # file path
+    "type",  # type type
     "fileno",
     "seek",
     "truncate",
@@ -50,6 +54,7 @@ IO_METHODS = [
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("RPC")
+logger.setLevel(logging.WARNING)
 
 
 def index_object(obj, ids):
@@ -68,156 +73,453 @@ def index_object(obj, ids):
         return index_object(_obj, ids[1:])
 
 
+class Timer:
+    def __init__(self, timeout, callback, *args, label="timer", **kwargs):
+        self._timeout = timeout
+        self._callback = callback
+        self._task = None
+        self._args = args
+        self._kwrags = kwargs
+        self._label = label
+
+    def start(self):
+        self._task = asyncio.ensure_future(self._job())
+
+    async def _job(self):
+        await asyncio.sleep(self._timeout)
+        ret = self._callback(*self._args, **self._kwrags)
+        if ret is not None and inspect.isawaitable(ret):
+            await ret
+
+    def clear(self):
+        assert self._task is not None, "Timer is not started"
+        self._task.cancel()
+
+    def reset(self):
+        assert self._task is not None, "Timer is not started"
+        self._task.cancel()
+        self._task = asyncio.ensure_future(self._job())
+
+
 class RPC(MessageEmitter):
     """Represent the RPC."""
 
-    def __init__(self, connection, rpc_context, config=None, codecs=None):
+    def __init__(
+        self,
+        connection,
+        client_id=None,
+        root_target_id=None,
+        default_context=None,
+        name=None,
+        codecs=None,
+        method_timeout=None,
+        max_message_buffer_size=0,
+        loop=None,
+    ):
         """Set up instance."""
-        self.manager_api = {}
-        self.services = {}
-        self._object_store = {}
-        self._method_weakmap = weakref.WeakKeyDictionary()
-        self._object_weakmap = weakref.WeakKeyDictionary()
-        self._local_api = None
-        self._remote_set = False
-        self._store = ReferenceStore()
-        self._remote_interface = None
         self._codecs = codecs or {}
-        self.work_dir = os.getcwd()
-        self.abort = threading.Event()
-        self.id = None
-
-        self.rpc_context = rpc_context
-
-        if config is None:
-            config = {}
-        self.set_config(config)
-
-        self._remote_logger = dotdict({"info": self._log, "error": self._error})
+        assert client_id and isinstance(client_id, str)
+        assert client_id is not None, "client_id is required"
+        self._client_id = client_id
+        self._name = name
+        self._workspace = None
+        self._user_info = None
+        self.root_target_id = root_target_id
+        self.default_context = default_context or {}
+        self._method_annotations = weakref.WeakKeyDictionary()
+        self._remote_root_service = None
+        self._max_message_buffer_size = max_message_buffer_size
+        self._chunk_store = {}
+        self._method_timeout = 10 if method_timeout is None else method_timeout
+        self._remote_logger = logger
+        self.loop = loop or asyncio.get_event_loop()
         super().__init__(self._remote_logger)
 
-        try:
-            # FIXME: What exception do we expect?
-            self.loop = asyncio.get_event_loop()
-        except RuntimeError:
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
+        self._services = {}
+        self._object_store = {
+            "services": self._services,
+        }
 
-        if connection is not None:
+        if connection:
+            self.add_service(
+                {
+                    "id": "built-in",
+                    "type": "built-in",
+                    "name": "RPC built-in services",
+                    "config": {"require_context": True, "visibility": "public"},
+                    "ping": self._ping,
+                    "get_service": self.get_local_service,
+                    "register_service": self.register_service,
+                    "message_cache": {
+                        "create": self._create_message,
+                        "append": self._append_message,
+                        "process": self._process_message,
+                        "remove": self._remove_message,
+                    },
+                }
+            )
+            self.on("method", self._handle_method)
+
+            assert hasattr(connection, "emit_message") and hasattr(
+                connection, "on_message"
+            )
+            self._emit_message = connection.emit_message
+            connection.on_message(self._on_message)
             self._connection = connection
-            self._setup_handlers(connection)
+
+            # Update the server and obtain client info
+            asyncio.ensure_future(self._get_user_info())
+        else:
+
+            async def _emit_message(_):
+                logger.info("No connection to emit message")
+
+            self._emit_message = _emit_message
 
         self.check_modules()
 
-    def init(self):
-        """Initialize the RPC."""
-        logger.info("%s initialized", self.config.name)
-        self._connection.emit(
+    async def _get_user_info(self):
+        if self.root_target_id:
+            # try to get the root service
+            try:
+                await self.get_remote_root_service(timeout=5.0)
+                assert self._remote_root_service
+                self._user_info = await self._remote_root_service.get_user_info()
+                if "reconnection_token" in self._user_info and hasattr(
+                    self._connection, "set_reconnection_token"
+                ):
+                    self._connection.set_reconnection_token(
+                        self._user_info["reconnection_token"]
+                    )
+                    reconnection_expires_in = (
+                        self._user_info["reconnection_expires_in"] * 0.8
+                    )
+                    logger.debug(
+                        "Reconnection token obtained: %s, will be refreshed in %d seconds",
+                        self._user_info.get("reconnection_token"),
+                        reconnection_expires_in,
+                    )
+                    await asyncio.sleep(reconnection_expires_in)
+                    await self._get_user_info()
+            except Exception as exp:  # pylint: disable=broad-except
+                logger.warning(
+                    "Failed to fetch user info from %s: %s (reconnection will also fail)",
+                    self.root_target_id,
+                    exp,
+                )
+
+    def register_codec(self, config):
+        """Register codec."""
+        assert "name" in config
+        assert "encoder" in config or "decoder" in config
+        if "type" in config:
+            for tp in list(self._codecs.keys()):
+                codec = self._codecs[tp]
+                if codec.type == config["type"] or tp == config["name"]:
+                    logger.info("Removing duplicated codec: " + tp)
+                    del self._codecs[tp]
+
+        self._codecs[config["name"]] = dotdict(config)
+
+    async def _ping(self, msg, context=None):
+        assert msg == "ping"
+        return "pong"
+
+    async def ping(self, client_id, timeout=1):
+        method = self._generate_remote_method(
             {
-                "type": "initialized",
-                "config": dict(self.config),
-                "peer_id": self._connection.peer_id,
+                "_rtarget": client_id,
+                "_rmethod": "services.built-in.ping",
+                "_rpromise": True,
             }
         )
+        assert (await asyncio.wait_for(method("ping"), timeout)) == "pong"
+
+    def _create_message(self, key, heartbeat=False, overwrite=False, context=None):
+        if heartbeat:
+            if key not in self._object_store:
+                raise Exception(f"session does not exist anymore: {key}")
+            self._object_store[key]["timer"].reset()
+
+        if "message_cache" not in self._object_store:
+            self._object_store["message_cache"] = {}
+        if not overwrite and key in self._object_store["message_cache"]:
+            raise Exception(
+                "Message with the same key (%s) already exists in the cache store, please use overwrite=True or remove it first.",
+                key,
+            )
+
+        self._object_store["message_cache"][key] = b""
+
+    def _append_message(self, key, data, heartbeat=False, context=None):
+        if heartbeat:
+            if key not in self._object_store:
+                raise Exception(f"session does not exist anymore: {key}")
+            self._object_store[key]["timer"].reset()
+        cache = self._object_store["message_cache"]
+        if key not in cache:
+            raise KeyError(f"Message with key {key} does not exists.")
+        assert isinstance(data, bytes)
+        cache[key] += data
+
+    def _remove_message(self, key, context=None):
+        cache = self._object_store["message_cache"]
+        if key not in cache:
+            raise KeyError(f"Message with key {key} does not exists.")
+        del cache[key]
+
+    def _process_message(self, key, heartbeat=False, context=None):
+        if heartbeat:
+            if key not in self._object_store:
+                raise Exception(f"session does not exist anymore: {key}")
+            self._object_store[key]["timer"].reset()
+        cache = self._object_store["message_cache"]
+        assert context is not None, "Context is required"
+        if key not in cache:
+            raise KeyError(f"Message with key {key} does not exists.")
+        logger.debug("Processing message %s (size=%d)", key, len(cache[key]))
+        unpacker = msgpack.Unpacker(
+            io.BytesIO(cache[key]), max_buffer_size=self._max_message_buffer_size
+        )
+        main = unpacker.unpack()
+        # Make sure the fields are from trusted source
+        main.update(
+            {
+                "from": context["from"],
+                "to": context["to"],
+                "user": context["user"],
+            }
+        )
+        main["ctx"] = main.copy()
+        main["ctx"].update(self.default_context)
+        try:
+            extra = unpacker.unpack()
+            main.update(extra)
+        except msgpack.exceptions.OutOfData:
+            pass
+        self._fire(main["type"], main)
+        del cache[key]
+
+    def _on_message(self, message):
+        """Handle message."""
+        assert isinstance(message, bytes)
+        unpacker = msgpack.Unpacker(io.BytesIO(message), max_buffer_size=CHUNK_SIZE * 2)
+        main = unpacker.unpack()
+        # Add trusted context to the method call
+        main["ctx"] = main.copy()
+        main["ctx"].update(self.default_context)
+        try:
+            extra = unpacker.unpack()
+            main.update(extra)
+        except msgpack.exceptions.OutOfData:
+            pass
+        self._fire(main["type"], main)
 
     def reset(self):
         """Reset."""
         self._event_handlers = {}
-        self.services = {}
-        self._object_store = {}
-        self._method_weakmap = weakref.WeakKeyDictionary()
-        self._object_weakmap = weakref.WeakKeyDictionary()
-        self._local_api = None
-        self._remote_set = False
-        self._store = ReferenceStore()
-        self._remote_interface = None
+        self._services = {}
 
-    def disconnect(self):
+    async def disconnect(self):
         """Disconnect."""
-        self._connection.emit({"type": "disconnect"})
-        self.reset()
-        self._connection.disconnect()
+        self._fire("disconnect")
 
-    def default_exit(self):
-        """Exit default."""
-        logger.info("Terminating plugin: %s", self.id)
-        self.abort.set()
+    async def get_remote_root_service(self, timeout=None):
+        if self.root_target_id and not self._remote_root_service:
+            self._remote_root_service = await self.get_remote_service(
+                service_uri=f"{self.root_target_id}:default", timeout=timeout
+            )
 
-    def set_config(self, config):
-        """Set config."""
-        if config is not None:
-            config = dotdict(config)
-        else:
-            config = dotdict()
-        self.id = config.id or self.id or str(uuid.uuid4())
-        self.allow_execution = config.allow_execution or False
-        self.config = dotdict(
-            {
-                "allow_execution": self.allow_execution,
-                "api_version": API_VERSION,
-                "dedicated_thread": True,
-                "description": config.description or "[TODO]",
-                "id": self.id,
-                "lang": "python",
-                "name": config.name or "ImJoy RPC Python",
-                "type": "rpc-worker",
-                "work_dir": self.work_dir,
-                "version": config.version or "0.1.0",
+    def get_all_local_services(self):
+        """Get all the local services."""
+        return self._services
+
+    def get_local_service(self, service_id, context=None):
+        assert service_id is not None
+        ws, client_id = context["to"].split("/")
+        assert client_id == self._client_id
+
+        service = self._services.get(service_id)
+        if not service:
+            raise KeyError("Service not found: %s", service_id)
+
+        # allow access for the same workspace
+        if service["config"].get("visibility", "protected") == "public":
+            return service
+
+        # allow access for the same workspace
+        if context["from"].startswith(ws + "/"):
+            return service
+
+        raise Exception(f"Permission denied for service: {service_id}")
+
+    async def get_remote_service(self, service_uri=None, timeout=None):
+        """Get a remote service."""
+        if service_uri is None and self.root_target_id:
+            service_uri = self.root_target_id
+        elif ":" not in service_uri:
+            service_uri = self._client_id + ":" + service_uri
+        provider, service_id = service_uri.split(":")
+        assert provider
+        try:
+            method = self._generate_remote_method(
+                {
+                    "_rtarget": provider,
+                    "_rmethod": "services.built-in.get_service",
+                    "_rpromise": True,
+                }
+            )
+            return await asyncio.wait_for(method(service_id), timeout=timeout)
+        except Exception as exp:
+            logger.exception("Failed to get remote service: %s: %s", service_id, exp)
+            raise
+
+    def _annotate_service_methods(
+        self,
+        a_object,
+        object_id,
+        require_context=False,
+        run_in_executor=False,
+        visibility="protected",
+    ):
+        if callable(a_object):
+            # mark the method as a remote method that requires context
+            method_name = ".".join(object_id.split(".")[1:])
+            self._method_annotations[a_object] = {
+                "require_context": (method_name in require_context)
+                if isinstance(require_context, (list, tuple))
+                else bool(require_context),
+                "run_in_executor": run_in_executor,
+                "method_id": "services." + object_id,
+                "visibility": visibility,
             }
-        )
+        elif isinstance(a_object, (dict, list, tuple)):
+            items = (
+                a_object.items() if isinstance(a_object, dict) else enumerate(a_object)
+            )
+            for key, val in items:
+                if callable(val) and hasattr(val, "__rpc_object__"):
+                    client_id = val.__rpc_object__["_rtarget"]
+                    if "/" in client_id:
+                        client_id = client_id.split("/")[1]
+                    if self._client_id == client_id:
+                        # Make sure we can modify the object
+                        if isinstance(a_object, tuple):
+                            a_object = list(a_object)
+                        # recover local method
+                        a_object[key] = index_object(
+                            self._object_store, val.__rpc_object__["_rmethod"]
+                        )
+                        val = a_object[key]  # make sure it's annotated later
+                    else:
+                        raise Exception(
+                            f"Local method not found: {val.__rpc_object__['_rmethod']}, client id mismatch {self._client_id} != {client_id}"
+                        )
+                self._annotate_service_methods(
+                    val,
+                    object_id + "." + str(key),
+                    require_context=require_context,
+                    run_in_executor=run_in_executor,
+                    visibility=visibility,
+                )
 
-    def get_remote(self):
-        """Return the remote interface."""
-        return self._remote_interface
-
-    def set_interface(self, api, config=None):
-        """Set interface."""
-        # TODO: setup forwarding_functions
-        if config:
-            self.set_config(config)
-
+    def add_service(self, api, overwrite=False):
+        """Add a service (silently without triggering notifications)."""
         # convert and store it in a docdict
         # such that the methods are hashable
         if isinstance(api, dict):
-            self._local_api = dotdict(
+            api = dotdict(
                 {
                     a: api[a]
                     for a in api.keys()
-                    if not a.startswith("_")
-                    or a in ALLOWED_MAGIC_METHODS
-                    or a == "_rintf"
+                    if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
                 }
             )
         elif inspect.isclass(type(api)):
-            self._local_api = dotdict(
+            api = dotdict(
                 {
                     a: getattr(api, a)
                     for a in dir(api)
-                    if not a.startswith("_")
-                    or a in ALLOWED_MAGIC_METHODS
-                    or a == "_rintf"
+                    if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
                 }
             )
+            # For class instance, we need set a default id
+            api["id"] = api.get("id", "default")
         else:
-            raise Exception("Invalid api export")
+            raise Exception("Invalid service object type: {}".format(type(api)))
 
-        if not self._remote_set:
-            self._fire("interfaceAvailable")
-        else:
-            self.send_interface()
+        assert "id" in api and isinstance(
+            api["id"], str
+        ), f"Service id not found: {api}"
 
-        # we might installed modules when solving requirements
-        # so let's check it again
-        self.check_modules()
+        if "name" not in api:
+            api["name"] = api["id"]
 
-        fut = self.loop.create_future()
+        if "config" not in api:
+            api["config"] = {}
 
-        def done(result):
-            if not fut.done():
-                fut.set_result(result)
+        if "type" not in api:
+            api["type"] = "generic"
 
-        self.once("interfaceSetAsRemote", done)
-        return fut
+        # require_context only applies to the top-level functions
+        require_context, run_in_executor = False, False
+        if bool(api["config"].get("require_context")):
+            require_context = api["config"]["require_context"]
+        if bool(api["config"].get("run_in_executor")):
+            run_in_executor = True
+        visibility = api["config"].get("visibility", "protected")
+        assert visibility in ["protected", "public"]
+        self._annotate_service_methods(
+            api,
+            api["id"],
+            require_context=require_context,
+            run_in_executor=run_in_executor,
+            visibility=visibility,
+        )
+        if not overwrite and api["id"] in self._services:
+            raise Exception(
+                f"Service already exists: {api['id']}, please specify"
+                f" a different id (not {api['id']}) or overwrite=True"
+            )
+        self._services[api["id"]] = api
+        return api
+
+    async def register_service(self, api, overwrite=False, notify=True, context=None):
+        """Register a service."""
+        if context is not None:
+            # If this function is called from remote, we need to make sure
+            workspace, client_id = context["to"].split("/")
+            assert client_id == self._client_id
+            assert (
+                workspace == context["from"].split("/")[0]
+            ), "Services can only be registered from the same workspace"
+        service = self.add_service(api, overwrite=overwrite)
+        if notify:
+            self._fire(
+                "service-updated",
+                {"service_id": service["id"], "api": service, "type": "add"},
+            )
+            await self._notify_service_update()
+        return {
+            "id": f'{self._client_id}:{service["id"]}',
+            "type": service["type"],
+            "name": service["name"],
+            "config": service["config"],
+        }
+
+    async def unregister_service(self, service, notify=True):
+        """Register a service."""
+        if isinstance(service, str):
+            service = self._services.get(service)
+        if service["id"] not in self._services:
+            raise Exception(f"Service not found: {service.get('id')}")
+        del self._services[service["id"]]
+        if notify:
+            self._fire(
+                "service-updated",
+                {"service_id": service["id"], "api": service, "type": "remove"},
+            )
+            await self._notify_service_update()
 
     def check_modules(self):
         """Check if all the modules exists."""
@@ -231,399 +533,483 @@ class RPC(MessageEmitter):
                 "Failed to import numpy, ndarray encoding/decoding will not work"
             )
 
-    def request_remote(self):
-        """Request remote interface."""
-        self._connection.emit({"type": "getInterface"})
+    def _encode_callback(
+        self,
+        name,
+        callback,
+        session_id,
+        clear_after_called=False,
+        timer=None,
+        local_workspace=None,
+    ):
+        method_id = f"{session_id}.{name}"
+        encoded = {
+            "_rtype": "method",
+            "_rtarget": f"{local_workspace}/{self._client_id}"
+            if local_workspace
+            else self._client_id,
+            "_rmethod": method_id,
+            "_rpromise": False,
+        }
 
-    def send_interface(self):
-        """Send interface."""
-        if self._local_api is None:
-            raise Exception("interface is not set.")
+        def wrapped_callback(*args, **kwargs):
+            try:
+                callback(*args, **kwargs)
+            except asyncio.exceptions.InvalidStateError:
+                # This probably means the task was cancelled
+                logger.debug("Invalid state error in callback: %s", method_id)
+            finally:
+                if clear_after_called and session_id in self._object_store:
+                    logger.info(
+                        "Deleting session %s from %s", session_id, self._client_id
+                    )
+                    del self._object_store[session_id]
+                if timer:
+                    timer.clear()
 
-        api = self._encode(self._local_api, True)
-        self._connection.emit({"type": "setInterface", "api": api})
+        return encoded, wrapped_callback
 
-    def _dispose_object(self, object_id):
-        if object_id in self._object_store:
-            del self._object_store[object_id]
+    def _encode_promise(
+        self,
+        resolve,
+        reject,
+        session_id,
+        clear_after_called=False,
+        timer=None,
+        local_workspace=None,
+    ):
+        """Encode a group of callbacks without promise."""
+        store = self._get_session_store(session_id, create=True)
+        assert (
+            store is not None
+        ), f"Failed to create session store {session_id} due to invalid parent"
+        encoded = {}
+
+        if timer and reject and self._method_timeout:
+            encoded["heartbeat"] = self._encode(
+                timer.reset,
+                session_id,
+                local_workspace=local_workspace,
+            )
+            encoded["interval"] = self._method_timeout / 2
+            store["timer"] = timer
         else:
-            raise Exception("Object (id={}) not found.".format(object_id))
+            timer = None
 
-    def dispose_object(self, obj):
-        """Dispose object."""
-        if obj in self._object_weakmap:
-            object_id = self._object_weakmap[obj]
-        else:
-            raise Exception("Invalid object")
+        encoded["resolve"], store["resolve"] = self._encode_callback(
+            "resolve",
+            resolve,
+            session_id,
+            clear_after_called=clear_after_called,
+            timer=timer,
+            local_workspace=local_workspace,
+        )
+        encoded["reject"], store["reject"] = self._encode_callback(
+            "reject",
+            reject,
+            session_id,
+            clear_after_called=clear_after_called,
+            timer=timer,
+            local_workspace=local_workspace,
+        )
+        return encoded
 
-        def pfunc(resolve, reject):
-            """Handle plugin function."""
+    async def _send_chunks(self, package, target_id, session_id):
+        remote_services = await self.get_remote_service(f"{target_id}:built-in")
+        assert (
+            remote_services.message_cache
+        ), "Remote client does not support message caching for long message."
+        message_cache = remote_services.message_cache
+        message_id = session_id or shortuuid.uuid()
+        await message_cache.create(message_id, heartbeat=bool(session_id))
+        total_size = len(package)
+        chunk_num = int(math.ceil(float(total_size) / CHUNK_SIZE))
+        for idx in range(chunk_num):
+            start_byte = idx * CHUNK_SIZE
+            await message_cache.append(
+                message_id,
+                package[start_byte : start_byte + CHUNK_SIZE],
+                heartbeat=bool(session_id),
+            )
+            logger.info(
+                "Sending chunk %d/%d (%d bytes)",
+                idx + 1,
+                chunk_num,
+                total_size,
+            )
+        logger.info("All chunks sent (%d)", chunk_num)
+        await message_cache.process(message_id, heartbeat=bool(session_id))
 
-            def handle_disposed(data):
-                """Handle disposed."""
-                if "error" in data:
-                    reject(data["error"])
-                else:
-                    resolve(None)
-
-            self._connection.once("disposed", handle_disposed)
-            self._connection.emit({"type": "disposeObject", "object_id": object_id})
-
-        return FuturePromise(pfunc, self._remote_logger)
-
-    def _gen_remote_method(self, target_id, name, plugin_id=None):
+    def _generate_remote_method(
+        self,
+        encoded_method,
+        remote_parent=None,
+        local_parent=None,
+        remote_workspace=None,
+        local_workspace=None,
+    ):
         """Return remote method."""
+
+        target_id = encoded_method["_rtarget"]
+        if remote_workspace and "/" not in target_id:
+            target_id = remote_workspace + "/" + target_id
+            # Fix the target id to be an absolute id
+            encoded_method["_rtarget"] = target_id
+        method_id = encoded_method["_rmethod"]
+        with_promise = encoded_method.get("_rpromise", False)
 
         def remote_method(*arguments, **kwargs):
             """Run remote method."""
             arguments = list(arguments)
-            # wrap keywords to a dictionary and pass to the last argument
+            # encode keywords to a dictionary and pass to the last argument
             if kwargs:
                 arguments = arguments + [kwargs]
 
             def pfunc(resolve, reject):
-                encoded_promise = self.wrap([resolve, reject])
-                # store the key id for removing them from the reference store together
-                resolve.__promise_pair = encoded_promise[0]["_rvalue"]
-                reject.__promise_pair = encoded_promise[1]["_rvalue"]
-
-                if name in [
-                    "register",
-                    "registerService",
-                    "register_service",
-                    "export",
-                    "on",
-                ]:
-                    args = self.wrap(arguments, as_interface=True)
-                else:
-                    args = self.wrap(arguments)
-
-                call_func = {
-                    "type": "method",
-                    "target_id": target_id,
-                    "name": name,
-                    "object_id": plugin_id,
-                    "args": args,
-                    "with_kwargs": bool(kwargs),
-                    "promise": encoded_promise,
-                }
-                self._connection.emit(call_func)
-
-            return FuturePromise(pfunc, self._remote_logger, self.dispose_object)
-
-        remote_method.__remote_method = True  # pylint: disable=protected-access
-        return remote_method
-
-    def _gen_remote_callback(self, target_id, cid, with_promise):
-        """Return remote callback."""
-        if with_promise:
-
-            def remote_callback(*arguments, **kwargs):
-                # wrap keywords to a dictionary and pass to the last argument
-                arguments = list(arguments)
-                if kwargs:
-                    arguments = arguments + [kwargs]
-
-                def pfunc(resolve, reject):
-                    encoded_promise = self.wrap([resolve, reject])
-                    # store the key id
-                    # for removing them from the reference store together
-                    resolve.__promise_pair = encoded_promise[0]["_rvalue"]
-                    reject.__promise_pair = encoded_promise[1]["_rvalue"]
-                    self._connection.emit(
-                        {
-                            "type": "callback",
-                            "id": cid,
-                            "target_id": target_id,
-                            # 'object_id'  : self.id,
-                            "args": self.wrap(arguments),
-                            "with_kwargs": bool(kwargs),
-                            "promise": encoded_promise,
-                        }
+                local_session_id = shortuuid.uuid()
+                if local_parent:
+                    # Store the children session under the parent
+                    local_session_id = local_parent + "." + local_session_id
+                store = self._get_session_store(local_session_id, create=True)
+                if store is None:
+                    reject(
+                        RuntimeError(f"Failed to get session store {local_session_id}")
                     )
-
-                return FuturePromise(pfunc, self._remote_logger, self.dispose_object)
-
-        else:
-
-            def remote_callback(*arguments, **kwargs):
-                # wrap keywords to a dictionary and pass to the last argument
-                arguments = list(arguments)
-                if kwargs:
-                    arguments = arguments + [kwargs]
-                self._connection.emit(
-                    {
-                        "type": "callback",
-                        "id": cid,
-                        "target_id": target_id,
-                        # 'object_id'  : self.id,
-                        "args": self.wrap(arguments),
-                        "with_kwargs": bool(kwargs),
-                    }
+                    return
+                store["target_id"] = target_id
+                args = self._encode(
+                    arguments,
+                    session_id=local_session_id,
+                    local_workspace=local_workspace,
                 )
 
-        return remote_callback
+                main_message = {
+                    "type": "method",
+                    "from": self._client_id,
+                    "to": target_id,
+                    "method": method_id,
+                }
+                extra_data = {}
+                if args:
+                    extra_data["args"] = args
+                if kwargs:
+                    extra_data["with_kwargs"] = bool(kwargs)
 
-    def set_remote_interface(self, api):
-        """Set remote interface."""
-        _remote = self._decode(api, False)
-        # update existing interface instead of recreating it
-        # this will preserve the object reference
-        if self._remote_interface:
-            self._remote_interface.clear()
-            for k in _remote:
-                self._remote_interface[k] = _remote[k]
-        else:
-            self._remote_interface = _remote
-        self._fire("remoteReady")
-        self._run_with_context(self._set_remote_api, _remote)
+                logger.info(
+                    "Calling remote method %s:%s, session: %s",
+                    target_id,
+                    method_id,
+                    local_session_id,
+                )
+                if remote_parent:
+                    # Set the parent session
+                    # Note: It's a session id for the remote, not the current client
+                    main_message["parent"] = remote_parent
 
-    def _set_remote_api(self, _remote):
-        """Set remote API."""
-        self.rpc_context.api = _remote
-        self.rpc_context.api.WORK_DIR = self.work_dir
-        if "config" not in self.rpc_context.api:
-            self.rpc_context.api.config = dotdict()
-        self.rpc_context.api.config.work_dir = self.work_dir
+                timer = None
+                if with_promise:
+                    # Only pass the current session id to the remote
+                    # if we want to received the result
+                    # I.e. the session id won't be passed for promises themselves
+                    main_message["session"] = local_session_id
+                    method_name = f"{target_id}:{method_id}"
+                    timer = Timer(
+                        self._method_timeout,
+                        reject,
+                        f"Method call time out: {method_name}",
+                        label=method_name,
+                    )
+                    extra_data["promise"] = self._encode_promise(
+                        resolve=resolve,
+                        reject=reject,
+                        session_id=local_session_id,
+                        clear_after_called=True,
+                        timer=timer,
+                        local_workspace=local_workspace,
+                    )
+                # The message consists of two segments, the main message and extra data
+                message_package = msgpack.packb(main_message)
+                if extra_data:
+                    message_package = message_package + msgpack.packb(extra_data)
+                total_size = len(message_package)
+                if total_size <= CHUNK_SIZE + 1024:
+                    emit_task = asyncio.ensure_future(
+                        self._emit_message(message_package)
+                    )
+                else:
+                    # send chunk by chunk
+                    emit_task = asyncio.ensure_future(
+                        self._send_chunks(message_package, target_id, remote_parent)
+                    )
+
+                def handle_result(fut):
+                    if fut.exception():
+                        reject(
+                            Exception(
+                                f"Failed to send the request when calling method ({target_id}:{method_id}), error: {fut.exception()}"
+                            )
+                        )
+                    elif timer:
+                        logger.info("Start watchdog timer.")
+                        # Only start the timer after we send the message successfully
+                        timer.start()
+
+                emit_task.add_done_callback(handle_result)
+
+            return FuturePromise(pfunc, self._remote_logger)
+
+        # Generate debugging information for the method
+        remote_method.__rpc_object__ = (
+            encoded_method.copy()
+        )  # pylint: disable=protected-access
+        return remote_method
 
     def _log(self, info):
-        self._connection.emit({"type": "log", "message": info})
+        logger.info("RPC Info: %s", info)
 
     def _error(self, error):
-        self._connection.emit({"type": "error", "message": error})
+        logger.error("RPC Error: %s", error)
 
     def _call_method(
-        self, method, args, kwargs, resolve=None, reject=None, method_name=None
+        self,
+        method,
+        args,
+        kwargs,
+        resolve=None,
+        reject=None,
+        heartbeat_task=None,
+        method_name=None,
+        run_in_executor=False,
     ):
-        try:
+        if not inspect.iscoroutinefunction(method) and run_in_executor:
+            result = self.loop.run_in_executor(None, partial(method, *args, **kwargs))
+        else:
             result = method(*args, **kwargs)
-            if result is not None and inspect.isawaitable(result):
+        if result is not None and inspect.isawaitable(result):
 
-                async def _wait(result):
-                    try:
-                        result = await result
-                        if resolve is not None:
-                            resolve(result)
-                        elif result is not None:
-                            logger.debug("returned value %s", result)
-                    except Exception as err:
-                        traceback_error = traceback.format_exc()
-                        logger.exception("Error in method %s", err)
-                        self._connection.emit(
-                            {"type": "error", "message": traceback_error}
-                        )
-                        if reject is not None:
-                            reject(Exception(format_traceback(traceback_error)))
+            async def _wait(result):
+                try:
+                    result = await result
+                    if heartbeat_task:
+                        heartbeat_task.cancel()
+                    if resolve is not None:
+                        return resolve(result)
+                    elif result is not None:
+                        logger.debug("returned value (%s): %s", method_name, result)
+                except Exception as err:
+                    traceback_error = traceback.format_exc()
+                    logger.exception("Error in method (%s): %s", method_name, err)
+                    if reject is not None:
+                        return reject(Exception(format_traceback(traceback_error)))
 
-                asyncio.ensure_future(_wait(result))
-            else:
-                if resolve is not None:
-                    resolve(result)
-        except Exception as err:
-            traceback_error = traceback.format_exc()
-            logger.error("Error in method %s: %s", method_name, err)
-            self._connection.emit({"type": "error", "message": traceback_error})
-            if reject is not None:
-                reject(Exception(format_traceback(traceback_error)))
-
-    def _run_with_context(self, func, *args, **kwargs):
-        self.rpc_context.run_with_context(self.id, func, *args, **kwargs)
-
-    def _setup_handlers(self, connection):
-        connection.on("init", self.init)
-        connection.on("execute", self._handle_execute)
-        connection.on("method", self._handle_method)
-        connection.on("callback", self._handle_callback)
-        connection.on("error", self._handle_error)
-        connection.on("disconnected", self._disconnected_hanlder)
-        connection.on("getInterface", self._get_interface_handler)
-        connection.on("setInterface", self._set_interface_handler)
-        connection.on("interfaceSetAsRemote", self._remote_set_handler)
-        connection.on("disposeObject", self._dispose_object_handler)
-
-    def _dispose_object_handler(self, data):
-        try:
-            self._dispose_object(data["object_id"])
-            self._connection.emit({"type": "disposed"})
-        except Exception as e:
-            logger.error("failed to dispose object: %s", e)
-            self._connection.emit({"type": "disposed", "error": str(e)})
-
-    def _disconnected_hanlder(self, data):
-        self._fire("beforeDisconnect")
-        self._connection.disconnect()
-        self._fire("disconnected", data)
-
-    def _get_interface_handler(self, data):
-        if self._local_api is not None:
-            self.send_interface()
+            return asyncio.ensure_future(_wait(result))
         else:
-            self.once("interfaceAvailable", self.send_interface)
+            if heartbeat_task:
+                heartbeat_task.cancel()
+            if resolve is not None:
+                return resolve(result)
 
-    def _set_interface_handler(self, data):
-        self.set_remote_interface(data["api"])
-        self._connection.emit({"type": "interfaceSetAsRemote"})
-
-    def _remote_set_handler(self, data):
-        self._remote_set = True
-        self._fire("interfaceSetAsRemote")
-
-    def _handle_execute(self, data):
-        if self.allow_execution:
+    async def _notify_service_update(self):
+        if self.root_target_id:
+            # try to get the root service
             try:
-                t = data["code"]["type"]
-                if t == "script":
-                    content = data["code"]["content"]
-                    # TODO: fix the imjoy module such that it will
-                    # stick to the current context api
-                    exec(content)
-                elif t == "requirements":
-                    pass
-                else:
-                    raise Exception("unsupported type")
-                self._connection.emit({"type": "executed"})
-            except Exception as err:
-                traceback_error = traceback.format_exc()
-                logger.exception("Error during execution: %s", err)
-                self._connection.emit({"type": "executed", "error": traceback_error})
-        else:
-            self._connection.emit(
-                {"type": "executed", "error": "execution is not allowed"}
-            )
-            logger.warn("execution is blocked due to allow_execution=False")
+                await self.get_remote_root_service(timeout=5.0)
+                assert self._remote_root_service
+                await self._remote_root_service.update_client_info(
+                    self.get_client_info()
+                )
+            except Exception as exp:  # pylint: disable=broad-except
+                logger.warning(
+                    "Failed to notify service update to %s: %s",
+                    self.root_target_id,
+                    exp,
+                )
+
+    def get_client_info(self):
+        return {
+            "id": self._client_id,
+            "services": [
+                {
+                    "id": f'{self._client_id}:{service["id"]}',
+                    "type": service["type"],
+                    "name": service["name"],
+                    "config": service["config"],
+                }
+                for service in self._services.values()
+            ],
+        }
 
     def _handle_method(self, data):
         reject = None
+        method_task = None
+        heartbeat_task = None
         try:
+            assert "method" in data and "ctx" in data and "from" in data
+            method_name = f'{data["from"]}:{data["method"]}'
+            remote_workspace = data.get("from").split("/")[0]
+            local_workspace = data.get("to").split("/")[0]
+            local_parent = data.get("parent")
+
             if "promise" in data:
-                resolve, reject = self.unwrap(data["promise"], False)
-            _interface = self._object_store[data["object_id"]]
-            method = index_object(_interface, data["name"])
-            if "promise" in data:
-                args = self.unwrap(data["args"], True)
-                if data.get("with_kwargs"):
-                    kwargs = args.pop()
-                else:
-                    kwargs = {}
-                # args.append({'id': self.id})
-                self._run_with_context(
-                    self._call_method,
-                    method,
-                    args,
-                    kwargs,
-                    resolve=resolve,
-                    reject=reject,
-                    method_name=data["name"],
+                # Decode the promise with the remote session id
+                # Such that the session id will be passed to the remote as a parent session id
+                promise = self._decode(
+                    data["promise"],
+                    remote_parent=data.get("session"),
+                    local_parent=local_parent,
+                    remote_workspace=remote_workspace,
+                    local_workspace=local_workspace,
+                )
+                resolve, reject = promise["resolve"], promise["reject"]
+                if "heartbeat" in promise and "interval" in promise:
+
+                    async def heartbeat(interval):
+                        while True:
+                            try:
+                                logger.debug(
+                                    "Reset heartbeat timer: %s", data["method"]
+                                )
+                                await promise["heartbeat"]()
+                            except asyncio.CancelledError:
+                                break
+                            except Exception:  # pylint: disable=broad-except
+                                if method_task and not method_task.done():
+                                    logger.error(
+                                        "Failed to reset the heartbeat timer: %s",
+                                        data["method"],
+                                    )
+                                    method_task.cancel()
+                                break
+                            await asyncio.sleep(interval)
+
+                    heartbeat_task = asyncio.ensure_future(
+                        heartbeat(promise["interval"])
+                    )
+            else:
+                resolve, reject = None, None
+
+            try:
+                method = index_object(self._object_store, data["method"])
+            except Exception:
+                logger.error("Failed to find method %s", method_name)
+                raise Exception(f"Method not found: {method_name}")
+            assert callable(method), f"Invalid method: {method_name}"
+
+            # Check permission
+            if method in self._method_annotations:
+                # For services, it should not be protected
+                if (
+                    self._method_annotations[method].get("visibility", "protected")
+                    == "protected"
+                ):
+                    if local_workspace != remote_workspace:
+                        raise PermissionError(
+                            f"Permission denied for protected method {method_name}, workspace mismatch: {local_workspace} != {remote_workspace}"
+                        )
+            else:
+                # For sessions, the target_id should match exactly
+                session_target_id = self._object_store[data["method"].split(".")[0]][
+                    "target_id"
+                ]
+                if (
+                    local_workspace == remote_workspace
+                    and session_target_id
+                    and "/" not in session_target_id
+                ):
+                    session_target_id = local_workspace + "/" + session_target_id
+                if session_target_id != data["from"]:
+                    raise PermissionError(
+                        f"Access denied for method call ({method_name}) from {data['from']}"
+                    )
+
+            # Make sure the parent session is still open
+            if local_parent:
+                # The parent session should be a session that generate the current method call
+                assert (
+                    self._get_session_store(local_parent, create=False) is not None
+                ), f"Parent session was closed: {local_parent}"
+            if data.get("args"):
+                args = self._decode(
+                    data["args"],
+                    remote_parent=data.get("session"),
+                    remote_workspace=remote_workspace,
                 )
             else:
-                args = self.unwrap(data["args"], True)
-                if data.get("with_kwargs"):
-                    kwargs = args.pop()
-                else:
-                    kwargs = {}
-                # args.append({'id': self.id})
-                self._run_with_context(
-                    self._call_method, method, args, kwargs, method_name=data["name"]
-                )
-        except Exception as err:
-            traceback_error = traceback.format_exc()
-            logger.exception("Error during calling method: %s", err)
-            self._connection.emit({"type": "error", "message": traceback_error})
-            if callable(reject):
-                reject(traceback_error)
-
-    def _handle_callback(self, data):
-        reject = None
-        try:
-            if "promise" in data:
-                resolve, reject = self.unwrap(data["promise"], False)
-                method = self._store.fetch(data["id"])
-                if method is None:
-                    raise Exception(
-                        "Callback function can only called once, "
-                        "if you want to call a function for multiple times, "
-                        "please make it as a plugin api function. "
-                        "See https://imjoy.io/docs for more details."
-                    )
-                args = self.unwrap(data["args"], True)
-                if data.get("with_kwargs"):
-                    kwargs = args.pop()
-                else:
-                    kwargs = {}
-                self._run_with_context(
-                    self._call_method,
-                    method,
-                    args,
-                    kwargs,
-                    resolve=resolve,
-                    reject=reject,
-                    method_name=data["id"],
-                )
-
+                args = []
+            if data.get("with_kwargs"):
+                kwargs = args.pop()
             else:
-                method = self._store.fetch(data["id"])
-                if method is None:
-                    raise Exception(
-                        "Callback function can only called once, "
-                        "if you want to call a function for multiple times, "
-                        "please make it as a plugin api function. "
-                        "See https://imjoy.io/docs for more details."
-                    )
-                args = self.unwrap(data["args"], True)
-                if data.get("with_kwargs"):
-                    kwargs = args.pop()
-                else:
-                    kwargs = {}
-                self._run_with_context(
-                    self._call_method, method, args, kwargs, method_name=data["id"]
-                )
+                kwargs = {}
+
+            if method in self._method_annotations and self._method_annotations[
+                method
+            ].get("require_context"):
+                kwargs["context"] = data["ctx"]
+            run_in_executor = (
+                method in self._method_annotations
+                and self._method_annotations[method].get("run_in_executor")
+            )
+            logger.info("Executing method: %s", method_name)
+            method_task = self._call_method(
+                method,
+                args,
+                kwargs,
+                resolve,
+                reject,
+                heartbeat_task=heartbeat_task,
+                method_name=method_name,
+                run_in_executor=run_in_executor,
+            )
+
         except Exception as err:
-            traceback_error = traceback.format_exc()
-            logger.exception("error when calling callback function: %s", err)
-            self._connection.emit({"type": "error", "message": traceback_error})
+            logger.error("Error during calling method: %s", err)
+            # make sure we clear the heartbeat timer
+            if (
+                heartbeat_task
+                and not heartbeat_task.cancelled()
+                and not heartbeat_task.done()
+            ):
+                heartbeat_task.cancel()
             if callable(reject):
-                reject(traceback_error)
+                reject(err)
 
-    def _handle_error(self, detail):
-        self._fire("error", detail)
+    def encode(self, a_object, session_id=None):
+        """Encode object."""
+        return self._encode(
+            a_object,
+            session_id=session_id,
+        )
 
-    def wrap(self, args, as_interface=False):
-        """Wrap arguments."""
-        wrapped = self._encode(args, as_interface=as_interface)
-        return wrapped
+    def _get_session_store(self, session_id, create=False):
+        store = self._object_store
+        levels = session_id.split(".")
+        if create:
+            for level in levels[:-1]:
+                if level not in store:
+                    return None
+                store = store[level]
 
-    def _encode(self, a_object, as_interface=False, object_id=None):
+            # Create the last level
+            if levels[-1] not in store:
+                store[levels[-1]] = {}
+
+            return store[levels[-1]]
+        else:
+            for level in levels:
+                if level not in store:
+                    return None
+                store = store[level]
+            return store
+
+    def _encode(
+        self,
+        a_object,
+        session_id=None,
+        local_workspace=None,
+    ):
         """Encode object."""
         if isinstance(a_object, (int, float, bool, str, bytes)) or a_object is None:
             return a_object
-
-        if callable(a_object):
-            if as_interface:
-                if not object_id:
-                    raise Exception("object_id is not specified.")
-                b_object = {
-                    "_rtype": "interface",
-                    "_rtarget_id": self._connection.peer_id,
-                    "_rintf": object_id,
-                    "_rvalue": as_interface,
-                }
-                try:
-                    self._method_weakmap[a_object] = b_object
-                except Exception:
-                    pass
-            elif a_object in self._method_weakmap:
-                b_object = self._method_weakmap[a_object]
-            else:
-                cid = self._store.put(a_object)
-                b_object = {
-                    "_rtype": "callback",
-                    # Some functions do not have the __name__ attribute
-                    # for example when we use functools.partial to create functions
-                    "_rname": getattr(a_object, "__name__", cid),
-                    "_rtarget_id": self._connection.peer_id,
-                    "_rvalue": cid,
-                }
-            return b_object
 
         if isinstance(a_object, tuple):
             a_object = list(a_object)
@@ -631,16 +1017,54 @@ class RPC(MessageEmitter):
         if isinstance(a_object, dict):
             a_object = dict(a_object)
 
+        # Reuse the remote object
+        if hasattr(a_object, "__rpc_object__"):
+            return a_object.__rpc_object__
+
         # skip if already encoded
         if isinstance(a_object, dict) and "_rtype" in a_object:
             # make sure the interface functions are encoded
-            if "_rintf" in a_object:
-                temp = a_object["_rtype"]
-                del a_object["_rtype"]
-                b_object = self._encode(a_object, as_interface, object_id)
-                b_object._rtype = temp
+            temp = a_object["_rtype"]
+            del a_object["_rtype"]
+            b_object = self._encode(
+                a_object,
+                session_id=session_id,
+                local_workspace=local_workspace,
+            )
+            b_object["_rtype"] = temp
+            return b_object
+
+        if callable(a_object):
+
+            if a_object in self._method_annotations:
+                annotation = self._method_annotations[a_object]
+                b_object = {
+                    "_rtype": "method",
+                    "_rtarget": f"{local_workspace}/{self._client_id}"
+                    if local_workspace
+                    else self._client_id,
+                    "_rmethod": annotation["method_id"],
+                    "_rpromise": True,
+                }
             else:
-                b_object = a_object
+                assert isinstance(session_id, str)
+                if hasattr(a_object, "__name__"):
+                    object_id = f"{shortuuid.uuid()}-{a_object.__name__}"
+                else:
+                    object_id = shortuuid.uuid()
+                b_object = {
+                    "_rtype": "method",
+                    "_rtarget": f"{local_workspace}/{self._client_id}"
+                    if local_workspace
+                    else self._client_id,
+                    "_rmethod": f"{session_id}.{object_id}",
+                    "_rpromise": True,
+                }
+                store = self._get_session_store(session_id, create=True)
+                assert (
+                    store is not None
+                ), f"Failed to create session store {session_id} due to invalid parent"
+                store[object_id] = a_object
             return b_object
 
         isarray = isinstance(a_object, list)
@@ -655,10 +1079,14 @@ class RPC(MessageEmitter):
                 if isinstance(encoded_obj, dict) and "_rtype" not in encoded_obj:
                     encoded_obj["_rtype"] = codec.name
                 # encode the functions in the interface object
-                if isinstance(encoded_obj, dict) and "_rintf" in encoded_obj:
+                if isinstance(encoded_obj, dict):
                     temp = encoded_obj["_rtype"]
                     del encoded_obj["_rtype"]
-                    encoded_obj = self._encode(encoded_obj, True)
+                    encoded_obj = self._encode(
+                        encoded_obj,
+                        session_id=session_id,
+                        local_workspace=local_workspace,
+                    )
                     encoded_obj["_rtype"] = temp
                 b_object = encoded_obj
                 return b_object
@@ -682,105 +1110,68 @@ class RPC(MessageEmitter):
             a_object, (io.IOBase, io.TextIOBase, io.BufferedIOBase, io.RawIOBase)
         ):
             b_object = {
-                m: getattr(a_object, m) for m in IO_METHODS if hasattr(a_object, m)
+                m: getattr(a_object, m) for m in IO_PROPS if hasattr(a_object, m)
             }
-            b_object["_rintf"] = True
-            b_object = self._encode(b_object)
+            b_object["_rtype"] = "iostream"
+            b_object["_rnative"] = "py:" + str(type(a_object))
+            b_object = self._encode(
+                b_object,
+                session_id=session_id,
+                local_workspace=local_workspace,
+            )
 
         # NOTE: "typedarray" is not used
         elif isinstance(a_object, OrderedDict):
             b_object = {
                 "_rtype": "orderedmap",
-                "_rvalue": self._encode(list(a_object), as_interface),
+                "_rvalue": self._encode(
+                    list(a_object),
+                    session_id=session_id,
+                    local_workspace=local_workspace,
+                ),
             }
         elif isinstance(a_object, set):
             b_object = {
                 "_rtype": "set",
-                "_rvalue": self._encode(list(a_object), as_interface),
+                "_rvalue": self._encode(
+                    list(a_object),
+                    session_id=session_id,
+                    local_workspace=local_workspace,
+                ),
             }
-        elif hasattr(a_object, "_rintf") and a_object._rintf is True:
-            b_object = self._encode(a_object, True)
-        elif isinstance(a_object, (list, dict)) or inspect.isclass(type(a_object)):
+        elif isinstance(a_object, (list, dict)):
+            keys = range(len(a_object)) if isarray else a_object.keys()
             b_object = [] if isarray else {}
-            if not isinstance(a_object, (list, dict)) and inspect.isclass(
-                type(a_object)
-            ):
-                a_object_norm = {
-                    a: getattr(a_object, a)
-                    for a in dir(a_object)
-                    if not a.startswith("_") or a in ALLOWED_MAGIC_METHODS
-                }
-                # always encode class instance as interface
-                as_interface = True
-            else:
-                a_object_norm = a_object
-
-            keys = range(len(a_object_norm)) if isarray else a_object_norm.keys()
-            # encode interfaces
-            if (not isarray and a_object_norm.get("_rintf")) or as_interface:
-                if object_id is None:
-                    _rintf = a_object_norm.get("_rintf") if not isarray else None
-                    if _rintf and isinstance(_rintf, str):
-                        object_id = _rintf  # enable custom object_id
-                    else:
-                        object_id = str(uuid.uuid4())
-                    # Note: object with the same id will be overwritten
-                    if object_id in self._object_store:
-                        logger.warn(
-                            "Overwritting interface object with the same id: %s",
-                            object_id,
-                        )
-                    self._object_store[object_id] = a_object
-
-                has_function = False
-                for key in keys:
-                    if isinstance(key, str) and (
-                        key.startswith("_") and key not in ALLOWED_MAGIC_METHODS
-                    ):
-                        continue
-                    encoded = self._encode(
-                        a_object_norm[key],
-                        as_interface + "." + str(key)
-                        if isinstance(as_interface, str)
-                        else str(key),
-                        # We need to convert to a string here,
-                        # otherwise 0 will not be truthy.
-                        object_id,
-                    )
-                    if callable(a_object_norm[key]):
-                        has_function = True
-                    if isarray:
-                        b_object.append(encoded)
-                    else:
-                        b_object[key] = encoded
-                # TODO: how to despose list object? create a wrapper for list?
-                if not isarray and has_function:
-                    b_object["_rintf"] = object_id
-                # remove interface when closed
-                if "on" in a_object_norm and callable(a_object_norm["on"]):
-
-                    def remove_interface(_):
-                        if object_id in self._object_store:
-                            del self._object_store[object_id]
-
-                    a_object_norm["on"]("close", remove_interface)
-            else:
-                for key in keys:
-                    if isarray:
-                        b_object.append(self._encode(a_object_norm[key]))
-                    else:
-                        b_object[key] = self._encode(a_object_norm[key])
+            for key in keys:
+                encoded = self._encode(
+                    a_object[key],
+                    session_id=session_id,
+                    local_workspace=local_workspace,
+                )
+                if isarray:
+                    b_object.append(encoded)
+                else:
+                    b_object[key] = encoded
         else:
-            raise Exception("imjoy-rpc: Unsupported data type:" + str(a_object))
+            raise Exception(
+                "imjoy-rpc: Unsupported data type:"
+                f" {type(a_object)}, you can register a custom"
+                " codec to encode/decode the object."
+            )
         return b_object
 
-    def unwrap(self, args, with_promise):
-        """Unwrap arguments."""
-        # wraps each callback so that the only one could be called
-        result = self._decode(args, with_promise)
-        return result
+    def decode(self, a_object):
+        """Decode object."""
+        return self._decode(a_object)
 
-    def _decode(self, a_object, with_promise):
+    def _decode(
+        self,
+        a_object,
+        remote_parent=None,
+        local_parent=None,
+        remote_workspace=None,
+        local_workspace=None,
+    ):
         """Decode object."""
         if a_object is None:
             return a_object
@@ -790,19 +1181,24 @@ class RPC(MessageEmitter):
                 self._codecs.get(a_object["_rtype"])
                 and self._codecs[a_object["_rtype"]].decoder
             ):
-                if "_rintf" in a_object:
-                    temp = a_object["_rtype"]
-                    del a_object["_rtype"]
-                    a_object = self._decode(a_object, with_promise)
-                    a_object["_rtype"] = temp
-                b_object = self._codecs[a_object["_rtype"]].decoder(a_object)
-            elif a_object["_rtype"] == "callback":
-                b_object = self._gen_remote_callback(
-                    a_object.get("_rtarget_id"), a_object["_rvalue"], with_promise
+                temp = a_object["_rtype"]
+                del a_object["_rtype"]
+                a_object = self._decode(
+                    a_object,
+                    remote_parent=remote_parent,
+                    local_parent=local_parent,
+                    remote_workspace=remote_workspace,
+                    local_workspace=local_workspace,
                 )
-            elif a_object["_rtype"] == "interface":
-                b_object = self._gen_remote_method(
-                    a_object.get("_rtarget_id"), a_object["_rvalue"], a_object["_rintf"]
+                a_object["_rtype"] = temp
+                b_object = self._codecs[a_object["_rtype"]].decoder(a_object)
+            elif a_object["_rtype"] == "method":
+                b_object = self._generate_remote_method(
+                    a_object,
+                    remote_parent=remote_parent,
+                    local_parent=local_parent,
+                    remote_workspace=remote_workspace,
+                    local_workspace=local_workspace,
                 )
             elif a_object["_rtype"] == "ndarray":
                 # create build array/tensor if used in the plugin
@@ -825,7 +1221,9 @@ class RPC(MessageEmitter):
 
                     else:
                         b_object = a_object
-                        logger.warn("numpy is not available, failed to decode ndarray")
+                        logger.warning(
+                            "numpy is not available, failed to decode ndarray"
+                        )
 
                 except Exception as exc:
                     logger.debug("Error in converting: %s", exc)
@@ -833,15 +1231,21 @@ class RPC(MessageEmitter):
                     raise exc
             elif a_object["_rtype"] == "memoryview":
                 b_object = memoryview(a_object["_rvalue"])
-            elif a_object["_rtype"] == "blob":
-                if isinstance(a_object["_rvalue"], str):
-                    b_object = io.StringIO(a_object["_rvalue"])
-                elif isinstance(a_object["_rvalue"], bytes):
-                    b_object = io.BytesIO(a_object["_rvalue"])
-                else:
-                    raise Exception(
-                        "Unsupported blob value type: " + str(type(a_object["_rvalue"]))
-                    )
+            elif a_object["_rtype"] == "iostream":
+                b_object = dotdict(
+                    {
+                        k: self._decode(
+                            a_object[k],
+                            remote_parent=remote_parent,
+                            local_parent=local_parent,
+                            remote_workspace=remote_workspace,
+                            local_workspace=local_workspace,
+                        )
+                        for k in a_object
+                        if not k.startswith("_")
+                    }
+                )
+                b_object["__rpc_object__"] = a_object
             elif a_object["_rtype"] == "typedarray":
                 if self.NUMPY_MODULE:
                     b_object = self.NUMPY_MODULE.frombuffer(
@@ -850,18 +1254,39 @@ class RPC(MessageEmitter):
                 else:
                     b_object = a_object["_rvalue"]
             elif a_object["_rtype"] == "orderedmap":
-                b_object = OrderedDict(self._decode(a_object["_rvalue"], with_promise))
+                b_object = OrderedDict(
+                    self._decode(
+                        a_object["_rvalue"],
+                        remote_parent=remote_parent,
+                        local_parent=local_parent,
+                        remote_workspace=remote_workspace,
+                        local_workspace=local_workspace,
+                    )
+                )
             elif a_object["_rtype"] == "set":
-                b_object = set(self._decode(a_object["_rvalue"], with_promise))
+                b_object = set(
+                    self._decode(
+                        a_object["_rvalue"],
+                        remote_parent=remote_parent,
+                        local_parent=local_parent,
+                        remote_workspace=remote_workspace,
+                        local_workspace=local_workspace,
+                    )
+                )
             elif a_object["_rtype"] == "error":
                 b_object = Exception(a_object["_rvalue"])
             else:
                 # make sure all the interface functions are decoded
-                if "_rintf" in a_object:
-                    temp = a_object["_rtype"]
-                    del a_object["_rtype"]
-                    a_object = self._decode(a_object, with_promise)
-                    a_object["_rtype"] = temp
+                temp = a_object["_rtype"]
+                del a_object["_rtype"]
+                a_object = self._decode(
+                    a_object,
+                    remote_parent=remote_parent,
+                    local_parent=local_parent,
+                    remote_workspace=remote_workspace,
+                    local_workspace=local_workspace,
+                )
+                a_object["_rtype"] = temp
                 b_object = a_object
         elif isinstance(a_object, (dict, list, tuple)):
             if isinstance(a_object, tuple):
@@ -872,25 +1297,28 @@ class RPC(MessageEmitter):
             for key in keys:
                 val = a_object[key]
                 if isarray:
-                    b_object.append(self._decode(val, with_promise))
+                    b_object.append(
+                        self._decode(
+                            val,
+                            remote_parent=remote_parent,
+                            local_parent=local_parent,
+                            remote_workspace=remote_workspace,
+                            local_workspace=local_workspace,
+                        )
+                    )
                 else:
-                    b_object[key] = self._decode(val, with_promise)
+                    b_object[key] = self._decode(
+                        val,
+                        remote_parent=remote_parent,
+                        local_parent=local_parent,
+                        remote_workspace=remote_workspace,
+                        local_workspace=local_workspace,
+                    )
         # make sure we have bytes instead of memoryview, e.g. for Pyodide
-        elif isinstance(a_object, memoryview):
-            b_object = a_object.tobytes()
-        elif isinstance(a_object, bytearray):
-            b_object = bytes(a_object)
+        # elif isinstance(a_object, memoryview):
+        #     b_object = a_object.tobytes()
+        # elif isinstance(a_object, bytearray):
+        #     b_object = bytes(a_object)
         else:
             b_object = a_object
-
-        # object id, used for dispose the object
-        if isinstance(a_object, dict) and a_object.get("_rintf"):
-            # make the dict hashable
-            if isinstance(b_object, dict):
-                if not isinstance(b_object, dotdict):
-                    b_object = dotdict(b_object)
-                # __rid__ is used for hashing the object for removing it afterwards
-                b_object.__rid__ = a_object.get("_rintf")
-
-            self._object_weakmap[b_object] = a_object.get("_rintf")
         return b_object
