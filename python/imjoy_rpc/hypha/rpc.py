@@ -74,7 +74,10 @@ def index_object(obj, ids):
 
 
 class Timer:
+    """Represent a timer."""
+
     def __init__(self, timeout, callback, *args, label="timer", **kwargs):
+        """Set up instance."""
         self._timeout = timeout
         self._callback = callback
         self._task = None
@@ -84,16 +87,19 @@ class Timer:
         self.started = False
 
     def start(self):
+        """Start the timer."""
         self._task = asyncio.ensure_future(self._job())
         self.started = True
 
     async def _job(self):
+        """Handle a job."""
         await asyncio.sleep(self._timeout)
         ret = self._callback(*self._args, **self._kwrags)
         if ret is not None and inspect.isawaitable(ret):
             await ret
 
     def clear(self):
+        """Clear the timer."""
         if self._task:
             self._task.cancel()
             self._task = None
@@ -102,6 +108,7 @@ class Timer:
             logger.warning("Clearing a timer (%s) which is not started", self._label)
 
     def reset(self):
+        """Reset the timer."""
         assert self._task is not None, f"Timer ({self._label}) is not started"
         self._task.cancel()
         self._task = asyncio.ensure_future(self._job())
@@ -201,7 +208,8 @@ class RPC(MessageEmitter):
                         self._user_info["reconnection_expires_in"] * 0.8
                     )
                     logger.debug(
-                        "Reconnection token obtained: %s, will be refreshed in %d seconds",
+                        "Reconnection token obtained: %s, "
+                        "will be refreshed in %d seconds",
                         self._user_info.get("reconnection_token"),
                         reconnection_expires_in,
                     )
@@ -209,7 +217,8 @@ class RPC(MessageEmitter):
                     await self._get_user_info()
             except Exception as exp:  # pylint: disable=broad-except
                 logger.warning(
-                    "Failed to fetch user info from %s: %s (reconnection will also fail)",
+                    "Failed to fetch user info from %s: %s "
+                    "(reconnection will also fail)",
                     self.root_target_id,
                     exp,
                 )
@@ -228,10 +237,12 @@ class RPC(MessageEmitter):
         self._codecs[config["name"]] = dotdict(config)
 
     async def _ping(self, msg, context=None):
+        """Handle ping."""
         assert msg == "ping"
         return "pong"
 
     async def ping(self, client_id, timeout=1):
+        """Send a ping."""
         method = self._generate_remote_method(
             {
                 "_rtarget": client_id,
@@ -242,6 +253,7 @@ class RPC(MessageEmitter):
         assert (await asyncio.wait_for(method("ping"), timeout)) == "pong"
 
     def _create_message(self, key, heartbeat=False, overwrite=False, context=None):
+        """Create a message."""
         if heartbeat:
             if key not in self._object_store:
                 raise Exception(f"session does not exist anymore: {key}")
@@ -251,13 +263,15 @@ class RPC(MessageEmitter):
             self._object_store["message_cache"] = {}
         if not overwrite and key in self._object_store["message_cache"]:
             raise Exception(
-                "Message with the same key (%s) already exists in the cache store, please use overwrite=True or remove it first.",
+                "Message with the same key (%s) already exists in the cache store, "
+                "please use overwrite=True or remove it first.",
                 key,
             )
 
         self._object_store["message_cache"][key] = b""
 
     def _append_message(self, key, data, heartbeat=False, context=None):
+        """Append a message."""
         if heartbeat:
             if key not in self._object_store:
                 raise Exception(f"session does not exist anymore: {key}")
@@ -269,12 +283,14 @@ class RPC(MessageEmitter):
         cache[key] += data
 
     def _remove_message(self, key, context=None):
+        """Remove a message."""
         cache = self._object_store["message_cache"]
         if key not in cache:
             raise KeyError(f"Message with key {key} does not exists.")
         del cache[key]
 
     def _process_message(self, key, heartbeat=False, context=None):
+        """Process a message."""
         if heartbeat:
             if key not in self._object_store:
                 raise Exception(f"session does not exist anymore: {key}")
@@ -331,6 +347,7 @@ class RPC(MessageEmitter):
         self._fire("disconnect")
 
     async def get_remote_root_service(self, timeout=None):
+        """Get remote root service."""
         if self.root_target_id and not self._remote_root_service:
             self._remote_root_service = await self.get_remote_service(
                 service_uri=f"{self.root_target_id}:default", timeout=timeout
@@ -341,6 +358,7 @@ class RPC(MessageEmitter):
         return self._services
 
     def get_local_service(self, service_id, context=None):
+        """Get a local service."""
         assert service_id is not None
         ws, client_id = context["to"].split("/")
         assert client_id == self._client_id
@@ -419,7 +437,9 @@ class RPC(MessageEmitter):
                         val = a_object[key]  # make sure it's annotated later
                     else:
                         raise Exception(
-                            f"Local method not found: {val.__rpc_object__['_rmethod']}, client id mismatch {self._client_id} != {client_id}"
+                            "Local method not found: "
+                            f"{val.__rpc_object__['_rmethod']}, "
+                            f"client id mismatch {self._client_id} != {client_id}"
                         )
                 self._annotate_service_methods(
                     val,
@@ -655,7 +675,6 @@ class RPC(MessageEmitter):
         local_workspace=None,
     ):
         """Return remote method."""
-
         target_id = encoded_method["_rtarget"]
         if remote_workspace and "/" not in target_id:
             target_id = remote_workspace + "/" + target_id
@@ -752,7 +771,8 @@ class RPC(MessageEmitter):
                     if fut.exception():
                         reject(
                             Exception(
-                                f"Failed to send the request when calling method ({target_id}:{method_id}), error: {fut.exception()}"
+                                "Failed to send the request when calling method "
+                                f"({target_id}:{method_id}), error: {fut.exception()}"
                             )
                         )
                     elif timer:
@@ -832,6 +852,7 @@ class RPC(MessageEmitter):
                 )
 
     def get_client_info(self):
+        """Get client info."""
         return {
             "id": self._client_id,
             "services": [
@@ -846,6 +867,7 @@ class RPC(MessageEmitter):
         }
 
     def _handle_method(self, data):
+        """Handle RPC method call."""
         reject = None
         method_task = None
         heartbeat_task = None
@@ -858,7 +880,8 @@ class RPC(MessageEmitter):
 
             if "promise" in data:
                 # Decode the promise with the remote session id
-                # Such that the session id will be passed to the remote as a parent session id
+                # such that the session id will be passed to the remote
+                # as a parent session id.
                 promise = self._decode(
                     data["promise"],
                     remote_parent=data.get("session"),
@@ -910,7 +933,9 @@ class RPC(MessageEmitter):
                 ):
                     if local_workspace != remote_workspace:
                         raise PermissionError(
-                            f"Permission denied for protected method {method_name}, workspace mismatch: {local_workspace} != {remote_workspace}"
+                            f"Permission denied for protected method {method_name}, "
+                            "workspace mismatch: "
+                            f"{local_workspace} != {remote_workspace}"
                         )
             else:
                 # For sessions, the target_id should match exactly
@@ -925,12 +950,14 @@ class RPC(MessageEmitter):
                     session_target_id = local_workspace + "/" + session_target_id
                 if session_target_id != data["from"]:
                     raise PermissionError(
-                        f"Access denied for method call ({method_name}) from {data['from']}"
+                        f"Access denied for method call ({method_name}) "
+                        f"from {data['from']}"
                     )
 
             # Make sure the parent session is still open
             if local_parent:
-                # The parent session should be a session that generate the current method call
+                # The parent session should be a session
+                # that generate the current method call.
                 assert (
                     self._get_session_store(local_parent, create=False) is not None
                 ), f"Parent session was closed: {local_parent}"
