@@ -1,7 +1,5 @@
 import asyncio
 import inspect
-import logging
-import sys
 import pyodide  # noqa: F401
 from js import WebSocket
 

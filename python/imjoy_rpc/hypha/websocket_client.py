@@ -11,6 +11,7 @@ from . import RPC
 try:
     import js  # noqa: F401
     import pyodide  # noqa: F401
+
     from .pyodide_websocket import PyodideWebsocketRPCConnection
 
     def custom_exception_handler(loop, context):

@@ -1,9 +1,22 @@
 """Provide utility functions for RPC."""
+import sys
+
+if sys.version_info < (3, 7):
+    import aiocontextvars  # noqa: F401
+
 import asyncio
+import contextvars
 import copy
+import io
+import locale
+import os
 import secrets
 import string
+import threading
 import traceback
+import uuid
+
+from .werkzeug.local import Local
 
 
 def generate_password(length=50):
@@ -56,6 +69,36 @@ def format_traceback(traceback_string):
     return formatted_error_string
 
 
+class ReferenceStore:
+    """Represent a reference store."""
+
+    def __init__(self):
+        """Set up store."""
+        self._store = {}
+
+    @staticmethod
+    def _gen_id():
+        """Generate an id."""
+        return str(uuid.uuid4())
+
+    def put(self, obj):
+        """Put an object into the store."""
+        id_ = self._gen_id()
+        self._store[id_] = obj
+        return id_
+
+    def fetch(self, search_id):
+        """Fetch an object from the store by id."""
+        if search_id not in self._store:
+            return None
+        obj = self._store[search_id]
+        if not hasattr(obj, "__remote_method"):
+            del self._store[search_id]
+        if hasattr(obj, "__promise_pair"):
+            self.fetch(obj.__promise_pair)
+        return obj
+
+
 class Promise(object):  # pylint: disable=useless-object-inheritance
     """Represent a promise."""
 
@@ -67,22 +110,18 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
         self._logger = logger
 
         def resolve(*args, **kwargs):
-            return self.resolve(*args, **kwargs)
+            self.resolve(*args, **kwargs)
 
         def reject(*args, **kwargs):
-            return self.reject(*args, **kwargs)
+            self.reject(*args, **kwargs)
 
-        try:
-            pfunc(resolve, reject)
-        except Exception as exp:
-            logger.error("Uncaught Exception: {}".format(exp))
-            reject(exp)
+        pfunc(resolve, reject)
 
     def resolve(self, result):
         """Resolve promise."""
         try:
             if self._resolve_handler:
-                return self._resolve_handler(result)
+                self._resolve_handler(result)
         except Exception as exc:  # pylint: disable=broad-except
             if self._catch_handler:
                 self._catch_handler(exc)
@@ -97,7 +136,7 @@ class Promise(object):  # pylint: disable=useless-object-inheritance
         """Reject promise."""
         try:
             if self._catch_handler:
-                return self._catch_handler(error)
+                self._catch_handler(error)
             elif not self._finally_handler:
                 if self._logger:
                     self._logger.error("Uncaught Exception: {}".format(error))
@@ -135,10 +174,10 @@ class FuturePromise(Promise, asyncio.Future):
 
     def __init__(self, pfunc, logger=None, dispose=None):
         """Set up promise."""
+        Promise.__init__(self, pfunc, logger)
+        asyncio.Future.__init__(self)
         self.__dispose = dispose
         self.__obj = None
-        asyncio.Future.__init__(self)
-        Promise.__init__(self, pfunc, logger)
 
     async def __aenter__(self):
         """Enter context for async."""
@@ -235,6 +274,44 @@ class MessageEmitter:
                 self._logger.debug("Unhandled event: {}, data: {}".format(event, data))
 
 
+class ContextLocal(Local):
+    """Represent a local context."""
+
+    def __init__(self, default_context_id=None):
+        """Set up instance."""
+        if default_context_id is None:
+            default_context_id = "_"
+        object.__setattr__(
+            self, "__context_id__", contextvars.ContextVar("context_id", default=None)
+        )
+        object.__setattr__(self, "__thread_lock__", threading.Lock())
+        object.__setattr__(self, "__storage__", {})
+        object.__setattr__(self, "__ident_func__", self.__get_ident)
+        object.__setattr__(self, "__default_context_id__", default_context_id)
+
+    def set_default_context(self, context_id):
+        """Set the default context."""
+        object.__setattr__(self, "__default_context_id__", context_id)
+
+    def run_with_context(self, context_id, func, *args, **kwargs):
+        """Run with the context."""
+        # make sure we obtain the context with the correct context_id
+        with object.__getattribute__(self, "__thread_lock__"):
+            object.__getattribute__(self, "__context_id__").set(context_id)
+            object.__setattr__(self, "__default_context_id__", context_id)
+            ctx = contextvars.copy_context()
+        ctx.run(func, *args, **kwargs)
+
+    def __get_ident(self):
+        """Return the context identity."""
+        ident = object.__getattribute__(self, "__context_id__").get()
+        if ident is None:
+            return object.__getattribute__(self, "__default_context_id__")
+        if not isinstance(ident, str):
+            raise ValueError("Context value must be a string.")
+        return ident
+
+
 def encode_zarr_store(zobj):
     """Encode the zarr store."""
     import zarr
@@ -277,3 +354,462 @@ def register_default_codecs(options=None):
         api.registerCodec(
             {"name": "zarr-group", "type": zarr.Group, "encoder": encode_zarr_store}
         )
+
+
+def setup_js_socketio(config, resolve, reject):
+    """Load socketio in javascript."""
+    from js import eval
+
+    script = """
+    let loadScript;
+    if (
+        typeof WorkerGlobalScope !== "undefined" &&
+        self instanceof WorkerGlobalScope
+    ) {
+        loadScript = async function(url) {
+            importScripts(url);
+        }
+    }
+    else{
+        function _importScript(url) {
+            //url is URL of external file, implementationCode is the code
+            //to be called from the file, location is the location to
+            //insert the <script> element
+            return new Promise((resolve, reject) => {
+            var scriptTag = document.createElement("script");
+            scriptTag.src = url;
+            scriptTag.type = "text/javascript";
+            scriptTag.onload = resolve;
+            scriptTag.onreadystatechange = function() {
+                if (this.readyState === "loaded" || this.readyState === "complete") {
+                resolve();
+                }
+            };
+            scriptTag.onerror = reject;
+            document.head.appendChild(scriptTag);
+            });
+        }
+
+        // support loadScript outside web worker
+        loadScript = async function() {
+            var args = Array.prototype.slice.call(arguments),
+            len = args.length,
+            i = 0;
+            for (; i < len; i++) {
+            await _importScript(args[i]);
+            }
+        }
+    }
+    const socketio_lib_url = "https://cdn.jsdelivr.net/npm/" +
+    "socket.io-client@4.0.1/dist/socket.io.min.js";
+    globalThis.setupJSSocketIo = async function(config, resolve, reject){
+        try{
+            await loadScript(socketio_lib_url)
+            const toObject = (x) => {
+                if(x===undefined || x===null) return x;
+                return x.toJs({dict_converter : Object.fromEntries})
+            }
+            config = toObject(config)
+            config.server_token=config.token
+            globalThis.config = config
+            const url = config.server_url;
+            const extraHeaders = {};
+            if (config.token) {
+                extraHeaders.Authorization = "Bearer " + config.token;
+            }
+            // const basePath = new URL(url).pathname;
+            // Note: extraHeaders only works for polling transport (the default)
+            // If we switch to websocket only, the headers won't be respected
+            if(globalThis.socket){
+                globalThis.socket.disconnect();
+            }
+            const socket = io(url, {
+                withCredentials: true,
+                extraHeaders,
+            });
+            let connected = false;
+            socket.on("connect", () => {
+                if(connected) {
+                    console.warn("Skipping reconnect to the server");
+                    return
+                }
+
+                globalThis.sendMessage = function(data){
+
+                    return new Promise((resolve, reject)=>{
+                        try{
+                            data = toObject(data)
+                            socket.emit("plugin_message", data, result => {
+                                if (!result.success) reject(result.detail)
+                                else resolve(result)
+                            })
+                        }
+                        catch(e){
+                            reject(e)
+                        }
+
+                    })
+                }
+
+                socket.emit("register_plugin", config, async (result) => {
+                    if (!result.success) {
+                        console.error(result.detail);
+                        reject(result.detail);
+                        return;
+                    }
+                    connected = true;
+                    globalThis.setMessageCallback = (cb)=>{
+                        socket.on("plugin_message", cb);
+                    }
+                    console.log("Plugin registered: " + config.name)
+                    resolve(config.plugin_id);
+                })
+
+                socket.on("connect_error", (error) => {
+                    console.error("connection error", error);
+                    reject(`${error}`);
+                });
+                socket.on("disconnect", () => {
+                    console.error("disconnected");
+                    reject("disconnected");
+                });
+            })
+            globalThis.socket = socket;
+        }
+        catch(e){
+            reject(`${error}`);
+        }
+    }
+    """
+
+    eval(script)(config, resolve, reject)
+
+
+def setup_connection(
+    _rpc_context,
+    connection_type,
+    logger=None,
+    on_ready_callback=None,
+    on_error_callback=None,
+):
+    """Set up the connection."""
+    if connection_type == "jupyter":
+        if logger:
+            logger.info("Using jupyter connection for imjoy-rpc")
+        from .connection.jupyter_connection import JupyterCommManager
+
+        manager = JupyterCommManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
+        )
+        manager.start(
+            on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+        )
+    elif connection_type == "colab":
+        if logger:
+            logger.info("Using colab connection for imjoy-rpc")
+        from .connection.colab_connection import ColabManager
+
+        manager = ColabManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
+        )
+        manager.start(
+            on_ready_callback=on_ready_callback, on_error_callback=on_error_callback
+        )
+    elif connection_type == "terminal":
+        if logger:
+            logger.info("Using socketio connection for imjoy-rpc")
+        from .connection.socketio_connection import SocketIOManager
+
+        manager = SocketIOManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
+        )
+        manager.start(
+            _rpc_context.default_config.get("server_url"),
+            _rpc_context.default_config.get("token"),
+            on_ready_callback=on_ready_callback,
+            on_error_callback=on_error_callback,
+        )
+    elif connection_type == "pyodide-socketio":
+        if logger:
+            logger.info("Using pyodide-socketio connection for imjoy-rpc")
+        from .connection.pyodide_connection import PyodideConnectionManager
+
+        manager = PyodideConnectionManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
+        )
+
+        def resolve(plugin_id):
+            manager.start(
+                plugin_id,
+                on_ready_callback=on_ready_callback,
+                on_error_callback=on_error_callback,
+            )
+
+        def reject(error):
+            if on_error_callback:
+                on_error_callback(error)
+
+        setup_js_socketio(_rpc_context.default_config, resolve, reject)
+
+    elif connection_type == "pyodide":
+        if logger:
+            logger.info("Using pyodide connection for imjoy-rpc")
+        from .connection.pyodide_connection import PyodideConnectionManager
+
+        manager = PyodideConnectionManager(_rpc_context)
+        _rpc_context.api = dotdict(
+            init=manager.init,
+            export=manager.set_interface,
+            registerCodec=manager.register_codec,
+            register_codec=manager.register_codec,
+        )
+        manager.start(
+            None,
+            on_ready_callback=on_ready_callback,
+            on_error_callback=on_error_callback,
+        )
+    else:
+        if logger:
+            logger.info(
+                "There is no connection set for imjoy-rpc, connection type: %s",
+                connection_type,
+            )
+
+
+def type_of_script():
+    """Return the type of the script."""
+    try:
+        import google.colab.output  # noqa: F401
+
+        return "colab"
+    except ImportError:
+        try:
+            import js  # noqa: F401
+            import pyodide  # noqa: F401
+
+            return "pyodide"
+        except ImportError:
+            try:
+                # check if get_ipython exists without exporting it
+                # from IPython import get_ipython
+                ipy_str = str(type(get_ipython()))  # noqa: F821
+                if "zmqshell" in ipy_str:
+                    return "jupyter"
+                if "terminal" in ipy_str:
+                    return "ipython"
+                else:
+                    return "unknown"
+            except NameError:
+                return "unknown"
+
+
+try:
+    from js import eval, location
+
+    _sync_xhr_get = eval(
+        """globalThis._sync_xhr_get = function(url, start, end){
+        var request = new XMLHttpRequest();
+        request.open('GET', url, false);  // `false` makes the request synchronous
+        if(start !== undefined || end !== undefined){
+            request.setRequestHeader("range", `bytes=${start||0}-${end||0}`)
+        }
+        request.responseType = "arraybuffer";
+        request.send(null);
+        return request
+    }
+    """
+    )
+
+    _sync_xhr_post = eval(
+        """globalThis._sync_xhr_post = function(url, rawData, type, append){
+        var request = new XMLHttpRequest();
+        request.open('POST', url, false);  // `false` makes the request synchronous
+        var formData = new FormData();
+        var file = new Blob([new Uint8Array(rawData)],{type});
+        formData.append("file", file);
+        if(append) formData.append("append", "1");
+        request.send(formData);
+        return request
+    }
+    """
+    )
+    IS_PYODIDE = True
+except ImportError:
+    from urllib.request import Request, urlopen
+
+    IS_PYODIDE = False
+
+
+class HTTPFile(io.IOBase):
+    """A virtual file for reading content via HTTP."""
+
+    def __init__(self, url, mode="r", encoding=None, newline=None):
+        """Initialize the http file object."""
+        self._url = url
+        self._pos = 0
+        self._size = None
+        self._mode = mode
+        assert mode in ["r", "rb", "w", "wb", "a", "ab"]
+        self._encoding = encoding or locale.getpreferredencoding()
+        self._newline = newline or os.linesep
+        if "w" not in self._mode:
+            # make a request so we can see the self._size
+            self._request_range(0, 0)
+            assert self._size is not None
+        self._chunk = 1024
+        self._initial_request = True
+
+    def tell(self):
+        """Tell the position of the pointer."""
+        return self._pos
+
+    def write(self, content):
+        """Write content to file."""
+        if "a" not in self._mode and "w" not in self._mode:
+            raise Exception(f"write is not supported with mode {self._mode}")
+
+        if "b" in self._mode:
+            self._upload(content)
+        else:
+            self._upload(content.encode(self._encoding))
+
+    def seekable(self):
+        """Whether the file is seekable."""
+        return "w" not in self._mode
+
+    def read(self, length=-1):
+        """Read the file from the current pointer position."""
+        if self._pos >= self._size:
+            return ""  # EOF
+        if length < 0:
+            end = self._size + length
+        else:
+            end = self._pos + length - 1
+        if end >= self._size:
+            end = self._size - 1
+        result = self._request_range(self._pos, end)
+        self._pos += len(result)
+        if self._mode == "r":
+            return result.decode(self._encoding)
+        return result
+
+    def readline(self, size=-1):
+        """Read a line."""
+        if self._mode == "r":
+            terminator = self._newline
+            result = ""
+        else:
+            terminator = b"\n"
+            result = b""
+        while True:
+            ret = self.read(self._chunk)
+            if ret == "":
+                break
+            if terminator in ret:
+                used = ret.split(terminator)[0] + terminator
+                unused = ret[len(used) :]
+                # rollback
+                self._pos -= len(unused)
+                result += used
+                break
+            result += ret
+
+            if size is not None and size > 0:
+                if len(result) > size:
+                    return result[:size]
+
+        if not result:
+            return ""
+        return result
+
+    def readlines(self, hint=-1):
+        """Read all the lines."""
+        if hint is None or hint < 0:
+            hint = None
+
+        lines = []
+        while True:
+            line = self.readline()
+            if line == "":
+                break
+            else:
+                lines.append(line)
+            if hint and len(lines) >= hint:
+                break
+        return lines
+
+    def seek(self, offset):
+        """Set the pointer position."""
+        self._pos = offset
+        if self._size is not None:
+            if self._pos >= self._size:
+                self._pos = self._size - 1
+
+    def _upload(self, content):
+        if IS_PYODIDE:
+            if self._initial_request and "a" not in self._mode:
+                append = False
+            else:
+                append = True
+
+            req = _sync_xhr_post(self._url, content, "application/octet-stream", append)
+            if req.status != 200:
+                raise Exception(f"Failed to write: {req.response}, {req.status}")
+
+            if self._initial_request:
+                self._initial_request = False
+        else:
+            raise NotImplementedError
+
+    def _request_range(self, start, end):
+        assert start <= end
+        if IS_PYODIDE:
+            req = _sync_xhr_get(self._url, start, end)
+            if req.status in [200, 206]:
+                result = req.response.to_py().tobytes()
+                crange = req.getResponseHeader("Content-Range")
+                if crange:
+                    self._size = int(crange.split("/")[1])
+            else:
+                raise Exception(f"Failed to fetch: {req.status}")
+        else:
+            req = Request(self._url)
+            req.add_header("range", f"bytes={start}-{end}")
+            response = urlopen(req)
+            if response.getcode() in [200, 206]:
+                crange = response.info().getheader("Content-Range")
+                if crange:
+                    self._size = int(crange.split("/")[1])
+                result = response.read()
+            else:
+                raise Exception(f"Failed to fetch: {response.getcode()}")
+        return result
+
+    def close(self):
+        """Close the file."""
+        self._pos = 0
+
+
+def open_elfinder(path, mode="r", encoding=None, newline=None):
+    """Open an HTTPFile from elFinder."""
+    if not path.startswith("http"):
+        url = location.origin + "/fs" + path
+    else:
+        url = path
+    return HTTPFile(url, mode=mode, encoding=encoding, newline=newline)
