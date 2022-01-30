@@ -1,3 +1,4 @@
+"""Provide a websocket client."""
 import asyncio
 import inspect
 import logging
@@ -15,6 +16,7 @@ try:
     from .pyodide_websocket import PyodideWebsocketRPCConnection
 
     def custom_exception_handler(loop, context):
+        """Handle exceptions."""
         pass
 
     # Patch the exception handler to avoid the default one
@@ -49,13 +51,16 @@ class WebsocketRPCConnection:
         self._listen_task = None
 
     def on_message(self, handler):
+        """Handle message."""
         self._handle_message = handler
         self._is_async = inspect.iscoroutinefunction(handler)
 
     def set_reconnection_token(self, token):
+        """Set reconnect token."""
         self._reconnection_token = token
 
     async def open(self):
+        """Open the connection."""
         try:
             server_url = (
                 (self._server_url + f"&reconnection_token={self._reconnection_token}")
@@ -74,6 +79,7 @@ class WebsocketRPCConnection:
                 raise Exception(f"Failed to connect to {server_url}, error: {exp}")
 
     async def emit_message(self, data):
+        """Emit a message."""
         assert self._handle_message is not None, "No handler for message"
         if not self._websocket or self._websocket.closed:
             await self.open()
@@ -85,6 +91,7 @@ class WebsocketRPCConnection:
             raise
 
     async def _listen(self, ws):
+        """Listen to the connection."""
         try:
             while not ws.closed:
                 data = await ws.recv()
@@ -99,6 +106,7 @@ class WebsocketRPCConnection:
             pass
 
     async def disconnect(self, reason=None):
+        """Disconnect."""
         ws = self._websocket
         self._websocket = None
         if ws and not ws.closed:
@@ -139,6 +147,7 @@ async def connect_to_server(config):
     wm.rpc = rpc
 
     def export(api):
+        """Export the api."""
         # Convert class instance to a dict
         if not isinstance(api, dict) and inspect.isclass(type(api)):
             api = {a: getattr(api, a) for a in dir(api)}
@@ -147,9 +156,11 @@ async def connect_to_server(config):
         return asyncio.ensure_future(rpc.register_service(api, overwrite=True))
 
     async def get_plugin(query):
+        """Get a plugin."""
         return await wm.get_service(query + ":default")
 
     async def disconnect():
+        """Disconnect the rpc and server connection."""
         await rpc.disconnect()
         await connection.disconnect()
 
