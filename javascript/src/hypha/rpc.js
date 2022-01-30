@@ -96,7 +96,7 @@ export class RPC extends MessageEmitter {
     connection,
     {
       client_id = null,
-      root_target_id = null,
+      manager_id = null,
       default_context = null,
       name = null,
       codecs = null,
@@ -113,10 +113,10 @@ export class RPC extends MessageEmitter {
     this._name = name;
     this._user_info = null;
     this._workspace = null;
-    this.root_target_id = root_target_id;
+    this.manager_id = manager_id;
     this.default_context = default_context || {};
     this._method_annotations = new WeakMap();
-    this._remote_root_service = null;
+    this._manager_service = null;
     this._max_message_buffer_size = max_message_buffer_size;
     this._chunk_store = {};
     this._method_timeout = method_timeout || 20;
@@ -150,7 +150,7 @@ export class RPC extends MessageEmitter {
       connection.on_message(this._on_message.bind(this));
       this._connection = connection;
       // Update the server and obtain client info
-      this._get_user_info();
+      this._get_connection_info();
     } else {
       this._emit_message = function() {
         console.log("No connection to emit message");
@@ -158,13 +158,13 @@ export class RPC extends MessageEmitter {
     }
   }
 
-  async _get_user_info() {
-    if (this.root_target_id) {
+  async _get_connection_info() {
+    if (this.manager_id) {
       // try to get the root service
       try {
-        await this.get_remote_root_service(5.0);
-        assert(this._remote_root_service);
-        this._user_info = await this._remote_root_service.get_user_info();
+        await this.get_manager_service(5.0);
+        assert(this._manager_service);
+        this._user_info = await this._manager_service.get_connection_info();
         if (
           this._user_info.reconnection_token &&
           this._connection.set_reconnection_token
@@ -177,17 +177,13 @@ export class RPC extends MessageEmitter {
           console.info(
             `Reconnection token obtained: ${this._user_info.reconnection_token}, will be refreshed in ${reconnection_expires_in} seconds`
           );
-          setTimeout(
-            this._get_user_info.bind(this),
+          this._get_connection_info_task = setTimeout(
+            this._get_connection_info.bind(this),
             reconnection_expires_in * 1000
           );
         }
       } catch (exp) {
-        console.warn(
-          "Failed to fetch user info from ",
-          this.root_target_id,
-          exp
-        );
+        console.warn("Failed to fetch user info from ", this.manager_id, exp);
       }
     }
   }
@@ -321,13 +317,17 @@ export class RPC extends MessageEmitter {
   }
 
   async disconnect() {
+    if (this._get_connection_info_task) {
+      clearTimeout(this._get_connection_info_task);
+      this._get_connection_info_task = null;
+    }
     this._fire("disconnect");
   }
 
-  async get_remote_root_service(timeout) {
-    if (this.root_target_id && !this._remote_root_service) {
-      this._remote_root_service = await this.get_remote_service(
-        `${this.root_target_id}:default`,
+  async get_manager_service(timeout) {
+    if (this.manager_id && !this._manager_service) {
+      this._manager_service = await this.get_remote_service(
+        `${this.manager_id}:default`,
         timeout
       );
     }
@@ -360,8 +360,8 @@ export class RPC extends MessageEmitter {
   }
   async get_remote_service(service_uri, timeout) {
     timeout = timeout === undefined ? 5 : timeout;
-    if (!service_uri && this.root_target_id) {
-      service_uri = this.root_target_id;
+    if (!service_uri && this.manager_id) {
+      service_uri = this.manager_id;
     } else if (!service_uri.includes(":")) {
       service_uri = this._client_id + ":" + service_uri;
     }
@@ -797,19 +797,17 @@ export class RPC extends MessageEmitter {
   }
 
   async _notify_service_update() {
-    if (this.root_target_id) {
+    if (this.manager_id) {
       // try to get the root service
       try {
-        await this.get_remote_root_service(5.0);
-        assert(this._remote_root_service);
-        await this._remote_root_service.update_client_info(
-          this.get_client_info()
-        );
+        await this.get_manager_service(5.0);
+        assert(this._manager_service);
+        await this._manager_service.update_client_info(this.get_client_info());
       } catch (exp) {
         // pylint: disable=broad-except
         console.warn(
           "Failed to notify service update to",
-          this.root_target_id,
+          this.manager_id,
           exp
         );
       }
