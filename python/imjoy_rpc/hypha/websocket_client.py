@@ -142,7 +142,7 @@ async def connect_to_server(config):
     rpc = RPC(
         connection,
         client_id=client_id,
-        root_target_id="workspace-manager",
+        manager_id="workspace-manager",
         default_context={"connection_type": "websocket"},
         name=config.get("name"),
         method_timeout=config.get("method_timeout"),

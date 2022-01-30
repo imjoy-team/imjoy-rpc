@@ -97,7 +97,7 @@ export async function connectToServer(config) {
   await connection.open();
   const rpc = new RPC(connection, {
     client_id: clientId,
-    root_target_id: "workspace-manager",
+    manager_id: "workspace-manager",
     default_context: { connection_type: "websocket" },
     name: config.name,
     method_timeout: config.method_timeout

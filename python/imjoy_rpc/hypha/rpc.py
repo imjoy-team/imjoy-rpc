@@ -121,7 +121,7 @@ class RPC(MessageEmitter):
         self,
         connection,
         client_id=None,
-        root_target_id=None,
+        manager_id=None,
         default_context=None,
         name=None,
         codecs=None,
@@ -137,10 +137,10 @@ class RPC(MessageEmitter):
         self._name = name
         self._workspace = None
         self._user_info = None
-        self.root_target_id = root_target_id
+        self.manager_id = manager_id
         self.default_context = default_context or {}
         self._method_annotations = weakref.WeakKeyDictionary()
-        self._remote_root_service = None
+        self._manager_service = None
         self._max_message_buffer_size = max_message_buffer_size
         self._chunk_store = {}
         self._method_timeout = 10 if method_timeout is None else method_timeout
@@ -181,23 +181,26 @@ class RPC(MessageEmitter):
             self._connection = connection
 
             # Update the server and obtain client info
-            asyncio.ensure_future(self._get_user_info())
+            self._get_connection_info_task = asyncio.ensure_future(
+                self._get_connection_info()
+            )
         else:
 
             async def _emit_message(_):
                 logger.info("No connection to emit message")
 
             self._emit_message = _emit_message
+            self._get_connection_info_task = None
 
         self.check_modules()
 
-    async def _get_user_info(self):
-        if self.root_target_id:
+    async def _get_connection_info(self):
+        if self.manager_id:
             # try to get the root service
             try:
-                await self.get_remote_root_service(timeout=5.0)
-                assert self._remote_root_service
-                self._user_info = await self._remote_root_service.get_user_info()
+                await self.get_manager_service(timeout=5.0)
+                assert self._manager_service
+                self._user_info = await self._manager_service.get_connection_info()
                 if "reconnection_token" in self._user_info and hasattr(
                     self._connection, "set_reconnection_token"
                 ):
@@ -214,12 +217,12 @@ class RPC(MessageEmitter):
                         reconnection_expires_in,
                     )
                     await asyncio.sleep(reconnection_expires_in)
-                    await self._get_user_info()
+                    await self._get_connection_info()
             except Exception as exp:  # pylint: disable=broad-except
                 logger.warning(
                     "Failed to fetch user info from %s: %s "
                     "(reconnection will also fail)",
-                    self.root_target_id,
+                    self.manager_id,
                     exp,
                 )
 
@@ -344,13 +347,16 @@ class RPC(MessageEmitter):
 
     async def disconnect(self):
         """Disconnect."""
+        if self._get_connection_info_task:
+            self._get_connection_info_task.cancel()
+            self._get_connection_info_task = None
         self._fire("disconnect")
 
-    async def get_remote_root_service(self, timeout=None):
+    async def get_manager_service(self, timeout=None):
         """Get remote root service."""
-        if self.root_target_id and not self._remote_root_service:
-            self._remote_root_service = await self.get_remote_service(
-                service_uri=f"{self.root_target_id}:default", timeout=timeout
+        if self.manager_id and not self._manager_service:
+            self._manager_service = await self.get_remote_service(
+                service_uri=f"{self.manager_id}:default", timeout=timeout
             )
 
     def get_all_local_services(self):
@@ -379,8 +385,8 @@ class RPC(MessageEmitter):
 
     async def get_remote_service(self, service_uri=None, timeout=None):
         """Get a remote service."""
-        if service_uri is None and self.root_target_id:
-            service_uri = self.root_target_id
+        if service_uri is None and self.manager_id:
+            service_uri = self.manager_id
         elif ":" not in service_uri:
             service_uri = self._client_id + ":" + service_uri
         provider, service_id = service_uri.split(":")
@@ -836,18 +842,16 @@ class RPC(MessageEmitter):
                 return resolve(result)
 
     async def _notify_service_update(self):
-        if self.root_target_id:
+        if self.manager_id:
             # try to get the root service
             try:
-                await self.get_remote_root_service(timeout=5.0)
-                assert self._remote_root_service
-                await self._remote_root_service.update_client_info(
-                    self.get_client_info()
-                )
+                await self.get_manager_service(timeout=5.0)
+                assert self._manager_service
+                await self._manager_service.update_client_info(self.get_client_info())
             except Exception as exp:  # pylint: disable=broad-except
                 logger.warning(
                     "Failed to notify service update to %s: %s",
-                    self.root_target_id,
+                    self.manager_id,
                     exp,
                 )
 
