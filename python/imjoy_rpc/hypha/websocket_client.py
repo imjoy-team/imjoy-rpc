@@ -6,7 +6,7 @@ import sys
 import msgpack
 import shortuuid
 
-from . import RPC
+from .rpc import RPC
 
 try:
     import js  # noqa: F401
