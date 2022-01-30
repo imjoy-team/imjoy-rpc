@@ -7,7 +7,8 @@ import {
   typedArrayToDtype,
   dtypeToTypedArray,
   MessageEmitter,
-  assert
+  assert,
+  waitFor
 } from "./utils.js";
 
 import { encode as msgpack_packb, decodeMulti } from "@msgpack/msgpack";
@@ -31,14 +32,6 @@ function indexObject(obj, is) {
   if (typeof is === "string") return indexObject(obj, is.split("."));
   else if (is.length === 0) return obj;
   else return indexObject(obj[is[0]], is.slice(1));
-}
-
-function wait_for(prom, time) {
-  let timer;
-  return Promise.race([
-    prom,
-    new Promise((_r, rej) => (timer = setTimeout(rej, time * 1000)))
-  ]).finally(() => clearTimeout(timer));
 }
 
 function concatArrayBuffers(buffers) {
@@ -380,7 +373,11 @@ export class RPC extends MessageEmitter {
         _rmethod: "services.built-in.get_service",
         _rpromise: true
       });
-      return await wait_for(method(service_uri.split(":")[1]), timeout);
+      return await waitFor(
+        method(service_uri.split(":")[1]),
+        timeout,
+        "Timeout Error: Failed to get remote service: " + service_uri
+      );
     } catch (e) {
       console.error("Failed to get remote service: " + service_uri, e);
       throw e;

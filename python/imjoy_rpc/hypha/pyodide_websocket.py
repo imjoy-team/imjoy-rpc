@@ -5,7 +5,7 @@ from js import WebSocket
 
 
 class PyodideWebsocketRPCConnection:
-    def __init__(self, server_url, client_id, workspace=None, token=None, logger=None):
+    def __init__(self, server_url, client_id, workspace=None, token=None, logger=None, timeout=5):
         """Set up instance."""
         self._websocket = None
         self._handle_message = None
@@ -17,6 +17,7 @@ class PyodideWebsocketRPCConnection:
             server_url += f"&token={token}"
         self._server_url = server_url
         self._logger = logger
+        self._timeout = timeout
 
     def on_message(self, handler):
         self._handle_message = handler
@@ -45,7 +46,7 @@ class PyodideWebsocketRPCConnection:
             fut.set_result(None)
 
         self._websocket.onopen = opened
-        return await fut
+        return await asyncio.wait_for(fut, timeout=self._timeout)
 
     async def emit_message(self, data):
         assert self._handle_message, "No handler for message"

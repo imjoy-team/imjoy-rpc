@@ -295,6 +295,19 @@ export function urlJoin(...args) {
     .replace("&", "?");
 }
 
+export function waitFor(prom, time, error) {
+  let timer;
+  return Promise.race([
+    prom,
+    new Promise(
+      (_r, rej) =>
+        (timer = setTimeout(() => {
+          rej(error || "Timeout Error");
+        }, time * 1000))
+    )
+  ]).finally(() => clearTimeout(timer));
+}
+
 export class MessageEmitter {
   constructor(debug) {
     this._event_handlers = {};

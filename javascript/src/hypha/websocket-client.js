@@ -1,12 +1,12 @@
 import { RPC, API_VERSION } from "./rpc.js";
-import { assert, loadRequirements, randId } from "./utils.js";
+import { assert, loadRequirements, randId, waitFor } from "./utils.js";
 
 export { RPC, API_VERSION };
 export { version as VERSION } from "../../package.json";
 export { loadRequirements };
 
 class WebsocketRPCConnection {
-  constructor(server_url, client_id, workspace, token) {
+  constructor(server_url, client_id, workspace, token, timeout) {
     assert(server_url && client_id, "server_url and client_id are required");
     server_url = server_url + "?client_id=" + client_id;
     if (workspace) {
@@ -19,6 +19,7 @@ class WebsocketRPCConnection {
     this._handle_message = null;
     this._reconnection_token = null;
     this._server_url = server_url;
+    this._timeout = timeout || 5; // 5s
   }
 
   set_reconnection_token(token) {
@@ -46,9 +47,14 @@ class WebsocketRPCConnection {
       console.log("websocket closed");
       self._websocket = null;
     };
-    return await new Promise(resolve => {
+    const promise = await new Promise(resolve => {
       this._websocket.addEventListener("open", resolve);
     });
+    return await waitFor(
+      promise,
+      this._timeout,
+      "Timeout Error: Failed connect to the server " + server_url.split("?")[0]
+    );
   }
 
   async emit_message(data) {
