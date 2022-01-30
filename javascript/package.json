@@ -70,7 +70,7 @@
     "lerna": "^3.22.1",
     "lodash.debounce": "^4.0.8",
     "mocha": "^7.2.0",
-    "postcss": "^6.0.2",
+    "postcss": "^8.2.13",
     "prettier": "^1.6.1",
     "rimraf": "^2.6.2",
     "schema-utils": "^0.4.3",
