@@ -63,23 +63,29 @@ class Timer {
     this._args = args;
     this._label = label || "timer";
     this._task = null;
+    this.started = false;
   }
 
   start() {
     this._task = setTimeout(() => {
       this._callback.apply(this, this._args);
     }, this._timeout * 1000);
+    this.started = true;
   }
 
   clear() {
     if (this._task) {
       clearTimeout(this._task);
       this._task = null;
+      this.started = false;
+    } else {
+      console.warn(`Clearing a timer (${this._label}) which is not started`);
     }
   }
 
   reset() {
-    this.clear();
+    assert(this._task, `Timer (${this._label}) is not started`);
+    clearTimeout(this._task);
     this.start();
   }
 }
@@ -583,7 +589,7 @@ export class RPC extends MessageEmitter {
           console.log("Deleting session", session_id, "from", self._client_id);
           delete self._object_store[session_id];
         }
-        if (timer) {
+        if (timer && timer.started) {
           timer.clear();
         }
       }
@@ -871,7 +877,7 @@ export class RPC extends MessageEmitter {
       try {
         method = indexObject(this._object_store, data["method"]);
       } catch (e) {
-        console.error("Failed to find method", method_name, e);
+        console.debug("Failed to find method", method_name, e);
         throw new Error(`Method not found: ${method_name}`);
       }
 
@@ -964,9 +970,11 @@ export class RPC extends MessageEmitter {
         clearInterval(heartbeat_task);
       }
     } catch (err) {
-      console.error("Error during calling method: ", err);
       if (reject) {
         reject(err);
+        console.debug("Error during calling method: ", err);
+      } else {
+        console.error("Error during calling method: ", err);
       }
       // make sure we clear the heartbeat timer
       clearInterval(heartbeat_task);
