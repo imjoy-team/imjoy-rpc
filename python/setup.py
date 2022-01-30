@@ -19,6 +19,7 @@ REQUIRES = [
     "aiocontextvars; python_version<'3.7'",
     "contextvars; python_version<'3.7'",
     "msgpack>=1.0.2",
+    "shortuuid>=1.0.8",
 ]
 
 setup(
