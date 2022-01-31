@@ -79,7 +79,9 @@ class WebsocketRPCConnection:
                     f"Permission denied for {server_url}, error: {exp}"
                 )
             else:
-                raise Exception(f"Failed to connect to {server_url}, error: {exp}")
+                raise Exception(
+                    f"Failed to connect to {server_url.split('?')[0]}: {exp}"
+                )
 
     async def emit_message(self, data):
         """Emit a message."""
