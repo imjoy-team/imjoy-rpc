@@ -6,3 +6,4 @@ python-socketio[client]==5.4.1
 python-engineio==4.1.0
 zarr==2.10.3
 msgpack==1.0.3
+websockets==10.1

@@ -20,6 +20,7 @@ REQUIRES = [
     "contextvars; python_version<'3.7'",
     "msgpack>=1.0.2",
     "shortuuid>=1.0.8",
+    "websockets;platform_system!='Emscripten'",
 ]
 
 setup(
