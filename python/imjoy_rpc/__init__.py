@@ -91,7 +91,14 @@ def _connect(connection_type, config=None, **kwargs):
     return fut
 
 
-connect_to_server = partial(_connect, "terminal")
+def connect_to_server(*args, **kwargs):
+    """Connect to the server based on the current python environment."""
+    if type_of_script() == "pyodide":
+        return _connect("pyodide-socketio", *args, **kwargs)
+    else:
+        return _connect("terminal", *args, **kwargs)
+
+
 connect_to_jupyter = partial(_connect, "jupyter")
 connect_to_colab = partial(_connect, "colab")
 connect_to_pyodide = partial(_connect, "pyodide")
