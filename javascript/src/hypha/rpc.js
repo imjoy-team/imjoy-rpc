@@ -111,7 +111,7 @@ export class RPC extends MessageEmitter {
     assert(client_id, "client_id is required");
     this._client_id = client_id;
     this._name = name;
-    this._user_info = null;
+    this._connection_info = null;
     this._workspace = null;
     this.manager_id = manager_id;
     this.default_context = default_context || {};
@@ -164,18 +164,18 @@ export class RPC extends MessageEmitter {
       try {
         await this.get_manager_service(5.0);
         assert(this._manager_service);
-        this._user_info = await this._manager_service.get_connection_info();
+        this._connection_info = await this._manager_service.get_connection_info();
         if (
-          this._user_info.reconnection_token &&
+          this._connection_info.reconnection_token &&
           this._connection.set_reconnection_token
         ) {
           this._connection.set_reconnection_token(
-            this._user_info.reconnection_token
+            this._connection_info.reconnection_token
           );
           const reconnection_expires_in =
-            this._user_info.reconnection_expires_in * 0.8;
+            this._connection_info.reconnection_expires_in * 0.8;
           console.info(
-            `Reconnection token obtained: ${this._user_info.reconnection_token}, will be refreshed in ${reconnection_expires_in} seconds`
+            `Reconnection token obtained: ${this._connection_info.reconnection_token}, will be refreshed in ${reconnection_expires_in} seconds`
           );
           this._get_connection_info_task = setTimeout(
             this._get_connection_info.bind(this),

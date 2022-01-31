@@ -136,7 +136,7 @@ class RPC(MessageEmitter):
         self._client_id = client_id
         self._name = name
         self._workspace = None
-        self._user_info = None
+        self._connection_info = None
         self.manager_id = manager_id
         self.default_context = default_context or {}
         self._method_annotations = weakref.WeakKeyDictionary()
@@ -200,20 +200,22 @@ class RPC(MessageEmitter):
             try:
                 await self.get_manager_service(timeout=5.0)
                 assert self._manager_service
-                self._user_info = await self._manager_service.get_connection_info()
-                if "reconnection_token" in self._user_info and hasattr(
+                self._connection_info = (
+                    await self._manager_service.get_connection_info()
+                )
+                if "reconnection_token" in self._connection_info and hasattr(
                     self._connection, "set_reconnection_token"
                 ):
                     self._connection.set_reconnection_token(
-                        self._user_info["reconnection_token"]
+                        self._connection_info["reconnection_token"]
                     )
                     reconnection_expires_in = (
-                        self._user_info["reconnection_expires_in"] * 0.8
+                        self._connection_info["reconnection_expires_in"] * 0.8
                     )
                     logger.debug(
                         "Reconnection token obtained: %s, "
                         "will be refreshed in %d seconds",
-                        self._user_info.get("reconnection_token"),
+                        self._connection_info.get("reconnection_token"),
                         reconnection_expires_in,
                     )
                     await asyncio.sleep(reconnection_expires_in)
