@@ -87,8 +87,16 @@ export async function connectToServer(config) {
   if (!clientId) {
     clientId = randId();
   }
+  let server_url = config.server_url;
+  if (server_url.startsWith("http://")) {
+    server_url =
+      server_url.replace("http://", "ws://").replace(/\/$/, "") + "/ws";
+  } else if (server_url.startsWith("https://")) {
+    server_url =
+      server_url.replace("https://", "wss://").replace(/\/$/, "") + "/ws";
+  }
   let connection = new WebsocketRPCConnection(
-    config.server_url,
+    server_url,
     clientId,
     config.workspace,
     config.token,

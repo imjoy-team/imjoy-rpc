@@ -128,13 +128,19 @@ async def connect_to_server(config):
     if client_id is None:
         client_id = shortuuid.uuid()
 
+    server_url = config["server_url"]
+    if server_url.startswith("http://"):
+        server_url = server_url.replace("http://", "ws://").rstrip("/") + "/ws"
+    elif server_url.startswith("https://"):
+        server_url = server_url.replace("https://", "wss://").rstrip("/") + "/ws"
+
     if IS_PYODIDE:
         Connection = PyodideWebsocketRPCConnection
     else:
         Connection = WebsocketRPCConnection
 
     connection = Connection(
-        config["server_url"],
+        server_url,
         client_id,
         workspace=config.get("workspace"),
         token=config.get("token"),
