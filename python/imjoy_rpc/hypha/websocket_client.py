@@ -36,7 +36,15 @@ logger.setLevel(logging.WARNING)
 class WebsocketRPCConnection:
     """Represent a websocket connection."""
 
-    def __init__(self, server_url, client_id, workspace=None, token=None, timeout=5):
+    def __init__(
+        self,
+        server_url,
+        client_id,
+        workspace=None,
+        token=None,
+        timeout=5,
+        keep_alive=False,
+    ):
         """Set up instance."""
         self._websocket = None
         self._handle_message = None
@@ -50,6 +58,7 @@ class WebsocketRPCConnection:
         self._reconnection_token = None
         self._listen_task = None
         self._timeout = timeout
+        self._keep_alive = keep_alive
 
     def on_message(self, handler):
         """Handle message."""
@@ -105,8 +114,17 @@ class WebsocketRPCConnection:
                 else:
                     self._handle_message(data)
         except websockets.exceptions.ConnectionClosedError:
-            logger.warning("Connection is broken, reopening a new connection.")
-            asyncio.ensure_future(self.open())
+            # if disconnected actively, self._websocket will be None
+            if self._websocket and self._keep_alive:
+                logger.warning("Connection is broken, retrying in 1s.")
+                try:
+                    await asyncio.sleep(1)
+                    await self.open()
+                except Exception:  # pylint: disable=broad-except
+                    logger.exception("Failed to reconnect, retrying again in 1s.")
+                    await asyncio.sleep(1)
+                    asyncio.ensure_future(self.open())
+
         except websockets.exceptions.ConnectionClosedOK:
             pass
 
@@ -145,6 +163,7 @@ async def connect_to_server(config):
         workspace=config.get("workspace"),
         token=config.get("token"),
         timeout=config.get("method_timeout", 5),
+        keep_alive=config.get("keep_alive", False),
     )
     await connection.open()
     rpc = RPC(

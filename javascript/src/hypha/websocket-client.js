@@ -6,7 +6,7 @@ export { version as VERSION } from "../../package.json";
 export { loadRequirements };
 
 class WebsocketRPCConnection {
-  constructor(server_url, client_id, workspace, token, timeout) {
+  constructor(server_url, client_id, workspace, token, timeout, keep_alive) {
     assert(server_url && client_id, "server_url and client_id are required");
     server_url = server_url + "?client_id=" + client_id;
     if (workspace) {
@@ -20,6 +20,7 @@ class WebsocketRPCConnection {
     this._reconnection_token = null;
     this._server_url = server_url;
     this._timeout = timeout || 5; // 5s
+    this._keep_alive = keep_alive || false;
   }
 
   set_reconnection_token(token) {
@@ -31,7 +32,7 @@ class WebsocketRPCConnection {
     this._handle_message = handler;
   }
 
-  async open() {
+  async open(keep_trying) {
     const server_url = this._reconnection_token
       ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
       : this._server_url;
@@ -44,13 +45,22 @@ class WebsocketRPCConnection {
     };
     const self = this;
     this._websocket.onclose = function() {
-      console.log("websocket closed");
-      self._websocket = null;
+      console.log("Websocket closed");
+      // if disconnected actively, self._websocket will be null
+      if (self._websocket && self._keep_alive) {
+        console.log("Try to reconnect in 1s...");
+        setTimeout(() => {
+          self.open().catch(err => {
+            console.error("Failed to reconnect, retrying again in 1s.", err);
+            setTimeout(() => self.open(), 1000);
+          });
+        }, 1000);
+      }
     };
     const promise = await new Promise(resolve => {
       this._websocket.addEventListener("open", resolve);
     });
-    return await waitFor(
+    await waitFor(
       promise,
       this._timeout,
       "Timeout Error: Failed connect to the server " + server_url.split("?")[0]
@@ -100,7 +110,8 @@ export async function connectToServer(config) {
     clientId,
     config.workspace,
     config.token,
-    config.method_timeout || 5
+    config.method_timeout || 5,
+    config.keep_alive
   );
   await connection.open();
   const rpc = new RPC(connection, {
