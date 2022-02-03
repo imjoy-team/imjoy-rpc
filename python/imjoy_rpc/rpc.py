@@ -638,7 +638,7 @@ class RPC(MessageEmitter):
                 temp = a_object["_rtype"]
                 del a_object["_rtype"]
                 b_object = self._encode(a_object, as_interface, object_id)
-                b_object._rtype = temp
+                b_object["_rtype"] = temp
             else:
                 b_object = a_object
             return b_object
