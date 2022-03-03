@@ -36,7 +36,7 @@ jobs:
       - run: npm run test
       - run: npm run build
       - name: Save build output
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v3.0.0
         with:
           name: built-output
           path: ./javascript/dist
