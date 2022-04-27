@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v2.4.0
+        uses: actions/checkout@v3.0.2
       - name: Get Python version
         id: python-version
         run: |
@@ -34,12 +34,12 @@ jobs:
         working-directory: python
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v2.4.0
+        uses: actions/checkout@v3.0.2
         with:
           fetch-depth: 2
 
       - name: Set up Python
-        uses: actions/setup-python@v2.3.2
+        uses: actions/setup-python@v3
         with:
           python-version: "3.8"
 
@@ -91,7 +91,7 @@ jobs:
           packages_dir: python/dist/
 
       - name: Publish the release notes
-        uses: release-drafter/release-drafter@v5.18.1
+        uses: release-drafter/release-drafter@v5.19.0
         with:
           publish: "${{ steps.tag-version.outputs.new_tag != '' }}"
           tag: "${{ steps.tag-version.outputs.new_tag }}"
@@ -106,7 +106,7 @@ jobs:
       run:
         working-directory: javascript
     steps:
-      - uses: actions/checkout@v2.4.0
+      - uses: actions/checkout@v3.0.2
         with:
           fetch-depth: 2
       - name: Check if there is a parent commit
@@ -121,7 +121,7 @@ jobs:
           create-tag: false
           version-command: |
             bash -o pipefail -c "cat javascript/package.json | jq -r '.version'"
-      - uses: actions/setup-node@v2.5.1
+      - uses: actions/setup-node@v3.1.1
         with:
           node-version: 15.5.0
           registry-url: "https://registry.npmjs.org"

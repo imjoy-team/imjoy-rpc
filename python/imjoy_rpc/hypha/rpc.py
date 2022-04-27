@@ -655,7 +655,7 @@ class RPC(MessageEmitter):
         ), "Remote client does not support message caching for long message."
         message_cache = remote_services.message_cache
         message_id = session_id or shortuuid.uuid()
-        await message_cache.create(message_id, heartbeat=bool(session_id))
+        await message_cache.create(message_id, bool(session_id))
         total_size = len(package)
         chunk_num = int(math.ceil(float(total_size) / CHUNK_SIZE))
         for idx in range(chunk_num):
@@ -663,7 +663,7 @@ class RPC(MessageEmitter):
             await message_cache.append(
                 message_id,
                 package[start_byte : start_byte + CHUNK_SIZE],
-                heartbeat=bool(session_id),
+                bool(session_id),
             )
             logger.info(
                 "Sending chunk %d/%d (%d bytes)",
@@ -672,7 +672,7 @@ class RPC(MessageEmitter):
                 total_size,
             )
         logger.info("All chunks sent (%d)", chunk_num)
-        await message_cache.process(message_id, heartbeat=bool(session_id))
+        await message_cache.process(message_id, bool(session_id))
 
     def _generate_remote_method(
         self,

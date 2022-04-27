@@ -1,7 +1,7 @@
-pytest==7.0.0
+pytest==7.1.2
 pytest-cov==3.0.0
 pytest-timeout==2.1.0
-pytest-asyncio==0.18.0
+pytest-asyncio==0.18.3
 jupyter==1.0.0
 hypha==0.15.1
-uvicorn[standard]==0.17.4
+uvicorn[standard]==0.17.6
