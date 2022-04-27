@@ -754,9 +754,14 @@ class HTTPFile(io.IOBase):
                 break
         return lines
 
-    def seek(self, offset):
+    def seek(self, offset, whence=0):
         """Set the pointer position."""
-        self._pos = offset
+        if whence == 0:
+            self._pos = offset
+        elif whence == 1:
+            self._pos = self._pos + offset
+        elif whence == 2:
+            self._pos = self._size - offset
         if self._size is not None:
             if self._pos >= self._size:
                 self._pos = self._size - 1
