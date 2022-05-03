@@ -649,6 +649,19 @@ try:
     }
     """
     )
+
+    _sync_xhr_put = eval(
+        """globalThis._sync_xhr_put = function(url, rawData, type, append){
+        if(append) throw new Error("append is not supported for put requests");
+        var request = new XMLHttpRequest();
+        request.open('PUT', url, false);  // `false` makes the request synchronous
+        var formData = new FormData();
+        var file = new Blob([new Uint8Array(rawData)],{type});
+        request.send(file);
+        return request
+    }
+    """
+    )
     IS_PYODIDE = True
 except ImportError:
     from urllib.request import Request, urlopen
@@ -659,7 +672,15 @@ except ImportError:
 class HTTPFile(io.IOBase):
     """A virtual file for reading content via HTTP."""
 
-    def __init__(self, url, mode="r", encoding=None, newline=None, name=None):
+    def __init__(
+        self,
+        url,
+        mode="r",
+        encoding=None,
+        newline=None,
+        name=None,
+        upload_method="POST",
+    ):
         """Initialize the http file object."""
         self._url = url
         self._pos = 0
@@ -675,6 +696,8 @@ class HTTPFile(io.IOBase):
             assert self._size is not None
         self._chunk = 1024
         self._initial_request = True
+        assert upload_method in ["POST", "PUT"]
+        self._upload_method = upload_method
 
     def tell(self):
         """Tell the position of the pointer."""
@@ -774,7 +797,14 @@ class HTTPFile(io.IOBase):
             else:
                 append = True
 
-            req = _sync_xhr_post(self._url, content, "application/octet-stream", append)
+            if self._upload_method == "POST":
+                req = _sync_xhr_post(
+                    self._url, content, "application/octet-stream", append
+                )
+            elif self._upload_method == "PUT":
+                req = _sync_xhr_post(
+                    self._url, content, "application/octet-stream", append
+                )
             if req.status != 200:
                 raise Exception(f"Failed to write: {req.response}, {req.status}")
 
