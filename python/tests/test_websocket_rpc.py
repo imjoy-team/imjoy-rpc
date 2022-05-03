@@ -1,7 +1,7 @@
 """Test the hypha server."""
 import pytest
-from imjoy_rpc import connect_to_server
-from . import SIO_SERVER_URL
+from imjoy_rpc.hypha import connect_to_server
+from . import WS_SERVER_URL
 import numpy as np
 
 # All test coroutines will be treated as marked.
@@ -31,31 +31,33 @@ class ImJoyPlugin:
 async def test_connect_to_server(socketio_server):
     """Test connecting to the server."""
     # test workspace is an exception, so it can pass directly
-    ws = await connect_to_server(
-        {"name": "my plugin", "workspace": "public", "server_url": SIO_SERVER_URL}
-    )
-    with pytest.raises(Exception, match=r".*Workspace test does not exist.*"):
+    ws = await connect_to_server({"name": "my plugin", "server_url": WS_SERVER_URL})
+    with pytest.raises(Exception, match=r".*Permission denied for.*"):
         ws = await connect_to_server(
-            {"name": "my plugin", "workspace": "test", "server_url": SIO_SERVER_URL}
+            {"name": "my plugin", "workspace": "test", "server_url": WS_SERVER_URL}
         )
-    ws = await connect_to_server({"name": "my plugin", "server_url": SIO_SERVER_URL})
+    ws = await connect_to_server({"name": "my plugin", "server_url": WS_SERVER_URL})
     await ws.export(ImJoyPlugin(ws))
-
-    ws = await connect_to_server({"server_url": SIO_SERVER_URL})
-    assert len(ws.config.name) == 36
 
 
 async def test_numpy_array(socketio_server):
     """Test numpy array."""
     ws = await connect_to_server(
-        {"name": "test-plugin", "workspace": "public", "server_url": SIO_SERVER_URL}
+        {"client_id": "test-plugin", "server_url": WS_SERVER_URL}
     )
     await ws.export(ImJoyPlugin(ws))
+    workspace = ws.config.workspace
+    token = await ws.generate_token()
 
     api = await connect_to_server(
-        {"name": "client", "workspace": "public", "server_url": SIO_SERVER_URL}
+        {
+            "client_id": "client",
+            "workspace": workspace,
+            "token": token,
+            "server_url": WS_SERVER_URL,
+        }
     )
-    plugin = await api.get_plugin("test-plugin")
+    plugin = await api.get_service("test-plugin:default")
     result = await plugin.add(2.1)
     assert result == 2.1 + 1.0
 

@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { connectToServer } from "../src/hypha/websocket-client.js";
 
-const SIO_PORT = 9529;
+const WS_PORT = 9529;
 
 class ImJoyPlugin {
   async setup() {}
@@ -13,7 +13,7 @@ class ImJoyPlugin {
 describe("RPC", async () => {
   it("should connect to the server", async () => {
     const api = await connectToServer({
-      server_url: `ws://127.0.0.1:${SIO_PORT}/ws`,
+      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
       client_id: "test-plugin-1"
     });
     expect(typeof api.log).to.equal("function");
@@ -22,7 +22,7 @@ describe("RPC", async () => {
 
   it("should connect to the server", async () => {
     const api = await connectToServer({
-      server_url: `ws://127.0.0.1:${SIO_PORT}/ws`,
+      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
       client_id: "test-plugin-1"
     });
     // await api.log("hello")
@@ -62,7 +62,7 @@ describe("RPC", async () => {
       }
     };
     const server = await connectToServer({
-      server_url: `ws://127.0.0.1:${SIO_PORT}/ws`,
+      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
       client_id: "test-plugin-1"
     });
     await server.register_service(plugin_interface);
@@ -117,7 +117,7 @@ describe("RPC", async () => {
 
   it("should encode and decode custom object", async () => {
     const api = await connectToServer({
-      server_url: `ws://127.0.0.1:${SIO_PORT}/ws`,
+      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
       client_id: "test-plugin-1"
     });
 

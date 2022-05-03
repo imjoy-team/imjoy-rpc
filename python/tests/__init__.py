@@ -1,6 +1,6 @@
 """Test the ImJoy RPC module."""
-SIO_PORT = 38283
-SIO_SERVER_URL = f"http://127.0.0.1:{SIO_PORT}"
+WS_PORT = 38283
+WS_SERVER_URL = f"http://127.0.0.1:{WS_PORT}"
 
 
 def find_item(items, key, value):
