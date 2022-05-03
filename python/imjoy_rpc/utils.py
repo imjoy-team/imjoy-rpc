@@ -659,12 +659,13 @@ except ImportError:
 class HTTPFile(io.IOBase):
     """A virtual file for reading content via HTTP."""
 
-    def __init__(self, url, mode="r", encoding=None, newline=None):
+    def __init__(self, url, mode="r", encoding=None, newline=None, name=None):
         """Initialize the http file object."""
         self._url = url
         self._pos = 0
         self._size = None
         self._mode = mode
+        self.name = name
         assert mode in ["r", "rb", "w", "wb", "a", "ab"]
         self._encoding = encoding or locale.getpreferredencoding()
         self._newline = newline or os.linesep
@@ -817,4 +818,4 @@ def open_elfinder(path, mode="r", encoding=None, newline=None):
         url = location.origin + "/fs" + path
     else:
         url = path
-    return HTTPFile(url, mode=mode, encoding=encoding, newline=newline)
+    return HTTPFile(url, mode=mode, encoding=encoding, newline=newline, name=path)
