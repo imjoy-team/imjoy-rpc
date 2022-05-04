@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 
 import socketio
 
-from imjoy_rpc.core_connection import decode_msgpack, send_as_msgpack
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
 
@@ -16,7 +15,6 @@ logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("SocketIOConnection")
 
 connection_id = contextvars.ContextVar("connection_id")
-CHUNK_SIZE = 1024 * 512
 
 
 class SocketIOManager:
@@ -82,7 +80,7 @@ class SocketIOManager:
     ):
         """Start."""
         sio = socketio.AsyncClient()
-        self.connected = False
+        self.is_reconnect = False
         self.url = url
         socketio_path = urlparse(url).path.rstrip("/") + "/socket.io"
         self.client_params = {
@@ -93,7 +91,6 @@ class SocketIOManager:
         def registered(config):
             """Handle registration."""
             if config.get("success"):
-                self.connected = True
                 client_id = str(uuid.uuid4())
                 self._create_new_connection(
                     sio,
@@ -111,11 +108,14 @@ class SocketIOManager:
         @sio.event
         async def connect():
             """Handle connected."""
-            if self.connected:
-                logger.warn("Skipping reconnect to the server")
-                return
-            logger.info("connected to the server")
-            await sio.emit("register_plugin", self.default_config, callback=registered)
+            if not self.is_reconnect:
+                logger.info("connected to the server")
+                await sio.emit(
+                    "register_plugin", self.default_config, callback=registered
+                )
+                self.is_reconnect = True
+            else:
+                logger.info("Skipping reconnect to the server")
 
         self.sio = sio
         fut = asyncio.ensure_future(self.sio.connect(self.url, **self.client_params))
@@ -203,20 +203,12 @@ class SocketioConnection(MessageEmitter):
         self.peer_id = client_channel
         self.client_channel = client_channel
         self.plugin_id = plugin_id
-        self._chunk_store = {}
-        self.accept_encoding = []
 
         self.sio = sio
 
         @sio.event
         def plugin_message(data):
-            data = decode_msgpack(data, self._chunk_store)
-            if data is None:
-                return
-
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
-                if data.get("type") == "initialize":
-                    self.accept_encoding = data.get("accept_encoding", [])
                 if "type" in data:
                     self._fire(data["type"], data)
             else:
@@ -249,19 +241,9 @@ class SocketioConnection(MessageEmitter):
         if not data.get("success"):
             self._fire("error", data.get("detail"))
 
-    async def _send(self, data):
-        await self.sio.emit("plugin_message", data, callback=self._msg_callback)
-
     def emit(self, msg):
         """Emit a message."""
         msg["plugin_id"] = self.plugin_id
-        if (
-            msg.get("type") in ["initialized", "imjoyRPCReady"]
-            or "msgpack" not in self.accept_encoding
-        ):
-            # Notify the server that the plugin supports msgpack decoding
-            if msg.get("type") == "initialized":
-                msg["accept_encoding"] = ["msgpack", "gzip"]
-            asyncio.ensure_future(self._send(msg))
-        else:
-            send_as_msgpack(msg, self._send, self.accept_encoding)
+        asyncio.ensure_future(
+            self.sio.emit("plugin_message", msg, callback=self._msg_callback)
+        )

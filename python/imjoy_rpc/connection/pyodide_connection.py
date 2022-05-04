@@ -1,22 +1,22 @@
-import asyncio
-import contextvars
-import logging
-import sys
-import traceback
 import uuid
-
-import js
+import sys
+import logging
+import asyncio
+import traceback
+import contextvars
 import pyodide
 
-from imjoy_rpc.core_connection import decode_msgpack, send_as_msgpack
 from imjoy_rpc.rpc import RPC
 from imjoy_rpc.utils import MessageEmitter, dotdict
+
+
+import js
+from js import Array, Object
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("Pyodide Connection")
 
 connection_id = contextvars.ContextVar("connection_id")
-CHUNK_SIZE = 1024 * 512
 
 # TODO: this is too high, we need to find a better approach
 # see here: https://github.com/iodide-project/pyodide/issues/917#issuecomment-751307819
@@ -70,9 +70,9 @@ class PyodideConnectionManager:
 
         self._codecs[config["name"]] = dotdict(config)
 
-    def start(self, plugin_id, on_ready_callback=None, on_error_callback=None):
+    def start(self, target="imjoy_rpc", on_ready_callback=None, on_error_callback=None):
         try:
-            self._create_new_connection(plugin_id, on_ready_callback, on_error_callback)
+            self._create_new_connection(target, on_ready_callback, on_error_callback)
         except Exception as ex:
             if on_error_callback:
                 on_error_callback(ex)
@@ -85,10 +85,10 @@ class PyodideConnectionManager:
 
         self.set_interface({"setup": setup}, config)
 
-    def _create_new_connection(self, plugin_id, on_ready_callback, on_error_callback):
+    def _create_new_connection(self, target, on_ready_callback, on_error_callback):
         client_id = str(uuid.uuid4())
         connection_id.set(client_id)
-        connection = PyodideConnection(self.default_config, plugin_id)
+        connection = PyodideConnection(self.default_config)
 
         def initialize(data):
             self.clients[client_id] = dotdict()
@@ -140,21 +140,18 @@ class PyodideConnectionManager:
         )
 
 
-def wrap_promise(promise):
-    loop = asyncio.get_event_loop()
-    fut = loop.create_future()
-    promise.then(fut.set_result).catch(fut.set_exception)
-    return fut
-
-
 def install_requirements(requirements, resolve, reject):
     import micropip
 
-    promises = []
-    for r in requirements:
-        p = micropip.install(r)
-        promises.append(p)
-    js.Promise.all(promises).then(resolve).catch(reject)
+    fut = micropip.install(requirements)
+
+    def done(fut):
+        if fut.exception():
+            reject(fut.exception())
+        else:
+            resolve(None)
+
+    fut.add_done_callback(done)
 
 
 # This script template is a temporary workaround for the recursion error
@@ -175,28 +172,23 @@ try{
 
 
 class PyodideConnection(MessageEmitter):
-    def __init__(self, config, plugin_id):
+    def __init__(self, config):
         self.config = dotdict(config or {})
         super().__init__(logger)
         self.channel = self.config.get("channel") or "imjoy_rpc"
         self._event_handlers = {}
         self.peer_id = str(uuid.uuid4())
         self.debug = True
-        self._send = js.sendMessage
-        self.accept_encoding = []
-        self.plugin_id = plugin_id
-        self._chunk_store = {}
+        self._post_message = js.sendMessage
 
         def msg_cb(msg):
             data = msg.to_py()
-            data = decode_msgpack(data, self._chunk_store)
-            if data is None:
-                return
-
+            # TODO: remove the exception for "initialize"
             if data.get("peer_id") == self.peer_id or data.get("type") == "initialize":
-                if data.get("type") == "initialize":
-                    self.accept_encoding = data.get("accept_encoding", [])
                 if "type" in data:
+                    if data["type"] == "execute":
+                        self.execute(data)
+                        return
                     self._fire(data["type"], data)
             else:
                 logger.warn(
@@ -237,14 +229,4 @@ class PyodideConnection(MessageEmitter):
         pass
 
     def emit(self, msg):
-        msg["plugin_id"] = self.plugin_id
-        if (
-            msg.get("type") in ["initialized", "imjoyRPCReady"]
-            or "msgpack" not in self.accept_encoding
-        ):
-            # Notify the server that the plugin supports msgpack decoding
-            if msg.get("type") == "initialized":
-                msg["accept_encoding"] = ["msgpack", "gzip"]
-            asyncio.ensure_future(self._send(msg))
-        else:
-            send_as_msgpack(msg, self._send, self.accept_encoding)
+        self._post_message(msg)
