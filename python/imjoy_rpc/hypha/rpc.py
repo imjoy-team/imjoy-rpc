@@ -589,7 +589,7 @@ class RPC(MessageEmitter):
         def wrapped_callback(*args, **kwargs):
             try:
                 callback(*args, **kwargs)
-            except asyncio.exceptions.InvalidStateError:
+            except asyncio.InvalidStateError:
                 # This probably means the task was cancelled
                 logger.debug("Invalid state error in callback: %s", method_id)
             finally:
