@@ -909,13 +909,15 @@ class RPC(MessageEmitter):
                                 break
                             except Exception as exp:  # pylint: disable=broad-except
                                 logger.error(
-                                    "Failed to reset the heartbeat timer: %s, error: %s",
+                                    "Failed to reset the heartbeat"
+                                    "timer: %s, error: %s",
                                     data["method"],
                                     exp,
                                 )
                                 # TODO: We need more investigation here
                                 # If the method task is cancelled
-                                # It put the entire RPC in a bad state that can never recover
+                                # It put the entire RPC in a bad state
+                                # that can never recover
                                 # if method_task and not method_task.done():
                                 #     method_task.cancel()
                                 # break
