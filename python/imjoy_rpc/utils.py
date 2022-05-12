@@ -621,11 +621,21 @@ def type_of_script():
 try:
     from js import eval, location
 
+    _sync_xhr_head = eval(
+        """globalThis._sync_xhr_head = function(url){
+        var request = new XMLHttpRequest();
+        request.open('HEAD', url, false);  // `false` makes the request synchronous
+        request.send(null);
+        return request
+    }
+    """
+    )
+
     _sync_xhr_get = eval(
         """globalThis._sync_xhr_get = function(url, start, end){
         var request = new XMLHttpRequest();
         request.open('GET', url, false);  // `false` makes the request synchronous
-        if(start !== undefined || end !== undefined){
+        if(typeof start === 'number' && typeof end === 'number' ){
             request.setRequestHeader("range", `bytes=${start||0}-${end||0}`)
         }
         request.responseType = "arraybuffer";
@@ -691,12 +701,13 @@ class HTTPFile(io.IOBase):
         self._newline = newline or os.linesep
         if "w" not in self._mode:
             # make a request so we can see the self._size
-            self._request_range(0, 0)
+            self._size = self._get_size()
             assert self._size is not None
         self._chunk = 1024
         self._initial_request = True
         assert upload_method in ["POST", "PUT"]
         self._upload_method = upload_method
+        self._closed = False
 
     def tell(self):
         """Tell the position of the pointer."""
@@ -784,10 +795,8 @@ class HTTPFile(io.IOBase):
         elif whence == 1:
             self._pos = self._pos + offset
         elif whence == 2:
-            self._pos = self._size - offset
-        if self._size is not None:
-            if self._pos >= self._size:
-                self._pos = self._size - 1
+            self._pos = self._size + offset
+        return self._pos
 
     def _upload(self, content):
         if IS_PYODIDE:
@@ -812,7 +821,25 @@ class HTTPFile(io.IOBase):
         else:
             raise NotImplementedError
 
+    def _get_size(self):
+        if IS_PYODIDE:
+            req = _sync_xhr_head(self._url)
+            if req.status in [200]:
+                length = req.getResponseHeader("Content-Length")
+                return int(length)
+            else:
+                raise Exception(f"Failed to fetch: {req.status}")
+        else:
+            req = Request(self._url, method="HEAD")
+            response = urlopen(req)
+            if response.getcode() in [200]:
+                length = response.getheader("Content-Length")
+                return int(length)
+            else:
+                raise Exception(f"Failed to fetch: {response.getcode()}")
+
     def _request_range(self, start, end):
+        assert isinstance(start, int) and isinstance(end, int)
         assert start <= end
         if IS_PYODIDE:
             req = _sync_xhr_get(self._url, start, end)
@@ -824,11 +851,11 @@ class HTTPFile(io.IOBase):
             else:
                 raise Exception(f"Failed to fetch: {req.status}")
         else:
-            req = Request(self._url)
+            req = Request(self._url, method="GET")
             req.add_header("range", f"bytes={start}-{end}")
             response = urlopen(req)
             if response.getcode() in [200, 206]:
-                crange = response.info().getheader("Content-Range")
+                crange = response.getheader("Content-Range")
                 if crange:
                     self._size = int(crange.split("/")[1])
                 result = response.read()
@@ -838,7 +865,7 @@ class HTTPFile(io.IOBase):
 
     def close(self):
         """Close the file."""
-        self._pos = 0
+        self._closed = True
 
 
 def open_elfinder(path, mode="r", encoding=None, newline=None):
