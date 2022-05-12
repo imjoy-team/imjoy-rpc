@@ -796,9 +796,6 @@ class HTTPFile(io.IOBase):
             self._pos = self._pos + offset
         elif whence == 2:
             self._pos = self._size + offset
-        if self._size is not None:
-            if self._pos > self._size:
-                self._pos = self._size
         return self._pos
 
     def _upload(self, content):
