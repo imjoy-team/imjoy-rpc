@@ -711,7 +711,7 @@ class HTTPFile(io.IOBase):
 
     def tell(self):
         """Tell the position of the pointer."""
-        return self._pos + 1
+        return self._pos
 
     def write(self, content):
         """Write content to file."""
@@ -797,8 +797,8 @@ class HTTPFile(io.IOBase):
         elif whence == 2:
             self._pos = self._size + offset
         if self._size is not None:
-            if self._pos >= self._size:
-                self._pos = self._size - 1
+            if self._pos > self._size:
+                self._pos = self._size
         return self._pos
 
     def _upload(self, content):
