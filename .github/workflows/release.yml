@@ -121,7 +121,7 @@ jobs:
           create-tag: false
           version-command: |
             bash -o pipefail -c "cat javascript/package.json | jq -r '.version'"
-      - uses: actions/setup-node@v3.2.0
+      - uses: actions/setup-node@v3.3.0
         with:
           node-version: 15.5.0
           registry-url: "https://registry.npmjs.org"
