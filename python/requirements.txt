@@ -2,7 +2,7 @@ aiocontextvars==0.2.2; python_version<"3.7"
 contextvars==2.4; python_version<"3.7"
 ipykernel==6.15.1
 numpy==1.19.5  # needs to stay compatible with latest tensorflow
-python-socketio[client]==5.4.1
+python-socketio[client]==5.7.1
 python-engineio==4.1.0
 zarr==2.12.0
 msgpack==1.0.4
