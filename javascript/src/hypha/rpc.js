@@ -60,10 +60,14 @@ class Timer {
   }
 
   start() {
-    this._task = setTimeout(() => {
-      this._callback.apply(this, this._args);
-    }, this._timeout * 1000);
-    this.started = true;
+    if (this.started) {
+      this.reset();
+    } else {
+      this._task = setTimeout(() => {
+        this._callback.apply(this, this._args);
+      }, this._timeout * 1000);
+      this.started = true;
+    }
   }
 
   clear() {
