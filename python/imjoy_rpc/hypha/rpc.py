@@ -88,8 +88,11 @@ class Timer:
 
     def start(self):
         """Start the timer."""
-        self._task = asyncio.ensure_future(self._job())
-        self.started = True
+        if not self.started:
+            self._task = asyncio.ensure_future(self._job())
+            self.started = True
+        else:
+            self.reset()
 
     async def _job(self):
         """Handle a job."""
@@ -109,9 +112,11 @@ class Timer:
 
     def reset(self):
         """Reset the timer."""
-        assert self._task is not None, f"Timer ({self._label}) is not started"
-        self._task.cancel()
-        self._task = asyncio.ensure_future(self._job())
+        if self._task is None:
+            self.start()
+        else:
+            self._task.cancel()
+            self._task = asyncio.ensure_future(self._job())
 
 
 class RPC(MessageEmitter):
