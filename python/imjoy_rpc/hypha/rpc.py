@@ -906,6 +906,8 @@ class RPC(MessageEmitter):
                                 )
                                 await promise["heartbeat"]()
                             except asyncio.CancelledError:
+                                if method_task and not method_task.done():
+                                    method_task.cancel()
                                 break
                             except Exception as exp:  # pylint: disable=broad-except
                                 logger.error(
@@ -914,14 +916,13 @@ class RPC(MessageEmitter):
                                     data["method"],
                                     exp,
                                 )
-                                # TODO: We need more investigation here
-                                # If the method task is cancelled
-                                # It put the entire RPC in a bad state
-                                # that can never recover
-                                # if method_task and not method_task.done():
-                                #     method_task.cancel()
-                                # break
-                            if method_task and not method_task.done():
+                                if method_task and not method_task.done():
+                                    method_task.cancel()
+                                break
+                            if method_task and method_task.done():
+                                logger.warning(
+                                    "quiting heartbeat because the method task is done"
+                                )
                                 break
                             await asyncio.sleep(interval)
 
