@@ -911,7 +911,8 @@ class RPC(MessageEmitter):
                                 break
                             except Exception as exp:  # pylint: disable=broad-except
                                 logger.error(
-                                    "Failed to reset the heartbeat timer: %s, error: %s",
+                                    "Failed to reset the heartbeat"
+                                    " timer: %s, error: %s",
                                     data["method"],
                                     exp,
                                 )
