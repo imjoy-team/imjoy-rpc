@@ -77,9 +77,12 @@ class Timer {
   }
 
   reset() {
-    assert(this._task, `Timer (${this._label}) is not started`);
-    clearTimeout(this._task);
-    this.start();
+    if (!this._task) {
+      this.start();
+    } else {
+      clearTimeout(this._task);
+      this.start();
+    }
   }
 }
 

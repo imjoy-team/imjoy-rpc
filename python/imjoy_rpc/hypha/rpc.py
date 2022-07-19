@@ -109,9 +109,11 @@ class Timer:
 
     def reset(self):
         """Reset the timer."""
-        assert self._task is not None, f"Timer ({self._label}) is not started"
-        self._task.cancel()
-        self._task = asyncio.ensure_future(self._job())
+        if self._task is None:
+            self.start()
+        else:
+            self._task.cancel()
+            self._task = asyncio.ensure_future(self._job())
 
 
 class RPC(MessageEmitter):
