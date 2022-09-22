@@ -4,6 +4,7 @@ import uuid
 import sys
 import logging
 import re
+from pathlib import Path
 
 import ipykernel
 from IPython import get_ipython
@@ -29,9 +30,14 @@ class JupyterCommManager:
         self.interface = None
         self.rpc_context = rpc_context
         self._codecs = {}
-        self.kernel_id = re.search(
-            "kernel-(.*).json", ipykernel.connect.get_connection_file()
-        ).group(1)
+        connection_file = ipykernel.connect.get_connection_file()
+        if "kernel-" in connection_file:
+            self.kernel_id = re.search(
+                "kernel-(.*).json", ipykernel.connect.get_connection_file()
+            ).group(1)
+        else:
+            # nbmake
+            self.kernel_id = Path(connection_file).stem
         # for loading plugin from source code,
         # we can benifit from the syntax highlighting for HTML()
         self.register_codec({"name": "HTML", "type": HTML, "encoder": lambda x: x.data})
