@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v3.0.2
+        uses: actions/checkout@v3.1.0
       - name: Get Python version
         id: python-version
         run: |
@@ -34,7 +34,7 @@ jobs:
         working-directory: python
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v3.0.2
+        uses: actions/checkout@v3.1.0
         with:
           fetch-depth: 2
 
@@ -106,7 +106,7 @@ jobs:
       run:
         working-directory: javascript
     steps:
-      - uses: actions/checkout@v3.0.2
+      - uses: actions/checkout@v3.1.0
         with:
           fetch-depth: 2
       - name: Check if there is a parent commit
