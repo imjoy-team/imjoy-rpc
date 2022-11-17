@@ -1,12 +1,19 @@
-# Hypha RPC (WIP)
+# ImJoy RPC V2
 
-Hypha RPC is a complete rewrite of imjoy-rpc, it provides improved life time managements and make the rpc works in peer-to-peer manner.
+ImJoy RPC V2 is a complete rewrite of imjoy-rpc, it provides improved life time managements and make the rpc works in peer-to-peer manner.
 
 ## Usage
 
+The imjoy-rpc v2 is wrapped under a submodule `imjoy_rpc.hypha`:
+
+```python
+from imjoy_rpc.hypha import connect_to_server
+server = await connect_to_server({"server_url": server_url})
+```
+
 ## Data type representation
 
-ImJoy RPC is built on top of two-way transport layer. Currently, we support 4 types of transport layer: [Jupyter comm messages](https://jupyter-notebook.readthedocs.io/en/stable/comms.html), [Pyodide](https://github.com/iodide-project/pyodide), Google Colab, and SocketIO. Data with different types are encoded into a unified representation and sent over the transport layer. It will then be decoded into the same or corresponding data type on the other side.
+ImJoy RPC is built on top of two-way transport layer. Currently, we use `websocket` to implement the transport layer between different peers. Data with different types are encoded into a unified representation and sent over the transport layer. It will then be decoded into the same or corresponding data type on the other side.
 
 The data representation is a JSON object (but can contain binary data, e.g. `ArrayBuffer` in JS or `bytes` in Python). The goal is to represent more complex data types with primitive types that are commonly supported by many programming language, including strings, numbers, boolean, bytes, list/array and dictionary/object.
 
@@ -53,7 +60,7 @@ Notes:
  - `dotdict` in Python is a simple wrapper over `dict` that support using the dot notation to get item, similar to what you can do with Javascript object.
  - In Python, file instances (inherit from `io.IOBase`) will be automatically encoded.
 
- ## Encoding and decoding custom objects
+## Encoding and decoding custom objects
  For the data or object types that are not in the table above, for example, a custom class, you can support them by register your own `codec`(i.e. encoder and decoder) with `api.registerCodec()`.
 
  You need to provide a `name`, a `type`, `encoder` and `decoder` function. For example: in javascript, you can call `api.registerCodec({"name": "my_custom_codec", "type": MyClass, "encoder": (obj)=>{ ... return encoded;}, "decoder": (obj)=>{... return decoded;})`, or in Python you can do `api.registerCodec(name="my_custom_codec", type=MyClass, encoder=my_encoder_func, decoder=my_decoder_func)`.
@@ -66,3 +73,64 @@ For the `name`, it will be assigned as `_rtype` for the data representation, the
 The `encoder` function take an object as input and you need to return the represented object/dictionary. You can only use primitive types plus array/list and object/dict in the represented object. By default, if your returned object does not contain a key `_rtype`, the codec `name` will be used as `_rtype`. You can also assign a different `_rtype` name, that allows the conversion between different types.
 
 The `decoder` function converts the encoded object into the actual object. It will only be called when the `_rtype` of an object matches the `name` of the codec.
+
+### Remote function calls and arguments
+Remote function call is almost the same as calling a local function. The arguments are mapped directly, for example, you can call a Python function `foo(a, b, c)` from javascript or vise versa. However, since Javascript does not support named arguments as Python does, ImJoy does the following conversion:
+ * For functions defined in Javascript, there is no difference when calling from Python
+ * For functions defined in Python, when calling from Javascript, if the last argument is an object and its `_rkwargs` is set to true, then it will be converted into keyword arguments when calling the Python function. For example, if you have a Python function defined as `def foo(a, b, c=None):`, in Javascript, you should call it as `foo(9, 10, {c: 33, _rkwargs: true})`.
+
+### Example 1: Encode zarr store
+
+```python
+import asyncio
+from imjoy_rpc.hypha import connect_to_server
+
+import zarr
+import numpy as np
+
+def encode_zarr_store(zobj):
+    """Encode the zarr store."""
+    import zarr
+
+    path_prefix = f"{zobj.path}/" if zobj.path else ""
+
+    def getItem(key, options=None):
+        return zobj.store[path_prefix + key]
+
+    def setItem(key, value):
+        zobj.store[path_prefix + key] = value
+
+    def containsItem(key, options=None):
+        if path_prefix + key in zobj.store:
+            return True
+
+    return {
+        "_rintf": True,
+        "_rtype": "zarr-array" if isinstance(zobj, zarr.Array) else "zarr-group",
+        "getItem": getItem,
+        "setItem": setItem,
+        "containsItem": containsItem,
+    }
+
+
+async def start_server(server_url):
+    server = await connect_to_server({"server_url": server_url})
+
+    # Register the codecs
+    server.register_codec(
+        {"name": "zarr-group", "type": zarr.Group, "encoder": encode_zarr_store}
+    )
+
+    z = zarr.array(np.arange(100))
+  
+    # Use the echo function to do a round-trip with the zarr object
+    # Note: Since we didn't create a decoder, so we won't get the zarr object, but a zarr store interface
+    z2 = await server.echo(z)
+    print(z2)
+
+if __name__ == "__main__":
+    server_url = "https://ai.imjoy.io"
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_server(server_url))
+    loop.run_forever()
+```
