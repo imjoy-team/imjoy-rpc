@@ -73,13 +73,71 @@ For the `name`, it will be assigned as `_rtype` for the data representation, the
 The `encoder` function take an object as input and you need to return the represented object/dictionary. You can only use primitive types plus array/list and object/dict in the represented object. By default, if your returned object does not contain a key `_rtype`, the codec `name` will be used as `_rtype`. You can also assign a different `_rtype` name, that allows the conversion between different types.
 
 The `decoder` function converts the encoded object into the actual object. It will only be called when the `_rtype` of an object matches the `name` of the codec.
+### Example 1: Encode and Decode xarray
 
-### Remote function calls and arguments
-Remote function call is almost the same as calling a local function. The arguments are mapped directly, for example, you can call a Python function `foo(a, b, c)` from javascript or vise versa. However, since Javascript does not support named arguments as Python does, ImJoy does the following conversion:
- * For functions defined in Javascript, there is no difference when calling from Python
- * For functions defined in Python, when calling from Javascript, if the last argument is an object and its `_rkwargs` is set to true, then it will be converted into keyword arguments when calling the Python function. For example, if you have a Python function defined as `def foo(a, b, c=None):`, in Javascript, you should call it as `foo(9, 10, {c: 33, _rkwargs: true})`.
+Here you can find an example for encoding and decoding [xarray](https://xarray.dev/):
+```python
+import asyncio
+from imjoy_rpc.hypha import connect_to_server
+import xarray as xr
+import numpy as np
 
-### Example 1: Encode zarr store
+def encode_xarray(obj):
+    """Encode the zarr store."""
+    assert isinstance(obj, xr.DataArray)
+    return {
+        "_rintf": True,
+        "_rtype": "xarray",
+        "data": obj.data,
+        "dims": obj.dims,
+        "attrs": obj.attrs,
+        "name": obj.name,
+    }
+
+def decode_xarray(obj):
+    assert obj["_rtype"] == "xarray"
+    return xr.DataArray(
+                data=obj["data"],
+                dims=obj["dims"],
+                attrs=obj.get("attrs", {}),
+                name=obj.get("name", None),
+        )
+
+
+async def start_server(server_url):
+    server = await connect_to_server({"server_url": server_url})
+
+    # Register the codecs
+    server.register_codec(
+        {"name": "xarray", "type": xr.DataArray, "encoder": encode_xarray, "decoder": decode_xarray}
+    )
+    
+    z = xr.DataArray(data=np.arange(100), dims=["x"], attrs={"test": "test"}, name="mydata")
+
+    # Use the echo function to do a round-trip with the xarray object
+    # It will first encode z and send it to the server, then the server return the encoded object and decoded it back to a xarray
+    z2 = await server.echo(z)
+
+    assert isinstance(z2, xr.DataArray)
+    assert z2.attrs["test"] == "test"
+    assert z2.dims == ("x",)
+    assert z2.data[0] == 0
+    assert z2.data[99] == 99
+    assert z2.name == "mydata"
+    print("Success!")
+
+if __name__ == "__main__":
+    server_url = "https://ai.imjoy.io"
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_server(server_url))
+    loop.run_forever()
+
+```
+
+
+### Example 2: Encode zarr store
+
+Since we can include functions in the encoded object, this allows us sending an interface to the remote location and use it as a lazy object.
 
 ```python
 import asyncio
@@ -134,3 +192,9 @@ if __name__ == "__main__":
     loop.create_task(start_server(server_url))
     loop.run_forever()
 ```
+
+
+### Remote function calls and arguments
+Remote function call is almost the same as calling a local function. The arguments are mapped directly, for example, you can call a Python function `foo(a, b, c)` from javascript or vise versa. However, since Javascript does not support named arguments as Python does, ImJoy does the following conversion:
+ * For functions defined in Javascript, there is no difference when calling from Python
+ * For functions defined in Python, when calling from Javascript, if the last argument is an object and its `_rkwargs` is set to true, then it will be converted into keyword arguments when calling the Python function. For example, if you have a Python function defined as `def foo(a, b, c=None):`, in Javascript, you should call it as `foo(9, 10, {c: 33, _rkwargs: true})`.
