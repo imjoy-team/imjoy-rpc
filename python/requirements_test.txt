@@ -4,4 +4,4 @@ pytest-timeout==2.1.0
 pytest-asyncio==0.20.3
 jupyter==1.0.0
 hypha==0.15.3
-uvicorn[standard]==0.20.0
+uvicorn[standard]==0.22.0
