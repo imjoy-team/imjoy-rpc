@@ -7,6 +7,7 @@ try:
 except ImportError:
     from pyodide import to_js
 
+
 class PyodideWebsocketRPCConnection:
     """Represent a pyodide websocket RPC connection."""
 
