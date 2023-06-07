@@ -1,9 +1,11 @@
 """Provide a pyodide websocket."""
 import asyncio
 import inspect
-import pyodide  # noqa: F401
 from js import WebSocket
-
+try:
+    from pyodide.ffi import to_js
+except ImportError:
+    from pyodide import to_js
 
 class PyodideWebsocketRPCConnection:
     """Represent a pyodide websocket RPC connection."""
@@ -64,7 +66,7 @@ class PyodideWebsocketRPCConnection:
         if not self._websocket:
             await self.open()
         try:
-            data = pyodide.to_js(data)
+            data = to_js(data)
             self._websocket.send(data)
         except Exception as exp:
             #   data = msgpack_unpackb(data);
