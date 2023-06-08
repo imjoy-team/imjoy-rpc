@@ -76,7 +76,7 @@ class PyodideWebsocketRPCConnection:
             print("Failed to send data, error: %s", exp)
             raise
 
-    async def disconnect(self, reason):
+    async def disconnect(self, reason=""):
         """Disconnect."""
         ws = self._websocket
         self._websocket = None
