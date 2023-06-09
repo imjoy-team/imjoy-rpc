@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 from js import WebSocket
+
 try:
     from pyodide.ffi import to_js
 except ImportError:
