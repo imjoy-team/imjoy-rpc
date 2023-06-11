@@ -38,11 +38,14 @@ def jupyter_server_fixture():
         try:
             response = requests.get(BASE_URL + "/api/kernels")
             if response.ok:
+                print("====> Jupyter server started")
                 break
         except RequestException:
             pass
         timeout -= 0.1
         time.sleep(0.1)
+    if timeout <= 0:
+        raise RuntimeError("Failed to start Jupyter server")
     yield
     proc.terminate()
     proc.wait()
@@ -54,10 +57,13 @@ def websocket_connection_fixture(jupyter_server):
     url = BASE_URL + "/api/kernels"
     response = requests.post(url)
     kernel = json.loads(response.text)
+    print(f"====> Kernel created {kernel['id']}")
     assert "id" in kernel
+    r = requests.get(f'http://127.0.0.1:{PORT}/api/kernels/{ kernel["id"]}')
+    assert "id" in r.json()
     # Execution request/reply is done on websockets channels
     ws = create_connection(
-        f"ws://localhost:{PORT}/api/kernels/" + kernel["id"] + "/channels"
+        f'ws://127.0.0.1:{PORT}/api/kernels/{ kernel["id"]}/channels?session_id=118d14ea4a234b7b9a8e575f9421de24'
     )
     yield ws
     ws.close()
