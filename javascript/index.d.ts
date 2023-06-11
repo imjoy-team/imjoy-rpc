@@ -1,10 +1,7 @@
 export interface MessageEmitter {
   emit: (event: any) => void;
-
   on(event: string, handler: Function): void;
-
   once(event: string, handler: Function): void;
-
   off(event: string, handler?: Function): void;
 }
 
@@ -19,33 +16,6 @@ interface RPC extends MessageEmitter {
   requestRemote(): void;
   reset(): void;
   disconnect(): void;
-}
-
-declare module "imjoy-rpc" {
-  const imjoyRPC: {
-    RPC: string;
-    API_VERSION: string;
-    VERSION: string;
-    loadRequirements: (config: any) => Promise<any>;
-    waitForInitialization: (config: any) => void;
-    setupRPC: (config: any) => Promise<any>;
-  };
-  export = imjoyRPC;
-}
-
-declare module "imjoy-rpc-socketio" {
-  const imjoyRPCSocketIO: {
-    RPC: any;
-    API_VERSION: string;
-    VERSION: string;
-    loadRequirements: (config: any) => Promise<any>;
-    waitForInitialization: (config: any) => void;
-    setupRPC: (config: any) => Promise<any>;
-    Connection: any;
-    connectToServer: (config: any) => Promise<any>;
-  };
-
-  export = imjoyRPCSocketIO;
 }
 
 interface hRPC extends MessageEmitter {
@@ -70,63 +40,61 @@ interface hRPC extends MessageEmitter {
   decode(aObject: any): Promise<any>;
 }
 
-declare module "hypha-rpc" {
-  const hyphaRPC: {
-    API_VERSION: string;
-    RPC: hRPC;
-  };
-
-  export = hyphaRPC;
+interface Config {
+  server_url: string;
+  client_id?: string;
+  workspace?: string;
+  token?: string;
+  method_timeout?: number;
+  name?: string;
 }
 
-declare module "hypha-rpc-websocket" {
-  interface Config {
-    server_url: string;
-    client_id?: string;
-    workspace?: string;
-    token?: string;
-    method_timeout?: number;
-    name?: string;
-  }
+interface API {
+  id: string;
+  name: string;
+}
 
-  interface API {
-    id: string;
-    name: string;
-  }
+interface WM {
+  rpc: any;
+  export: (api: API) => Promise<void>;
+  getPlugin: (query: string) => Promise<any>;
+  listPlugins: () => Promise<any[]>;
+  disconnect: () => Promise<void>;
+  registerCodec: (codec: any) => void;
+}
 
-  interface WM {
-    rpc: any;
-    export: (api: API) => Promise<void>;
-    getPlugin: (query: string) => Promise<any>;
-    listPlugins: () => Promise<any[]>;
-    disconnect: () => Promise<void>;
-    registerCodec: (codec: any) => void;
-  }
-
-  class WebsocketRPCConnection {
-    constructor(
-      server_url: string,
-      client_id: string,
-      workspace: string,
-      token: string,
-      timeout: number
-    );
-    set_reconnection_token(token: string): void;
-    on_message(handler: (data: any) => void): void;
-    open(): Promise<void>;
-    emit_message(data: any): Promise<void>;
-    disconnect(reason: string): Promise<void>;
-  }
-
-  const hyphaWebsocketClient: {
-    API: API;
-    WebsocketRPCConnection: WebsocketRPCConnection;
-    RPC: hRPC;
-    API_VERSION: string;
-    VERSION: string;
-    loadRequirements: (config: any) => Promise<any>;
-    connectToServer: (config: Config) => Promise<WM>;
+declare module "imjoy-rpc" {
+  const imjoyRPCModule: {
+    imjoyRPC: {
+      RPC: string;
+      API_VERSION: string;
+      VERSION: string;
+      loadRequirements: (config: any) => Promise<any>;
+      waitForInitialization: (config: any) => void;
+      setupRPC: (config: any) => Promise<any>;
+    },
+    imjoyRPCSocketIO: {
+      RPC: any;
+      API_VERSION: string;
+      VERSION: string;
+      loadRequirements: (config: any) => Promise<any>;
+      waitForInitialization: (config: any) => void;
+      setupRPC: (config: any) => Promise<any>;
+      Connection: any;
+      connectToServer: (config: any) => Promise<any>;
+    };
+    hyphaRPC: {
+      API_VERSION: string;
+      RPC: hRPC;
+    };
+    hyphaWebsocketClient: {
+      RPC: hRPC;
+      API_VERSION: string;
+      VERSION: string;
+      loadRequirements: (config: any) => Promise<any>;
+      connectToServer: (config: Config) => Promise<WM>;
+    };
   };
 
-  export = hyphaWebsocketClient;
+  export = imjoyRPCModule;
 }
