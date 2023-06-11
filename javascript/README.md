@@ -104,7 +104,6 @@ import { hyphaWebsocketClient } from "imjoy-rpc";
 
 hyphaWebsocketClient.connectToServer({
   server_url: 'https://ai.imjoy.io',
-  passive: true,
 }).then(async (api)=>{
   await api.register_service(
       {

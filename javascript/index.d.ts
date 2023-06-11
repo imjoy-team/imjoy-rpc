@@ -54,15 +54,6 @@ interface API {
   name: string;
 }
 
-interface WM {
-  rpc: any;
-  export: (api: API) => Promise<void>;
-  getPlugin: (query: string) => Promise<any>;
-  listPlugins: () => Promise<any[]>;
-  disconnect: () => Promise<void>;
-  registerCodec: (codec: any) => void;
-}
-
 declare module "imjoy-rpc" {
   const imjoyRPCModule: {
     imjoyRPC: {
@@ -92,7 +83,7 @@ declare module "imjoy-rpc" {
       API_VERSION: string;
       VERSION: string;
       loadRequirements: (config: any) => Promise<any>;
-      connectToServer: (config: Config) => Promise<WM>;
+      connectToServer: (config: Config) => Promise<any>;
     };
   };
 
