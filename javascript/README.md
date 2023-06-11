@@ -96,4 +96,29 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
   A list of function names which will be exported automatically and forwarded to the remote api.
   Default: `["close", "on", "off", "emit"]` for all plugins, window plugins will include additional ones: `["resize", "show", "hide", "refresh"]`
 
-### Implement your own connection
+
+### Connect to Hypha
+
+```javascript
+import { hyphaWebsocketClient } from "imjoy-rpc";
+
+hyphaWebsocketClient.connectToServer({
+  server_url: 'https://ai.imjoy.io',
+  passive: true,
+}).then(async (api)=>{
+  await api.register_service(
+      {
+          "id": "echo-service",
+          "config":{
+              "visibility": "public"
+          },
+          "type": "echo",
+          echo( data ){
+              console.log("Echo: ", data)
+              return data
+          }
+      }
+  )
+})
+
+```

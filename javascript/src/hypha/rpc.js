@@ -81,12 +81,13 @@ class Timer {
   }
 
   reset() {
-    if (!this._task) {
-      this.start();
-    } else {
+    if (this._task) {
       clearTimeout(this._task);
-      this.start();
     }
+    this._task = setTimeout(() => {
+      this._callback.apply(this, this._args);
+    }, this._timeout * 1000);
+    this.started = true;
   }
 }
 

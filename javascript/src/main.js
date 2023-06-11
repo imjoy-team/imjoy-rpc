@@ -72,11 +72,11 @@ function setupWebWorker(config) {
     } else if (m.type === "initialized") {
       // complete the missing fields
       m.config = Object.assign({}, config, m.config);
-      m.origin = window.location.origin;
+      m.origin = globalThis.location.origin;
       m.peer_id = peer_id;
     } else if (m.type === "imjoy_remote_api_ready") {
       // if it's a webworker, there will be no api object returned
-      window.dispatchEvent(
+      globalThis.dispatchEvent(
         new CustomEvent("imjoy_remote_api_ready", { detail: null })
       );
     } else if (
