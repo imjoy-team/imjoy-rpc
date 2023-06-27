@@ -1,6 +1,6 @@
 {
   "name": "imjoy-rpc",
-  "version": "0.5.23",
+  "version": "0.5.24",
   "description": "Remote procedure calls for ImJoy.",
   "module": "index.js",
   "types": "index.d.ts",
