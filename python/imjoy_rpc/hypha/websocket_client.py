@@ -138,7 +138,7 @@ def normalize_server_url(server_url):
 async def login(config):
     """Login to the hypha server."""
     server_url = normalize_server_url(config.get("server_url"))
-    service_id = config.get("login_service_id", "hypha-login")
+    service_id = config.get("login_service_id", "public/*:hypha-login")
     timeout = config.get("login_timeout", 60)
     callback = config.get("login_callback")
 

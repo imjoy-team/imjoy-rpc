@@ -96,7 +96,7 @@ function normalizeServerUrl(server_url) {
 
 export async function login(config) {
   const server_url = normalizeServerUrl(config.server_url);
-  const service_id = config.login_service_id || "hypha-login";
+  const service_id = config.login_service_id || "public/*:hypha-login";
   const timeout = config.login_timeout || 60;
   const callback = config.login_callback;
 
