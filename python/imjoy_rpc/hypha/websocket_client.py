@@ -123,6 +123,7 @@ class WebsocketRPCConnection:
 
 
 def normalize_server_url(server_url):
+    """Normalize the server url."""
     if not server_url:
         raise ValueError("server_url is required")
 
@@ -135,6 +136,7 @@ def normalize_server_url(server_url):
 
 
 async def login(config):
+    """Login to the hypha server."""
     server_url = normalize_server_url(config.get("server_url"))
     service_id = config.get("login_service_id", "hypha-login")
     timeout = config.get("login_timeout", 60)
@@ -159,7 +161,7 @@ async def login(config):
 
 
 async def connect_to_server(config):
-    """Connect to RPC via a websocket server."""
+    """Connect to RPC via a hypha server."""
     client_id = config.get("client_id")
     if client_id is None:
         client_id = shortuuid.uuid()

@@ -31,6 +31,7 @@ class ImJoyPlugin:
 
 
 async def test_login(socketio_server):
+    """Test login to the server."""
     TOKEN = "sf31df234"
 
     async def callback(context):

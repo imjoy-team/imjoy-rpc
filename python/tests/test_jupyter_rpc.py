@@ -62,11 +62,13 @@ def websocket_connection_fixture(jupyter_server):
     r = requests.get(f'http://127.0.0.1:{PORT}/api/kernels/{ kernel["id"]}')
     assert "id" in r.json()
     print(
-        f'====> Connecting to ws://127.0.0.1:{PORT}/api/kernels/{ kernel["id"]}/channels'
+        "====> Connecting to ws://127.0.0.1:"
+        f'{PORT}/api/kernels/{ kernel["id"]}/channels'
     )
     # Execution request/reply is done on websockets channels
     ws = create_connection(
-        f'ws://127.0.0.1:{PORT}/api/kernels/{ kernel["id"]}/channels?session_id=118d14ea4a234b7b9a8e575f9421de24'
+        f'ws://127.0.0.1:{PORT}/api/kernels/{ kernel["id"]}/'
+        "channels?session_id=118d14ea4a234b7b9a8e575f9421de24"
     )
     print(f"====> Websocket connection established {ws.getstatus()}")
     yield ws
