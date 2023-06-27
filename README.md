@@ -29,21 +29,6 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
 })
 ```
 
-If you want to connect to a remote imjoy engine server:
-```js
-import { imjoyRPCSocketIO } from 'imjoy-rpc';
-
-imjoyRPCSocketIO.connectToServer({
-    name: 'My Awesome App',
-    workspace: "my-workspace",
-    server_url: "https://api.imjoy.io",
-    token: "2s39elrw....",
-}).then((api)=>{
- // call api.export to expose your plugin api
-
-})
-```
-
 #### Browser
 
 To connect to the ImJoy core ( typically from an iframe):
@@ -55,24 +40,6 @@ imjoyRPC.setupRPC({name: 'My Awesome App'}).then((api)=>{
 })
 </script>
 ```
-
-
-And for connecting to a remote imjoy engine:
-```html
-<script src="https://cdn.jsdelivr.net/npm/imjoy-rpc@latest/dist/imjoy-rpc-socketio.min.js"></script>
-<script>
-imjoyRPCSocketIO.connectToServer({
-    name: 'My Awesome App',
-    workspace: "my-workspace",
-    server_url: "https://api.imjoy.io",
-    token: "2s39elrw....",
-}).then((api)=>{
- // call api.export to expose your plugin api
-
-})
-</script>
-```
-
 ### [Jupyter notebook extension](https://github.com/imjoy-team/imjoy-jupyter-extension)
 
 ## imjoy-rpc handshaking protocol

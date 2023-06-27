@@ -40,15 +40,6 @@ interface hRPC extends MessageEmitter {
   decode(aObject: any): Promise<any>;
 }
 
-interface Config {
-  server_url: string;
-  client_id?: string;
-  workspace?: string;
-  token?: string;
-  method_timeout?: number;
-  name?: string;
-}
-
 interface API {
   id: string;
   name: string;
@@ -83,7 +74,8 @@ declare module "imjoy-rpc" {
       API_VERSION: string;
       VERSION: string;
       loadRequirements: (config: any) => Promise<any>;
-      connectToServer: (config: Config) => Promise<any>;
+      login: (config: any) => Promise<any>;
+      connectToServer: (config: any) => Promise<any>;
     };
   };
 

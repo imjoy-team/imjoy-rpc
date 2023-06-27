@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { connectToServer } from "../src/hypha/websocket-client.js";
+import { login, connectToServer } from "../src/hypha/websocket-client.js";
 
 const WS_PORT = 9529;
 
@@ -18,6 +18,26 @@ describe("RPC", async () => {
     });
     expect(typeof api.log).to.equal("function");
     await api.disconnect();
+  }).timeout(20000);
+
+  it("should login to the server", async () => {
+    const TOKEN = "sf31df234";
+
+    async function callback(context) {
+      console.log(`By passing login: ${context["login_url"]}`);
+      const response = await fetch(
+        `${context["report_url"]}?key=${context["key"]}&token=${TOKEN}`
+      );
+      if (!response.ok) throw new Error("Network response was not ok");
+    }
+
+    // We use ai.imjoy.io to test the login for now
+    const token = await login({
+      server_url: "https://ai.imjoy.io",
+      login_callback: callback,
+      login_timeout: 3
+    });
+    expect(token).to.equal(TOKEN);
   }).timeout(20000);
 
   it("should connect to the server", async () => {

@@ -1,8 +1,10 @@
 """Test the hypha server."""
 import pytest
-from imjoy_rpc.hypha import connect_to_server
+from imjoy_rpc.hypha import login, connect_to_server
 from . import WS_SERVER_URL
 import numpy as np
+import requests
+import asyncio
 
 # All test coroutines will be treated as marked.
 pytestmark = pytest.mark.asyncio
@@ -26,6 +28,29 @@ class ImJoyPlugin:
     async def add(self, data):
         """Add function."""
         return data + 1.0
+
+
+async def test_login(socketio_server):
+    TOKEN = "sf31df234"
+
+    async def callback(context):
+        print(f"By passing login: {context['login_url']}")
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            requests.get,
+            context["report_url"] + "?key=" + context["key"] + "&token=" + TOKEN,
+        )
+
+    # We use ai.imjoy.io to test the login for now
+    token = await login(
+        {
+            "server_url": "https://ai.imjoy.io",
+            "login_callback": callback,
+            "login_timeout": 3,
+        }
+    )
+    assert token == TOKEN
 
 
 async def test_connect_to_server(socketio_server):

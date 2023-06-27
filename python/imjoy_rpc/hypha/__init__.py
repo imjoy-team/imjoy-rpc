@@ -2,6 +2,6 @@
 
 from .rpc import RPC
 
-from .websocket_client import connect_to_server
+from .websocket_client import login, connect_to_server
 
-__all__ = ["RPC", "connect_to_server"]
+__all__ = ["RPC", "login", "connect_to_server"]

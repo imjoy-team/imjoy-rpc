@@ -122,17 +122,49 @@ class WebsocketRPCConnection:
         logger.info("Websocket connection disconnected (%s)", reason)
 
 
+def normalize_server_url(server_url):
+    if not server_url:
+        raise ValueError("server_url is required")
+
+    if server_url.startswith("http://"):
+        server_url = server_url.replace("http://", "ws://").rstrip("/") + "/ws"
+    elif server_url.startswith("https://"):
+        server_url = server_url.replace("https://", "wss://").rstrip("/") + "/ws"
+
+    return server_url
+
+
+async def login(config):
+    server_url = normalize_server_url(config.get("server_url"))
+    service_id = config.get("login_service_id", "hypha-login")
+    timeout = config.get("login_timeout", 60)
+    callback = config.get("login_callback")
+
+    server = await connect_to_server(
+        {"name": "initial login client", "server_url": server_url}
+    )
+    try:
+        svc = await server.get_service(service_id)
+        context = await svc.start()
+        if callback:
+            await callback(context)
+        else:
+            print(f"Please open your browser and login at {context['login_url']}")
+
+        return await svc.check(context["key"], timeout)
+    except Exception as error:
+        raise error
+    finally:
+        await server.disconnect()
+
+
 async def connect_to_server(config):
     """Connect to RPC via a websocket server."""
     client_id = config.get("client_id")
     if client_id is None:
         client_id = shortuuid.uuid()
 
-    server_url = config["server_url"]
-    if server_url.startswith("http://"):
-        server_url = server_url.replace("http://", "ws://").rstrip("/") + "/ws"
-    elif server_url.startswith("https://"):
-        server_url = server_url.replace("https://", "wss://").rstrip("/") + "/ws"
+    server_url = normalize_server_url(config["server_url"])
 
     if IS_PYODIDE:
         Connection = PyodideWebsocketRPCConnection

@@ -5,12 +5,17 @@ ImJoy RPC V2 is a complete rewrite of imjoy-rpc, it provides improved life time 
 ## Usage
 
 The imjoy-rpc v2 is wrapped under a submodule `imjoy_rpc.hypha`:
-
 ```python
 from imjoy_rpc.hypha import connect_to_server
 server = await connect_to_server({"server_url": server_url})
 ```
 
+You can also obtain a login token from the server and use it to connect to the server:
+```python
+from imjoy_rpc.hypha import login, connect_to_server
+token = await login({"server_url": server_url})
+server = await connect_to_server({"server_url": server_url, "token": token})
+```
 ## Data type representation
 
 ImJoy RPC is built on top of two-way transport layer. Currently, we use `websocket` to implement the transport layer between different peers. Data with different types are encoded into a unified representation and sent over the transport layer. It will then be decoded into the same or corresponding data type on the other side.
