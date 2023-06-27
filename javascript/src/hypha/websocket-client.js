@@ -82,12 +82,8 @@ class WebsocketRPCConnection {
   }
 }
 
-export async function connectToServer(config) {
-  let clientId = config.client_id;
-  if (!clientId) {
-    clientId = randId();
-  }
-  let server_url = config.server_url;
+function normalizeServerUrl(server_url) {
+  if (!server_url) throw new Error("server_url is required");
   if (server_url.startsWith("http://")) {
     server_url =
       server_url.replace("http://", "ws://").replace(/\/$/, "") + "/ws";
@@ -95,6 +91,42 @@ export async function connectToServer(config) {
     server_url =
       server_url.replace("https://", "wss://").replace(/\/$/, "") + "/ws";
   }
+  return server_url;
+}
+
+export async function login(config) {
+  const server_url = normalizeServerUrl(config.server_url);
+  const service_id = config.login_service_id || "hypha-login";
+  const timeout = config.login_timeout || 60;
+  const callback = config.login_callback;
+
+  const server = await connect_to_server({
+    name: "initial login client",
+    server_url: server_url
+  });
+  try {
+    const svc = await server.get_service(service_id);
+    const context = await svc.start();
+    if (callback) {
+      await callback(context);
+    } else {
+      console.log(`Please open your browser and login at ${context.login_url}`);
+    }
+    return await svc.check(context.key, timeout);
+  } catch (error) {
+    throw error;
+  } finally {
+    await server.disconnect();
+  }
+}
+
+export async function connectToServer(config) {
+  let clientId = config.client_id;
+  if (!clientId) {
+    clientId = randId();
+  }
+  let server_url = normalizeServerUrl(config.server_url);
+
   let connection = new WebsocketRPCConnection(
     server_url,
     clientId,

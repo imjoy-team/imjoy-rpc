@@ -1,10 +1,7 @@
 export interface MessageEmitter {
   emit: (event: any) => void;
-
   on(event: string, handler: Function): void;
-
   once(event: string, handler: Function): void;
-
   off(event: string, handler?: Function): void;
 }
 
@@ -80,14 +77,6 @@ declare module "hypha-rpc" {
 }
 
 declare module "hypha-rpc-websocket" {
-  interface Config {
-    server_url: string;
-    client_id?: string;
-    workspace?: string;
-    token?: string;
-    method_timeout?: number;
-    name?: string;
-  }
 
   interface API {
     id: string;
@@ -125,7 +114,8 @@ declare module "hypha-rpc-websocket" {
     API_VERSION: string;
     VERSION: string;
     loadRequirements: (config: any) => Promise<any>;
-    connectToServer: (config: Config) => Promise<WM>;
+    login: (config: any) => Promise<any>;
+    connectToServer: (config: any) => Promise<WM>;
   };
 
   export = hyphaWebsocketClient;
