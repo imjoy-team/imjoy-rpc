@@ -188,6 +188,7 @@ async def connect_to_server(config):
         default_context={"connection_type": "websocket"},
         name=config.get("name"),
         method_timeout=config.get("method_timeout"),
+        loop=config.get("loop"),
     )
     wm = await rpc.get_remote_service("workspace-manager:default")
     wm.rpc = rpc

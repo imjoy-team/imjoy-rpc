@@ -1,13 +1,10 @@
 """Test the hypha server."""
 import pytest
-from imjoy_rpc.hypha import login, connect_to_server
+from imjoy_rpc.hypha import login, connect_to_server, connect_to_server_sync
 from . import WS_SERVER_URL
 import numpy as np
 import requests
 import asyncio
-
-# All test coroutines will be treated as marked.
-pytestmark = pytest.mark.asyncio
 
 
 class ImJoyPlugin:
@@ -17,9 +14,9 @@ class ImJoyPlugin:
         """Initialize the plugin."""
         self._ws = ws
 
-    async def setup(self):
-        """Set up the plugin."""
-        await self._ws.log("initialized")
+    # async def setup(self):
+    #     """Set up the plugin."""
+    #     await self._ws.log("initialized")
 
     async def run(self, ctx):
         """Run the plugin."""
@@ -30,6 +27,7 @@ class ImJoyPlugin:
         return data + 1.0
 
 
+@pytest.mark.asyncio
 async def test_login(socketio_server):
     """Test login to the server."""
     TOKEN = "sf31df234"
@@ -54,6 +52,64 @@ async def test_login(socketio_server):
     assert token == TOKEN
 
 
+@pytest.mark.asyncio
+async def test_numpy_array_sync(socketio_server):
+    """Test numpy array registered in async."""
+    ws = connect_to_server_sync(
+        {"client_id": "test-plugin", "server_url": WS_SERVER_URL}
+    )
+    ws.export(ImJoyPlugin(ws))
+    workspace = ws.config.workspace
+    token = ws.generate_token()
+
+    api = await connect_to_server(
+        {
+            "client_id": "client",
+            "workspace": workspace,
+            "token": token,
+            "server_url": WS_SERVER_URL,
+        }
+    )
+    plugin = await api.get_service("test-plugin:default")
+    result = await plugin.add(2.1)
+    assert result == 2.1 + 1.0
+
+    large_array = np.zeros([2048, 2048, 4], dtype="float32")
+    result = await plugin.add(large_array)
+    np.testing.assert_array_equal(result, large_array + 1.0)
+
+
+def test_connect_to_server_sync(socketio_server):
+    """Test connecting to the server sync."""
+    # Now all the functions are sync
+    server = connect_to_server_sync(
+        {"client_id": "test-plugin", "server_url": WS_SERVER_URL}
+    )
+    workspace = server.config.workspace
+    token = server.generate_token()
+    assert workspace and token
+
+    services = server.list_services("public")
+    assert isinstance(services, list)
+
+    def hello(name):
+        print("Hello " + name)
+        return "Hello " + name
+
+    server.register_service(
+        {
+            "name": "Hello World",
+            "id": "hello-world",
+            "config": {
+                "visibility": "protected",
+                "run_in_executor": True,
+            },
+            "hello": hello,
+        }
+    )
+
+
+@pytest.mark.asyncio
 async def test_connect_to_server(socketio_server):
     """Test connecting to the server."""
     # test workspace is an exception, so it can pass directly
