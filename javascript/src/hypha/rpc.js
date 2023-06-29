@@ -223,7 +223,8 @@ export class RPC extends MessageEmitter {
     let method = this._generate_remote_method({
       _rtarget: client_id,
       _rmethod: "services.built-in.ping",
-      _rpromise: true
+      _rpromise: true,
+      _rdoc: "Ping a remote client"
     });
     assert((await method("ping", timeout)) == "pong");
   }
@@ -379,7 +380,8 @@ export class RPC extends MessageEmitter {
       const method = this._generate_remote_method({
         _rtarget: provider,
         _rmethod: "services.built-in.get_service",
-        _rpromise: true
+        _rpromise: true,
+        _rdoc: "Get a remote service"
       });
       return await waitFor(
         method(service_uri.split(":")[1]),
@@ -474,6 +476,19 @@ export class RPC extends MessageEmitter {
     }
     if (!api.type) {
       api.type = "generic";
+    }
+    api.docs =
+      api.docs ||
+      Object.fromEntries(
+        Object.entries(api)
+          .filter(
+            ([k, v]) =>
+              typeof v === "function" && !k.startsWith("_") && v.__doc__
+          )
+          .map(([k, v]) => [k, v.__doc__])
+      );
+    if (!(api.docs instanceof Object)) {
+      throw new Error("docs must be an object with method docstrings");
     }
     // require_context only applies to the top-level functions
     let require_context = false,
@@ -801,6 +816,7 @@ export class RPC extends MessageEmitter {
 
     // Generate debugging information for the method
     remote_method.__rpc_object__ = encoded_method;
+    remote_method.__doc__ = encoded_method._rdoc;
     return remote_method;
   }
 
@@ -1089,6 +1105,7 @@ export class RPC extends MessageEmitter {
         );
         store[object_id] = aObject;
       }
+      if (aObject.__doc__) bObject._rdoc = aObject.__doc__;
       return bObject;
     }
     const isarray = Array.isArray(aObject);

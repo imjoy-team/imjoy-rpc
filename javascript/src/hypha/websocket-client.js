@@ -100,7 +100,7 @@ export async function login(config) {
   const timeout = config.login_timeout || 60;
   const callback = config.login_callback;
 
-  const server = await connect_to_server({
+  const server = await connectToServer({
     name: "initial login client",
     server_url: server_url
   });

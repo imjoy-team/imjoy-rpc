@@ -258,6 +258,7 @@ class RPC(MessageEmitter):
                 "_rtarget": client_id,
                 "_rmethod": "services.built-in.ping",
                 "_rpromise": True,
+                "_rdoc": "Ping the remote client",
             }
         )
         assert (await asyncio.wait_for(method("ping"), timeout)) == "pong"
@@ -379,7 +380,6 @@ class RPC(MessageEmitter):
         service = self._services.get(service_id)
         if not service:
             raise KeyError("Service not found: %s", service_id)
-
         # allow access for the same workspace
         if service["config"].get("visibility", "protected") == "public":
             return service
@@ -404,6 +404,7 @@ class RPC(MessageEmitter):
                     "_rtarget": provider,
                     "_rmethod": "services.built-in.get_service",
                     "_rpromise": True,
+                    "_rdoc": "Get a remote service",
                 }
             )
             return await asyncio.wait_for(method(service_id), timeout=timeout)
@@ -499,6 +500,20 @@ class RPC(MessageEmitter):
 
         if "type" not in api:
             api["type"] = "generic"
+
+        api["docs"] = api.get(
+            "docs",
+            {
+                k: v.__doc__
+                for k, v in api.items()
+                if callable(v)
+                and not k.startswith("_")
+                and hasattr(v, "__doc__")
+                and v.__doc__
+            },
+        )
+        _ = "docs must be an dictionary with method docstrings"
+        assert isinstance(api["docs"], dict), _
 
         # require_context only applies to the top-level functions
         require_context, run_in_executor = False, False
@@ -801,6 +816,7 @@ class RPC(MessageEmitter):
         remote_method.__rpc_object__ = (
             encoded_method.copy()
         )  # pylint: disable=protected-access
+        remote_method.__doc__ = encoded_method.get("_rdoc")
         return remote_method
 
     def _log(self, info):
@@ -1120,6 +1136,9 @@ class RPC(MessageEmitter):
                     store is not None
                 ), f"Failed to create session store {session_id} due to invalid parent"
                 store[object_id] = a_object
+
+            if hasattr(a_object, "__doc__") and a_object.__doc__:
+                b_object["_rdoc"] = a_object.__doc__
             return b_object
 
         isarray = isinstance(a_object, list)

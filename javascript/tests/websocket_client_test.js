@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { login, connectToServer } from "../src/hypha/websocket-client.js";
 
-const WS_PORT = 9529;
+const SERVER_URL = "https://ai.imjoy.io";
 
 class ImJoyPlugin {
   async setup() {}
@@ -13,7 +13,7 @@ class ImJoyPlugin {
 describe("RPC", async () => {
   it("should connect to the server", async () => {
     const api = await connectToServer({
-      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
+      server_url: SERVER_URL,
       client_id: "test-plugin-1"
     });
     expect(typeof api.log).to.equal("function");
@@ -33,7 +33,7 @@ describe("RPC", async () => {
 
     // We use ai.imjoy.io to test the login for now
     const token = await login({
-      server_url: "https://ai.imjoy.io",
+      server_url: SERVER_URL,
       login_callback: callback,
       login_timeout: 3
     });
@@ -42,22 +42,26 @@ describe("RPC", async () => {
 
   it("should connect to the server", async () => {
     const api = await connectToServer({
-      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
+      server_url: SERVER_URL,
       client_id: "test-plugin-1"
     });
     // await api.log("hello")
     const size = 100000;
     const data = await api.echo(new ArrayBuffer(size));
     expect(data.byteLength).to.equal(size);
+    function square(a) {
+      return a * a;
+    }
+    square.__doc__ = "square a number";
     await api.register_service({
       name: "my service",
       id: "test-service",
+      description: "test service",
       config: { visibility: "public" },
-      square: function(a) {
-        return a * a;
-      }
+      square
     });
     const svc = await api.rpc.get_remote_service("test-service");
+    svc.docs["square"] === "square a number";
     expect(await svc.square(2)).to.equal(4);
     await api.export(new ImJoyPlugin());
     const dsvc = await api.rpc.get_remote_service("default");
@@ -82,7 +86,7 @@ describe("RPC", async () => {
       }
     };
     const server = await connectToServer({
-      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
+      server_url: SERVER_URL,
       client_id: "test-plugin-1"
     });
     await server.register_service(plugin_interface);
@@ -137,7 +141,7 @@ describe("RPC", async () => {
 
   it("should encode and decode custom object", async () => {
     const api = await connectToServer({
-      server_url: `ws://127.0.0.1:${WS_PORT}/ws`,
+      server_url: SERVER_URL,
       client_id: "test-plugin-1"
     });
 
