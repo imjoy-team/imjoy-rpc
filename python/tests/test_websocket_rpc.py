@@ -1,6 +1,6 @@
 """Test the hypha server."""
 import pytest
-from imjoy_rpc.hypha import login, connect_to_server, connect_to_server_sync
+from imjoy_rpc.hypha import login, connect_to_server, login_sync, connect_to_server_sync
 from . import WS_SERVER_URL
 import numpy as np
 import requests
@@ -43,6 +43,27 @@ async def test_login(socketio_server):
 
     # We use ai.imjoy.io to test the login for now
     token = await login(
+        {
+            "server_url": "https://ai.imjoy.io",
+            "login_callback": callback,
+            "login_timeout": 3,
+        }
+    )
+    assert token == TOKEN
+
+
+def test_login_sync(socketio_server):
+    """Test login to the server."""
+    TOKEN = "sf31df234"
+
+    def callback(context):
+        print(f"By passing login: {context['login_url']}")
+        requests.get(
+            context["report_url"] + "?key=" + context["key"] + "&token=" + TOKEN
+        )
+
+    # We use ai.imjoy.io to test the login for now
+    token = login_sync(
         {
             "server_url": "https://ai.imjoy.io",
             "login_callback": callback,

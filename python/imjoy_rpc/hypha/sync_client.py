@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from imjoy_rpc.hypha import connect_to_server
 import time
 from imjoy_rpc.hypha.utils import dotdict
+from imjoy_rpc.hypha.websocket_client import normalize_server_url
 
 
 def convert_sync_to_async(sync_func, loop, executor):
@@ -100,6 +101,31 @@ def connect_to_server_sync(config):
     future.result()  # Wait for the server to start
 
     return server
+
+
+def login_sync(config):
+    """Login to the hypha server."""
+    server_url = normalize_server_url(config.get("server_url"))
+    service_id = config.get("login_service_id", "public/*:hypha-login")
+    timeout = config.get("login_timeout", 60)
+    callback = config.get("login_callback")
+
+    server = connect_to_server_sync(
+        {"name": "initial login client", "server_url": server_url}
+    )
+    try:
+        svc = server.get_service(service_id)
+        context = svc.start()
+        if callback:
+            callback(context)
+        else:
+            print(f"Please open your browser and login at {context['login_url']}")
+
+        return svc.check(context["key"], timeout)
+    except Exception as error:
+        raise error
+    finally:
+        server.disconnect()
 
 
 if __name__ == "__main__":
