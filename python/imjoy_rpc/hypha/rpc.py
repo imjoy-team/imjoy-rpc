@@ -84,7 +84,7 @@ def extract_function_info(func):
     if match:
         func_name, func_signature, docstring = match.groups()
         # Clean up the docstring
-        docstring = re.sub(r"\n\s*", " ", docstring).strip()
+        docstring = func.__doc__ or re.sub(r"\n\s*", " ", docstring).strip()
         return {"name": func_name, "sig": func_signature, "doc": docstring}
     else:
         return None
