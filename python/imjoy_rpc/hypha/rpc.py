@@ -558,6 +558,7 @@ class RPC(MessageEmitter):
             "id": f'{self._client_id}:{service["id"]}',
             "type": service["type"],
             "name": service["name"],
+            "description": service.get("description", ""),
             "config": service["config"],
         }
 
@@ -887,6 +888,7 @@ class RPC(MessageEmitter):
                     "id": f'{self._client_id}:{service["id"]}',
                     "type": service["type"],
                     "name": service["name"],
+                    "description": service.get("description", ""),
                     "config": service["config"],
                 }
                 for service in self._services.values()

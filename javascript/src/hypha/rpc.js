@@ -543,6 +543,7 @@ export class RPC extends MessageEmitter {
       id: `${this._client_id}:${service["id"]}`,
       type: service["type"],
       name: service["name"],
+      description: service["description"] || "",
       config: service["config"]
     };
   }
@@ -845,6 +846,7 @@ export class RPC extends MessageEmitter {
         id: `${this._client_id}:${service["id"]}`,
         type: service["type"],
         name: service["name"],
+        description: service["description"] || "",
         config: service["config"]
       });
     }
