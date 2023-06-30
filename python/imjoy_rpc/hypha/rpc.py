@@ -1,23 +1,21 @@
 """Provide the RPC."""
 import asyncio
+import contextlib
 import inspect
 import io
 import logging
+import math
+import re
 import sys
 import traceback
 import weakref
 from collections import OrderedDict
 from functools import partial, reduce
-import msgpack
-import math
 
+import msgpack
 import shortuuid
-from .utils import (
-    FuturePromise,
-    MessageEmitter,
-    dotdict,
-    format_traceback,
-)
+
+from .utils import FuturePromise, MessageEmitter, dotdict, format_traceback
 
 CHUNK_SIZE = 1024 * 500
 API_VERSION = "0.3.0"
@@ -71,6 +69,25 @@ def index_object(obj, ids):
         else:
             _obj = getattr(obj, ids[0])
         return index_object(_obj, ids[1:])
+
+
+def extract_function_info(func):
+    """Extract function info."""
+    # Create an in-memory text stream
+    f = io.StringIO()
+
+    # Redirect the output of help to the text stream
+    with contextlib.redirect_stdout(f):
+        help(func)
+    help_string = f.getvalue()
+    match = re.search(r"(\w+)\((.*?)\)\n\s*(.*)", help_string, re.DOTALL)
+    if match:
+        func_name, func_signature, docstring = match.groups()
+        # Clean up the docstring
+        docstring = re.sub(r"\n\s*", " ", docstring).strip()
+        return {"name": func_name, "sig": func_signature, "doc": docstring}
+    else:
+        return None
 
 
 class Timer:
@@ -817,6 +834,7 @@ class RPC(MessageEmitter):
         remote_method.__rpc_object__ = (
             encoded_method.copy()
         )  # pylint: disable=protected-access
+        remote_method.__name__ = method_id.split(".")[-1]
         remote_method.__doc__ = encoded_method.get("_rdoc")
         return remote_method
 
@@ -1138,8 +1156,16 @@ class RPC(MessageEmitter):
                     store is not None
                 ), f"Failed to create session store {session_id} due to invalid parent"
                 store[object_id] = a_object
-
-            if hasattr(a_object, "__doc__") and a_object.__doc__:
+            try:
+                func_info = extract_function_info(a_object)
+                if func_info:
+                    b_object[
+                        "_rdoc"
+                    ] = f"{func_info['name']}({func_info['sig']})\n{func_info['doc']}"
+                else:
+                    b_object["_rdoc"] = a_object.__doc__
+            except Exception:  # pylint: disable=broad-except
+                logger.error("Failed to extract function docstring: %s", a_object)
                 b_object["_rdoc"] = a_object.__doc__
             return b_object
 

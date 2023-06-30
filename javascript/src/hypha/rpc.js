@@ -33,6 +33,53 @@ function indexObject(obj, is) {
   else if (is.length === 0) return obj;
   else return indexObject(obj[is[0]], is.slice(1));
 }
+function getFunctionInfo(func) {
+  const funcString = func.toString();
+
+  // Extract function name
+  const nameMatch = funcString.match(/function\s*(\w*)/);
+  const name = (nameMatch && nameMatch[1]) || "";
+
+  // Extract function parameters, excluding comments
+  const paramsMatch = funcString.match(/\(([^)]*)\)/);
+  let params = "";
+  if (paramsMatch) {
+    params = paramsMatch[1]
+      .split(",")
+      .map(p =>
+        p
+          .replace(/\/\*.*?\*\//g, "") // Remove block comments
+          .replace(/\/\/.*$/g, "")
+      ) // Remove line comments
+      .filter(p => p.trim().length > 0) // Remove empty strings after removing comments
+      .map(p => p.trim()) // Trim remaining whitespace
+      .join(", ");
+  }
+
+  // Extract function docstring (block comment)
+  let docMatch = funcString.match(/\)\s*\{\s*\/\*([\s\S]*?)\*\//);
+  const docstringBlock = (docMatch && docMatch[1].trim()) || "";
+
+  // Extract function docstring (line comment)
+  docMatch = funcString.match(/\)\s*\{\s*(\/\/[\s\S]*?)\n\s*[^\s\/]/);
+  const docstringLine =
+    (docMatch &&
+      docMatch[1]
+        .split("\n")
+        .map(s => s.replace(/^\/\/\s*/, "").trim())
+        .join("\n")) ||
+    "";
+
+  const docstring = docstringBlock || docstringLine;
+  return (
+    name &&
+    params.length > 0 && {
+      name: name,
+      sig: params,
+      doc: docstring
+    }
+  );
+}
 
 function concatArrayBuffers(buffers) {
   var buffersLengths = buffers.map(function(b) {
@@ -817,6 +864,8 @@ export class RPC extends MessageEmitter {
 
     // Generate debugging information for the method
     remote_method.__rpc_object__ = encoded_method;
+    const parts = method_id.split(".");
+    remote_method.__name__ = parts[parts.length - 1];
     remote_method.__doc__ = encoded_method._rdoc;
     return remote_method;
   }
@@ -1107,7 +1156,17 @@ export class RPC extends MessageEmitter {
         );
         store[object_id] = aObject;
       }
-      if (aObject.__doc__) bObject._rdoc = aObject.__doc__;
+      try {
+        const funcInfo = getFunctionInfo(aObject);
+        if (funcInfo) {
+          bObject._rdoc = `${funcInfo.name}(${funcInfo.sig})\n${funcInfo.doc}`;
+        } else {
+          bObject._rdoc = aObject.__doc__;
+        }
+      } catch (e) {
+        console.error("Failed to extract function docstring:", aObject);
+        bObject._rdoc = aObject.__doc__;
+      }
       return bObject;
     }
     const isarray = Array.isArray(aObject);

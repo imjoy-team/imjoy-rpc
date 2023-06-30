@@ -142,7 +142,7 @@ async def test_connect_to_server(socketio_server):
     ws = await connect_to_server({"name": "my plugin", "server_url": WS_SERVER_URL})
     await ws.export(ImJoyPlugin(ws))
 
-    def hello(name):
+    def hello(name, key=12):
         """Say hello."""
         print("Hello " + name)
         return "Hello " + name
@@ -162,7 +162,10 @@ async def test_connect_to_server(socketio_server):
 
     svc = await ws.get_service("hello-world")
     assert "docs" in svc and isinstance(svc.docs, dict)
-    assert "hello" in svc.docs and svc.docs["hello"] == hello.__doc__
+    assert (
+        "hello" in svc.docs
+        and svc.docs["hello"] == f"hello(name, key=12)\n{hello.__doc__}"
+    )
 
 
 async def test_numpy_array(socketio_server):

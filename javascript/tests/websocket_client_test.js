@@ -50,9 +50,9 @@ describe("RPC", async () => {
     const data = await api.echo(new ArrayBuffer(size));
     expect(data.byteLength).to.equal(size);
     function square(a) {
+      /* square a number */
       return a * a;
     }
-    square.__doc__ = "square a number";
     await api.register_service({
       name: "my service",
       id: "test-service",
@@ -61,7 +61,7 @@ describe("RPC", async () => {
       square
     });
     const svc = await api.rpc.get_remote_service("test-service");
-    svc.docs["square"] === "square a number";
+    expect(svc.docs["square"]).to.equal("square(a)\nsquare a number");
     expect(await svc.square(2)).to.equal(4);
     await api.export(new ImJoyPlugin());
     const dsvc = await api.rpc.get_remote_service("default");
