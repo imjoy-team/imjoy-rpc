@@ -524,19 +524,6 @@ export class RPC extends MessageEmitter {
     if (!api.type) {
       api.type = "generic";
     }
-    api.docs =
-      api.docs ||
-      Object.fromEntries(
-        Object.entries(api)
-          .filter(
-            ([k, v]) =>
-              typeof v === "function" && !k.startsWith("_") && v.__doc__
-          )
-          .map(([k, v]) => [k, v.__doc__])
-      );
-    if (!(api.docs instanceof Object)) {
-      throw new Error("docs must be an object with method docstrings");
-    }
     // require_context only applies to the top-level functions
     let require_context = false,
       run_in_executor = false;

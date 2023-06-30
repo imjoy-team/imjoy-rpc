@@ -518,20 +518,6 @@ class RPC(MessageEmitter):
         if "type" not in api:
             api["type"] = "generic"
 
-        api["docs"] = api.get(
-            "docs",
-            {
-                k: v.__doc__
-                for k, v in api.items()
-                if callable(v)
-                and not k.startswith("_")
-                and hasattr(v, "__doc__")
-                and v.__doc__
-            },
-        )
-        _ = "docs must be an dictionary with method docstrings"
-        assert isinstance(api["docs"], dict), _
-
         # require_context only applies to the top-level functions
         require_context, run_in_executor = False, False
         if bool(api["config"].get("require_context")):

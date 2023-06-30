@@ -61,7 +61,7 @@ describe("RPC", async () => {
       square
     });
     const svc = await api.rpc.get_remote_service("test-service");
-    expect(svc.docs["square"]).to.equal("square(a)\nsquare a number");
+    expect(svc.square.__doc__).to.equal("square(a)\nsquare a number");
     expect(await svc.square(2)).to.equal(4);
     await api.export(new ImJoyPlugin());
     const dsvc = await api.rpc.get_remote_service("default");

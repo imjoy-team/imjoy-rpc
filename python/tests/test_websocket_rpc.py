@@ -161,11 +161,7 @@ async def test_connect_to_server(socketio_server):
     )
 
     svc = await ws.get_service("hello-world")
-    assert "docs" in svc and isinstance(svc.docs, dict)
-    assert (
-        "hello" in svc.docs
-        and svc.docs["hello"] == f"hello(name, key=12)\n{hello.__doc__}"
-    )
+    assert svc.hello.__doc__ == f"hello(name, key=12)\n{hello.__doc__}"
 
 
 async def test_numpy_array(socketio_server):
