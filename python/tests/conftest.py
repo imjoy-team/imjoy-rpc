@@ -16,8 +16,8 @@ os.environ["JWT_SECRET"] = JWT_SECRET
 test_env = os.environ.copy()
 
 
-@pytest.fixture(name="socketio_server", scope="session")
-def socketio_server_fixture():
+@pytest.fixture(name="websocket_server", scope="session")
+def websocket_server_fixture():
     """Start server as test fixture and tear down after test."""
     with subprocess.Popen(
         [sys.executable, "-m", "hypha.server", f"--port={WS_PORT}"],

@@ -37,7 +37,7 @@ class ImJoyPlugin:
 
 
 @pytest.mark.asyncio
-async def test_login(socketio_server):
+async def test_login(websocket_server):
     """Test login to the server."""
     TOKEN = "sf31df234"
 
@@ -61,7 +61,7 @@ async def test_login(socketio_server):
     assert token == TOKEN
 
 
-def test_login_sync(socketio_server):
+def test_login_sync(websocket_server):
     """Test login to the server."""
     TOKEN = "sf31df234"
 
@@ -83,7 +83,7 @@ def test_login_sync(socketio_server):
 
 
 @pytest.mark.asyncio
-async def test_numpy_array_sync(socketio_server):
+async def test_numpy_array_sync(websocket_server):
     """Test numpy array registered in async."""
     ws = connect_to_server_sync(
         {"client_id": "test-plugin", "server_url": WS_SERVER_URL}
@@ -109,7 +109,7 @@ async def test_numpy_array_sync(socketio_server):
     np.testing.assert_array_equal(result, large_array + 1.0)
 
 
-def test_connect_to_server_sync(socketio_server):
+def test_connect_to_server_sync(websocket_server):
     """Test connecting to the server sync."""
     # Now all the functions are sync
     server = connect_to_server_sync(
@@ -140,7 +140,7 @@ def test_connect_to_server_sync(socketio_server):
 
 
 @pytest.mark.asyncio
-async def test_connect_to_server(socketio_server):
+async def test_connect_to_server(websocket_server):
     """Test connecting to the server."""
     # test workspace is an exception, so it can pass directly
     ws = await connect_to_server({"name": "my plugin", "server_url": WS_SERVER_URL})
@@ -174,7 +174,7 @@ async def test_connect_to_server(socketio_server):
 
 
 @pytest.mark.asyncio
-async def test_numpy_array(socketio_server):
+async def test_numpy_array(websocket_server):
     """Test numpy array."""
     ws = await connect_to_server(
         {"client_id": "test-plugin", "server_url": WS_SERVER_URL}
@@ -201,7 +201,7 @@ async def test_numpy_array(socketio_server):
 
 
 @pytest.mark.asyncio
-async def test_rtc_service(socketio_server):
+async def test_rtc_service(websocket_server):
     """Test RTC service."""
     from imjoy_rpc.hypha import connect_to_server
 
@@ -226,7 +226,7 @@ async def test_rtc_service(socketio_server):
     await pc.close()
 
 
-def test_rtc_service_sync(socketio_server):
+def test_rtc_service_sync(websocket_server):
     """Test RTC service."""
     from imjoy_rpc.hypha import connect_to_server_sync
 
