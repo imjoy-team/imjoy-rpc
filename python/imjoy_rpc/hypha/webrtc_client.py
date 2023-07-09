@@ -105,7 +105,7 @@ async def _setup_rpc(config):
     return rpc
 
 
-async def _create_offer(params, server=None, config=None, init=None, context=None):
+async def _create_offer(params, server=None, config=None, on_init=None, context=None):
     """Create RTC offer."""
     config = config or {}
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
@@ -136,8 +136,8 @@ async def _create_offer(params, server=None, config=None, init=None, context=Non
             # Map all the local services to the webrtc client
             rpc._services = server.rpc._services
 
-    if init:
-        await init(pc)
+    if on_init:
+        await on_init(pc)
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
@@ -194,8 +194,10 @@ async def get_rtc_service(server, service_id, config=None):
                 logger.error("Connection failed")
                 pc.close()
 
-        if config.get("init"):
-            await config["init"](pc)
+        if config.get("on_init"):
+            await config["on_init"](pc)
+            del config["on_init"]
+
         offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
 
@@ -219,12 +221,15 @@ async def register_rtc_service(server, service_id, config=None):
         "visibility": "protected",
         "require_context": True,
     }
+    on_init = config.get("on_init")
+    if on_init:
+        del config["on_init"]
     await server.register_service(
         {
             "id": service_id,
             "config": config,
             "offer": partial(
-                _create_offer, config=config, server=server, init=config.get("init")
+                _create_offer, config=config, server=server, on_init=on_init
             ),
         }
     )

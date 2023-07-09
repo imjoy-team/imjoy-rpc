@@ -70,7 +70,7 @@ async function _setupRPC(config) {
   return rpc;
 }
 
-async function _createOffer(params, server, config, init, context) {
+async function _createOffer(params, server, config, onInit, context) {
   config = config || {};
   let offer = new RTCSessionDescription({
     sdp: params.sdp,
@@ -100,8 +100,8 @@ async function _createOffer(params, server, config, init, context) {
     });
   }
 
-  if (init) {
-    await init(pc);
+  if (onInit) {
+    await onInit(pc);
   }
 
   await pc.setRemoteDescription(offer);
@@ -142,7 +142,10 @@ async function getRTCService(server, service_id, config) {
         false
       );
 
-      if (config.init) await config.init(pc);
+      if (config.on_init) {
+        await config.on_init(pc);
+        delete config.on_init;
+      }
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -180,11 +183,13 @@ async function registerRTCService(server, service_id, config) {
     visibility: "protected",
     require_context: true
   };
+  const onInit = config.on_init;
+  delete config.on_init;
   await server.registerService({
     id: service_id,
     config,
     offer: (params, context) =>
-      _createOffer(params, server, config, config.init, context)
+      _createOffer(params, server, config, onInit, context)
   });
 }
 

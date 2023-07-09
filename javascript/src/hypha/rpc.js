@@ -646,7 +646,7 @@ export class RPC extends MessageEmitter {
         console.error("Error in callback:", method_id, error);
       } finally {
         if (clear_after_called && self._object_store[session_id]) {
-          console.log("Deleting session", session_id, "from", self._client_id);
+          // console.log("Deleting session", session_id, "from", self._client_id);
           delete self._object_store[session_id];
         }
         if (timer && timer.started) {
@@ -724,11 +724,11 @@ export class RPC extends MessageEmitter {
         data.slice(start_byte, start_byte + CHUNK_SIZE),
         !!session_id
       );
-      console.log(
-        `Sending chunk ${idx + 1}/${chunk_num} (${total_size} bytes)`
-      );
+      // console.log(
+      //   `Sending chunk ${idx + 1}/${chunk_num} (${total_size} bytes)`
+      // );
     }
-    console.log(`All chunks sent (${chunk_num})`);
+    // console.log(`All chunks sent (${chunk_num})`);
     await message_cache.process(message_id, !!session_id);
   }
 
@@ -795,9 +795,9 @@ export class RPC extends MessageEmitter {
           extra_data["with_kwargs"] = withKwargs;
         }
 
-        console.log(
-          `Calling remote method ${target_id}:${method_id}, session: ${local_session_id}`
-        );
+        // console.log(
+        //   `Calling remote method ${target_id}:${method_id}, session: ${local_session_id}`
+        // );
         if (remote_parent) {
           // Set the parent session
           // Note: It's a session id for the remote, not the current client
@@ -836,7 +836,7 @@ export class RPC extends MessageEmitter {
         if (total_size <= CHUNK_SIZE + 1024) {
           self._emit_message(message_package).then(function() {
             if (timer) {
-              console.log(`Start watchdog timer.`);
+              // console.log(`Start watchdog timer.`);
               // Only start the timer after we send the message successfully
               timer.start();
             }
@@ -847,7 +847,7 @@ export class RPC extends MessageEmitter {
             ._send_chunks(message_package, target_id, remote_parent)
             .then(function() {
               if (timer) {
-                console.log(`Start watchdog timer.`);
+                // console.log(`Start watchdog timer.`);
                 // Only start the timer after we send the message successfully
                 timer.start();
               }
@@ -931,7 +931,7 @@ export class RPC extends MessageEmitter {
         if (promise.heartbeat && promise.interval) {
           async function heartbeat() {
             try {
-              console.log("Reset heartbeat timer: " + data.method);
+              // console.log("Reset heartbeat timer: " + data.method);
               await promise.heartbeat();
             } catch (err) {
               console.error(err);
@@ -1017,7 +1017,7 @@ export class RPC extends MessageEmitter {
       ) {
         args.push(data.ctx);
       }
-      console.log("Executing method: " + method_name);
+      // console.log("Executing method: " + method_name);
       if (data.promise) {
         const result = method.apply(null, args);
         if (result instanceof Promise) {
