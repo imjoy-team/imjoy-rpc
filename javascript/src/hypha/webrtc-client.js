@@ -8,8 +8,11 @@ class WebRTCConnection {
     this._handle_message = null;
     this._reconnection_token = null;
     this._timeout = timeout || 5; // 5s
-    this._data_channel.onmessage = event => {
-      const data = event.data;
+    this._data_channel.onmessage = async event => {
+      let data = event.data;
+      if(data instanceof Blob) {
+        data = await data.arrayBuffer();
+      }
       this._handle_message(data);
     };
     const self = this;
