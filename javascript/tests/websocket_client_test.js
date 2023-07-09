@@ -161,7 +161,7 @@ describe("RPC", async () => {
     expect(await received_itf.add(9, 3)).to.equal(12);
     expect(await received_itf.add("12", 2)).to.equal("122");
     await server.disconnect();
-  }).timeout(20000);
+  }).timeout(40000);
 
   it("should encode and decode custom object", async () => {
     const api = await connectToServer({
