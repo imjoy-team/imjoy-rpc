@@ -3,18 +3,19 @@ import asyncio
 import inspect
 import logging
 from functools import partial
-
-import shortuuid
-from aiortc import (
-    RTCConfiguration,
-    RTCIceServer,
-    RTCPeerConnection,
-    RTCSessionDescription,
-)
 from imjoy_rpc.hypha import RPC
+import shortuuid
 
 logger = logging.getLogger("rtc-client")
-
+try:
+    from aiortc import (
+        RTCConfiguration,
+        RTCIceServer,
+        RTCPeerConnection,
+        RTCSessionDescription,
+    )
+except ImportError:
+    logger.info("aiortc is not installed, please install it to use webrtc client.")
 
 class WebRTCConnection:
     """
