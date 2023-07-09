@@ -1,16 +1,14 @@
 import asyncio
+import inspect
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from imjoy_rpc.hypha import (
-    connect_to_server as connect_to_server_async,
-    register_rtc_service as register_rtc_service_async,
-    get_rtc_service as get_rtc_service_async,
-)
 import time
+from concurrent.futures import ThreadPoolExecutor
+
+from imjoy_rpc.hypha import connect_to_server as connect_to_server_async
+from imjoy_rpc.hypha import get_rtc_service as get_rtc_service_async
+from imjoy_rpc.hypha import register_rtc_service as register_rtc_service_async
 from imjoy_rpc.hypha.utils import dotdict
 from imjoy_rpc.hypha.websocket_client import normalize_server_url
-
-import inspect
 
 
 def get_async_methods(instance):

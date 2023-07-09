@@ -1,16 +1,12 @@
 import asyncio
-import logging
 import inspect
-import shortuuid
+import logging
 from functools import partial
 
+import shortuuid
+from aiortc import (RTCConfiguration, RTCIceServer, RTCPeerConnection,
+                    RTCSessionDescription)
 from imjoy_rpc.hypha import RPC
-from aiortc import (
-    RTCConfiguration,
-    RTCIceServer,
-    RTCPeerConnection,
-    RTCSessionDescription,
-)
 
 logger = logging.getLogger("rtc-client")
 
