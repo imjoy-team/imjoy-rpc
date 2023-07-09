@@ -30,12 +30,11 @@ class WebRTCConnection:
         The timeout for the connection.
     """
 
-    def __init__(self, data_channel, client_id, logger=None, timeout=5):
+    def __init__(self, data_channel, logger=None):
         """Initialize WebRTCConnection."""
         self._data_channel = data_channel
         self._handle_message = None
         self._logger = logger
-        self._timeout = timeout
         self._data_channel.on("message", self.handle_message)
         self._data_channel.on("close", self.closed)
 
@@ -82,9 +81,7 @@ async def _setup_rpc(config):
     client_id = config.get("client_id", shortuuid.uuid())
     connection = WebRTCConnection(
         channel,
-        client_id,
         logger=config.get("logger"),
-        timeout=config.get("method_timeout", 5),
     )
     config["context"] = config.get("context") or {}
     config["context"]["connection_type"] = "webrtc"
@@ -94,7 +91,7 @@ async def _setup_rpc(config):
         manager_id=None,
         default_context=config["context"],
         name=config.get("name"),
-        method_timeout=config.get("method_timeout"),
+        method_timeout=config.get("method_timeout", 10.0),
         loop=config.get("loop"),
         workspace=config["workspace"],
     )

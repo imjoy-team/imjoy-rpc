@@ -2,12 +2,10 @@ import { RPC } from "./rpc.js";
 import { assert, randId } from "./utils.js";
 
 class WebRTCConnection {
-  constructor(channel, client_id, timeout) {
-    assert(client_id, "server_url and client_id are required");
+  constructor(channel) {
     this._data_channel = channel;
     this._handle_message = null;
     this._reconnection_token = null;
-    this._timeout = timeout || 5; // 5s
     this._data_channel.onmessage = async event => {
       let data = event.data;
       if (data instanceof Blob) {
@@ -53,21 +51,15 @@ async function _setupRPC(config) {
   assert(config.workspace, "No workspace provided");
   const channel = config.channel;
   const clientId = config.client_id || randId();
-
-  const connection = new WebRTCConnection(
-    channel,
-    clientId,
-    config.method_timeout || 5
-  );
+  const connection = new WebRTCConnection(channel);
   config.context = config.context || {};
   config.context.connection_type = "webrtc";
-
   const rpc = new RPC(connection, {
     client_id: clientId,
     manager_id: null,
     default_context: config.context,
     name: config.name,
-    method_timeout: config.method_timeout,
+    method_timeout: config.method_timeout || 10.0,
     workspace: config.workspace
   });
   return rpc;
@@ -130,8 +122,6 @@ async function getRTCService(server, service_id, config) {
     sdpSemantics: "unified-plan"
   });
 
-  let channel = pc.createDataChannel(config.peer_id, { ordered: true });
-
   return new Promise(async (resolve, reject) => {
     try {
       pc.addEventListener(
@@ -149,7 +139,8 @@ async function getRTCService(server, service_id, config) {
         await config.on_init(pc);
         delete config.on_init;
       }
-
+      let channel = pc.createDataChannel(config.peer_id, { ordered: true });
+      channel.binaryType = "arraybuffer";
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       const svc = await server.getService(service_id);
@@ -157,14 +148,19 @@ async function getRTCService(server, service_id, config) {
         sdp: pc.localDescription.sdp,
         type: pc.localDescription.type
       });
-      channel.onopen = async () => {
+
+      channel.onopen = () => {
         config.channel = channel;
         config.workspace = answer.workspace;
-        const rpc = await _setupRPC(config);
-        pc.rpc = rpc;
-        pc.get_service = async name =>
-          await rpc.get_remote_service(config.peer_id + ":" + name);
-        resolve(pc);
+        // Wait for the channel to be open before returning the rpc
+        // This is needed for safari to work
+        setTimeout(async () => {
+          const rpc = await _setupRPC(config);
+          pc.rpc = rpc;
+          pc.get_service = async name =>
+            await rpc.get_remote_service(config.peer_id + ":" + name);
+          resolve(pc);
+        }, 500);
       };
 
       channel.onclose = () => reject(new Error("Data channel closed"));

@@ -411,6 +411,7 @@ class RPC(MessageEmitter):
 
     async def get_remote_service(self, service_uri=None, timeout=None):
         """Get a remote service."""
+        timeout = timeout or self._method_timeout
         if service_uri is None and self.manager_id:
             service_uri = self.manager_id
         elif ":" not in service_uri:

@@ -420,7 +420,7 @@ export class RPC extends MessageEmitter {
     throw new Error("Permission denied for service: " + service_id);
   }
   async get_remote_service(service_uri, timeout) {
-    timeout = timeout === undefined ? 5 : timeout;
+    timeout = timeout === undefined ? this._method_timeout : timeout;
     if (!service_uri && this.manager_id) {
       service_uri = this.manager_id;
     } else if (!service_uri.includes(":")) {
