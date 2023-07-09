@@ -157,7 +157,8 @@ export class RPC extends MessageEmitter {
       codecs = null,
       method_timeout = null,
       max_message_buffer_size = 0,
-      debug = false
+      debug = false,
+      workspace = null
     }
   ) {
     super(debug);
@@ -168,6 +169,7 @@ export class RPC extends MessageEmitter {
     this._name = name;
     this._connection_info = null;
     this._workspace = null;
+    this._local_workspace = workspace;
     this.manager_id = manager_id;
     this.default_context = default_context || {};
     this._method_annotations = new WeakMap();
@@ -395,7 +397,10 @@ export class RPC extends MessageEmitter {
   get_local_service(service_id, context) {
     assert(service_id);
     const [ws, client_id] = context["to"].split("/");
-    assert(client_id === this._client_id);
+    assert(
+      client_id === this._client_id,
+      "Services can only be accessed locally"
+    );
 
     const service = this._services[service_id];
     if (!service) {
@@ -415,7 +420,7 @@ export class RPC extends MessageEmitter {
     throw new Error("Permission denied for service: " + service_id);
   }
   async get_remote_service(service_uri, timeout) {
-    timeout = timeout === undefined ? 5 : timeout;
+    timeout = timeout === undefined ? this._method_timeout : timeout;
     if (!service_uri && this.manager_id) {
       service_uri = this.manager_id;
     } else if (!service_uri.includes(":")) {
@@ -641,7 +646,7 @@ export class RPC extends MessageEmitter {
         console.error("Error in callback:", method_id, error);
       } finally {
         if (clear_after_called && self._object_store[session_id]) {
-          console.log("Deleting session", session_id, "from", self._client_id);
+          // console.log("Deleting session", session_id, "from", self._client_id);
           delete self._object_store[session_id];
         }
         if (timer && timer.started) {
@@ -719,11 +724,11 @@ export class RPC extends MessageEmitter {
         data.slice(start_byte, start_byte + CHUNK_SIZE),
         !!session_id
       );
-      console.log(
-        `Sending chunk ${idx + 1}/${chunk_num} (${total_size} bytes)`
-      );
+      // console.log(
+      //   `Sending chunk ${idx + 1}/${chunk_num} (${total_size} bytes)`
+      // );
     }
-    console.log(`All chunks sent (${chunk_num})`);
+    // console.log(`All chunks sent (${chunk_num})`);
     await message_cache.process(message_id, !!session_id);
   }
 
@@ -776,7 +781,9 @@ export class RPC extends MessageEmitter {
         if (withKwargs) delete args[argLength - 1]._rkwargs;
         let main_message = {
           type: "method",
-          from: self._client_id,
+          from: self._local_workspace
+            ? self._local_workspace + "/" + self._client_id
+            : self._client_id,
           to: target_id,
           method: method_id
         };
@@ -788,9 +795,9 @@ export class RPC extends MessageEmitter {
           extra_data["with_kwargs"] = withKwargs;
         }
 
-        console.log(
-          `Calling remote method ${target_id}:${method_id}, session: ${local_session_id}`
-        );
+        // console.log(
+        //   `Calling remote method ${target_id}:${method_id}, session: ${local_session_id}`
+        // );
         if (remote_parent) {
           // Set the parent session
           // Note: It's a session id for the remote, not the current client
@@ -829,7 +836,7 @@ export class RPC extends MessageEmitter {
         if (total_size <= CHUNK_SIZE + 1024) {
           self._emit_message(message_package).then(function() {
             if (timer) {
-              console.log(`Start watchdog timer.`);
+              // console.log(`Start watchdog timer.`);
               // Only start the timer after we send the message successfully
               timer.start();
             }
@@ -840,7 +847,7 @@ export class RPC extends MessageEmitter {
             ._send_chunks(message_package, target_id, remote_parent)
             .then(function() {
               if (timer) {
-                console.log(`Start watchdog timer.`);
+                // console.log(`Start watchdog timer.`);
                 // Only start the timer after we send the message successfully
                 timer.start();
               }
@@ -900,6 +907,11 @@ export class RPC extends MessageEmitter {
       assert(data["method"] && data["ctx"] && data["from"]);
       const method_name = data.from + ":" + data.method;
       const remote_workspace = data.from.split("/")[0];
+      // Make sure the target id is an absolute id
+      data["to"] = data["to"].includes("/")
+        ? data["to"]
+        : remote_workspace + "/" + data["to"];
+      data["ctx"]["to"] = data["to"];
       const local_workspace = data.to.split("/")[0];
       const local_parent = data.parent;
 
@@ -919,7 +931,7 @@ export class RPC extends MessageEmitter {
         if (promise.heartbeat && promise.interval) {
           async function heartbeat() {
             try {
-              console.log("Reset heartbeat timer: " + data.method);
+              // console.log("Reset heartbeat timer: " + data.method);
               await promise.heartbeat();
             } catch (err) {
               console.error(err);
@@ -1005,7 +1017,7 @@ export class RPC extends MessageEmitter {
       ) {
         args.push(data.ctx);
       }
-      console.log("Executing method: " + method_name);
+      // console.log("Executing method: " + method_name);
       if (data.promise) {
         const result = method.apply(null, args);
         if (result instanceof Promise) {

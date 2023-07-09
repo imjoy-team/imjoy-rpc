@@ -4,6 +4,7 @@ import { assert, loadRequirements, randId, waitFor } from "./utils.js";
 export { RPC, API_VERSION };
 export { version as VERSION } from "../../package.json";
 export { loadRequirements };
+export { getRTCService, registerRTCService } from "./webrtc-client.js";
 
 class WebsocketRPCConnection {
   constructor(server_url, client_id, workspace, token, timeout) {

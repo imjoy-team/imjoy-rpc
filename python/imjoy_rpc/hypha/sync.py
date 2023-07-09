@@ -1,13 +1,34 @@
+"""This module provides an interface to interact with the Hypha server synchronously."""
+
 import asyncio
+import inspect
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from imjoy_rpc.hypha import connect_to_server
 import time
+from concurrent.futures import ThreadPoolExecutor
+
 from imjoy_rpc.hypha.utils import dotdict
+from imjoy_rpc.hypha.webrtc_client import \
+    get_rtc_service as get_rtc_service_async
+from imjoy_rpc.hypha.webrtc_client import \
+    register_rtc_service as register_rtc_service_async
+from imjoy_rpc.hypha.websocket_client import \
+    connect_to_server as connect_to_server_async
 from imjoy_rpc.hypha.websocket_client import normalize_server_url
 
 
+def get_async_methods(instance):
+    """Get all the asynchronous methods from the given instance."""
+    methods = []
+    for attr_name in dir(instance):
+        if not attr_name.startswith("_"):
+            attr_value = getattr(instance, attr_name)
+            if inspect.iscoroutinefunction(attr_value):
+                methods.append(attr_name)
+    return methods
+
+
 def convert_sync_to_async(sync_func, loop, executor):
+    """Convert a synchronous function to an asynchronous function."""
     if asyncio.iscoroutinefunction(sync_func):
         return sync_func
 
@@ -30,11 +51,10 @@ def convert_sync_to_async(sync_func, loop, executor):
 
 
 def convert_async_to_sync(async_func, loop, executor):
-    def wrapped_sync(*args, **kwargs):
-        # Recursively encode callables in args
-        args = _encode_callables(args, convert_sync_to_async, loop, executor)
+    """Convert an asynchronous function to a synchronous function."""
 
-        # Recursively encode callables in kwargs
+    def wrapped_sync(*args, **kwargs):
+        args = _encode_callables(args, convert_sync_to_async, loop, executor)
         kwargs = _encode_callables(kwargs, convert_sync_to_async, loop, executor)
 
         async def async_wrapper():
@@ -48,6 +68,7 @@ def convert_async_to_sync(async_func, loop, executor):
 
 
 def _encode_callables(obj, wrap, loop, executor):
+    """Encode callables in the given object to sync or async."""
     if isinstance(obj, dict):
         return dotdict(
             {k: _encode_callables(v, wrap, loop, executor) for k, v in obj.items()}
@@ -61,6 +82,8 @@ def _encode_callables(obj, wrap, loop, executor):
 
 
 class SyncHyphaServer:
+    """A class to interact with the Hypha server synchronously."""
+
     def __init__(self):
         self.loop = None
         self.thread = None
@@ -69,7 +92,7 @@ class SyncHyphaServer:
 
     async def _connect(self, config):
         config["loop"] = self.loop
-        self.server = await connect_to_server(config)
+        self.server = await connect_to_server_async(config)
         skip_keys = ["register_codec"]
         skipped = {k: v for k, v in self.server.items() if k not in skip_keys}
         obj = _encode_callables(
@@ -77,7 +100,6 @@ class SyncHyphaServer:
         )
         for k in skip_keys:
             obj[k] = self.server[k]
-        # copy all the attributes from the encoded server object
         for k, v in obj.items():
             setattr(self, k, v)
 
@@ -87,7 +109,8 @@ class SyncHyphaServer:
         self.loop.run_forever()
 
 
-def connect_to_server_sync(config):
+def connect_to_server(config):
+    """Connect to the Hypha server synchronously."""
     server = SyncHyphaServer()
 
     if not server.loop:
@@ -95,22 +118,22 @@ def connect_to_server_sync(config):
         server.thread.start()
 
     while not server.loop or not server.loop.is_running():
-        pass  # Wait until loop is running
+        pass
 
     future = asyncio.run_coroutine_threadsafe(server._connect(config), server.loop)
-    future.result()  # Wait for the server to start
+    future.result()
 
     return server
 
 
-def login_sync(config):
-    """Login to the hypha server."""
+def login(config):
+    """Login to the Hypha server."""
     server_url = normalize_server_url(config.get("server_url"))
     service_id = config.get("login_service_id", "public/*:hypha-login")
     timeout = config.get("login_timeout", 60)
     callback = config.get("login_callback")
 
-    server = connect_to_server_sync(
+    server = connect_to_server(
         {"name": "initial login client", "server_url": server_url}
     )
     try:
@@ -128,17 +151,59 @@ def login_sync(config):
         server.disconnect()
 
 
+def register_rtc_service(server, service_id, config=None):
+    """Register an RTC service on the Hypha server."""
+    assert isinstance(
+        server, SyncHyphaServer
+    ), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
+    future = asyncio.run_coroutine_threadsafe(
+        register_rtc_service_async(
+            server.server,
+            service_id,
+            _encode_callables(
+                config, convert_sync_to_async, server.loop, server.executor
+            ),
+        ),
+        server.loop,
+    )
+    future.result()
+
+
+def get_rtc_service(server, service_id, config=None):
+    """Get an RTC service from the Hypha server."""
+    assert isinstance(
+        server, SyncHyphaServer
+    ), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
+
+    future = asyncio.run_coroutine_threadsafe(
+        get_rtc_service_async(
+            server.server,
+            service_id,
+            _encode_callables(
+                config, convert_sync_to_async, server.loop, server.executor
+            ),
+        ),
+        server.loop,
+    )
+    pc = future.result()
+    for func in get_async_methods(pc):
+        setattr(
+            pc,
+            func,
+            convert_async_to_sync(getattr(pc, func), server.loop, server.executor),
+        )
+    return pc
+
+
 if __name__ == "__main__":
     server_url = "https://ai.imjoy.io"
-    server = connect_to_server_sync({"server_url": server_url})
+    server = connect_to_server({"server_url": server_url})
 
-    # Now all the functions are sync
     services = server.list_services("public")
     print("Public services: #", len(services))
 
     def hello(name):
         print("Hello " + name)
-        # print the current thread id, check if it's the mainthread
         print("Current thread id: ", threading.get_ident(), threading.current_thread())
         time.sleep(2)
         return "Hello " + name
@@ -158,13 +223,14 @@ if __name__ == "__main__":
     workspace = server.config.workspace
     token = server.generate_token()
 
-    server2 = connect_to_server_sync(
+    server2 = connect_to_server(
         {"server_url": server_url, "workspace": workspace, "token": token}
     )
-    svc = server2.get_service("hello-world")
-    print(svc.hello("Joy"))
-    assert svc.hello("Joy") == "Hello Joy"
 
-    while True:
-        print(".", end="", flush=True)
-        time.sleep(1)
+    hello_svc = server2.get_service("hello-world")
+
+    print("Calling hello world service...")
+    print(hello_svc.hello("World"))
+
+    server.disconnect()
+    server2.disconnect()
