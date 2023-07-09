@@ -1,3 +1,4 @@
+"""Provide a webrtc client."""
 import asyncio
 import inspect
 import logging
@@ -78,7 +79,7 @@ class WebRTCConnection:
 
 
 async def _setup_rpc(config):
-    """Setup RPC."""
+    """Setup the RPC connection."""
     assert config.get("channel"), "No channel provided"
     assert config.get("workspace"), "No workspace provided"
     channel = config["channel"]
