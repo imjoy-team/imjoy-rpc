@@ -4,8 +4,12 @@ import logging
 from functools import partial
 
 import shortuuid
-from aiortc import (RTCConfiguration, RTCIceServer, RTCPeerConnection,
-                    RTCSessionDescription)
+from aiortc import (
+    RTCConfiguration,
+    RTCIceServer,
+    RTCPeerConnection,
+    RTCSessionDescription,
+)
 from imjoy_rpc.hypha import RPC
 
 logger = logging.getLogger("rtc-client")
