@@ -34,6 +34,8 @@ def websocket_server_fixture():
                 pass
             timeout -= 0.1
             time.sleep(0.1)
+        if timeout <= 0:
+            raise RuntimeError("Failed to start websocket server")
         yield
         proc.kill()
         proc.terminate()
