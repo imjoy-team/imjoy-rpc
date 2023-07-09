@@ -157,7 +157,8 @@ export class RPC extends MessageEmitter {
       codecs = null,
       method_timeout = null,
       max_message_buffer_size = 0,
-      debug = false
+      debug = false,
+      workspace = null
     }
   ) {
     super(debug);
@@ -168,6 +169,7 @@ export class RPC extends MessageEmitter {
     this._name = name;
     this._connection_info = null;
     this._workspace = null;
+    this._local_workspace = workspace;
     this.manager_id = manager_id;
     this.default_context = default_context || {};
     this._method_annotations = new WeakMap();
@@ -395,7 +397,10 @@ export class RPC extends MessageEmitter {
   get_local_service(service_id, context) {
     assert(service_id);
     const [ws, client_id] = context["to"].split("/");
-    assert(client_id === this._client_id);
+    assert(
+      client_id === this._client_id,
+      "Services can only be accessed locally"
+    );
 
     const service = this._services[service_id];
     if (!service) {
@@ -776,7 +781,9 @@ export class RPC extends MessageEmitter {
         if (withKwargs) delete args[argLength - 1]._rkwargs;
         let main_message = {
           type: "method",
-          from: self._client_id,
+          from: self._local_workspace
+            ? self._local_workspace + "/" + self._client_id
+            : self._client_id,
           to: target_id,
           method: method_id
         };
@@ -900,6 +907,11 @@ export class RPC extends MessageEmitter {
       assert(data["method"] && data["ctx"] && data["from"]);
       const method_name = data.from + ":" + data.method;
       const remote_workspace = data.from.split("/")[0];
+      // Make sure the target id is an absolute id
+      data["to"] = data["to"].includes("/")
+        ? data["to"]
+        : remote_workspace + "/" + data["to"];
+      data["ctx"]["to"] = data["to"];
       const local_workspace = data.to.split("/")[0];
       const local_parent = data.parent;
 

@@ -150,6 +150,7 @@ class RPC(MessageEmitter):
         method_timeout=None,
         max_message_buffer_size=0,
         loop=None,
+        workspace=None,
     ):
         """Set up instance."""
         self._codecs = codecs or {}
@@ -158,6 +159,7 @@ class RPC(MessageEmitter):
         self._client_id = client_id
         self._name = name
         self._workspace = None
+        self._local_workspace = workspace
         self._connection_info = None
         self.manager_id = manager_id
         self.default_context = default_context or {}
@@ -392,7 +394,7 @@ class RPC(MessageEmitter):
         """Get a local service."""
         assert service_id is not None
         ws, client_id = context["to"].split("/")
-        assert client_id == self._client_id
+        assert client_id == self._client_id, "Services can only be accessed locally"
 
         service = self._services.get(service_id)
         if not service:
@@ -742,7 +744,9 @@ class RPC(MessageEmitter):
 
                 main_message = {
                     "type": "method",
-                    "from": self._client_id,
+                    "from": self._local_workspace + "/" + self._client_id
+                    if self._local_workspace
+                    else self._client_id,
                     "to": target_id,
                     "method": method_id,
                 }
@@ -908,6 +912,11 @@ class RPC(MessageEmitter):
             assert "method" in data and "ctx" in data and "from" in data
             method_name = f'{data["from"]}:{data["method"]}'
             remote_workspace = data.get("from").split("/")[0]
+            # Make sure the target id is an absolute id
+            data["to"] = (
+                data["to"] if "/" in data["to"] else remote_workspace + "/" + data["to"]
+            )
+            data["ctx"]["to"] = data["to"]
             local_workspace = data.get("to").split("/")[0]
             local_parent = data.get("parent")
 

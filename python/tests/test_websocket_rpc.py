@@ -1,6 +1,13 @@
 """Test the hypha server."""
 import pytest
-from imjoy_rpc.hypha import login, connect_to_server, login_sync, connect_to_server_sync
+from imjoy_rpc.hypha import (
+    login,
+    connect_to_server,
+    login_sync,
+    connect_to_server_sync,
+    register_rtc_service,
+    get_rtc_service,
+)
 from . import WS_SERVER_URL
 import numpy as np
 import requests
@@ -164,6 +171,7 @@ async def test_connect_to_server(socketio_server):
     assert svc.hello.__doc__ == f"hello(name, key=12)\n{hello.__doc__}"
 
 
+@pytest.mark.asyncio
 async def test_numpy_array(socketio_server):
     """Test numpy array."""
     ws = await connect_to_server(
@@ -188,3 +196,29 @@ async def test_numpy_array(socketio_server):
     large_array = np.zeros([2048, 2048, 4], dtype="float32")
     result = await plugin.add(large_array)
     np.testing.assert_array_equal(result, large_array + 1.0)
+
+
+@pytest.mark.asyncio
+async def test_rtc_service():
+    """Test RTC service."""
+    from imjoy_rpc.hypha import connect_to_server
+
+    service_id = "test-rtc-service"
+    server = await connect_to_server(
+        {
+            "server_url": WS_SERVER_URL,
+        }
+    )
+    await server.register_service(
+        {
+            "id": "echo-service",
+            "config": {"visibility": "public"},
+            "type": "echo",
+            "echo": lambda x: x,
+        }
+    )
+    await register_rtc_service(server, service_id)
+    pc = await get_rtc_service(server, service_id)
+    svc = await pc.get_service("echo-service")
+    assert await svc.echo("hello") == "hello", "echo service failed"
+    await pc.close()

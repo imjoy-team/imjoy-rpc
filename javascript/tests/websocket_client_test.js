@@ -1,5 +1,9 @@
 import { expect } from "chai";
 import { login, connectToServer } from "../src/hypha/websocket-client.js";
+import {
+  registerRTCService,
+  getRTCService
+} from "../src/hypha/webrtc-client.js";
 
 const SERVER_URL = "https://ai.imjoy.io";
 
@@ -18,6 +22,26 @@ describe("RPC", async () => {
     });
     expect(typeof api.log).to.equal("function");
     await api.disconnect();
+  }).timeout(20000);
+
+  it("should connect via webrtc", async () => {
+    const service_id = "test-rtc-service-1";
+    const server = await connectToServer({
+      server_url: SERVER_URL,
+      client_id: "test-plugin-1"
+    });
+    await server.registerService({
+      id: "echo-service-rtc",
+      config: {
+        visibility: "public"
+      },
+      type: "echo",
+      echo: x => x
+    });
+    await registerRTCService(server, service_id);
+    const pc = await getRTCService(server, service_id);
+    const svc = await pc.get_service("echo-service-rtc");
+    expect(await svc.echo("hello")).to.equal("hello");
   }).timeout(20000);
 
   it("should login to the server", async () => {
