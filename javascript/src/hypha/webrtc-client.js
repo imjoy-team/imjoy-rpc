@@ -10,7 +10,7 @@ class WebRTCConnection {
     this._timeout = timeout || 5; // 5s
     this._data_channel.onmessage = async event => {
       let data = event.data;
-      if(data instanceof Blob) {
+      if (data instanceof Blob) {
         data = await data.arrayBuffer();
       }
       this._handle_message(data);
