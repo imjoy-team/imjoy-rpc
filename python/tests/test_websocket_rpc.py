@@ -7,6 +7,8 @@ from imjoy_rpc.hypha import (
     connect_to_server_sync,
     register_rtc_service,
     get_rtc_service,
+    register_rtc_service_sync,
+    get_rtc_service_sync,
 )
 from . import WS_SERVER_URL
 import numpy as np
@@ -199,7 +201,7 @@ async def test_numpy_array(socketio_server):
 
 
 @pytest.mark.asyncio
-async def test_rtc_service():
+async def test_rtc_service(socketio_server):
     """Test RTC service."""
     from imjoy_rpc.hypha import connect_to_server
 
@@ -222,3 +224,28 @@ async def test_rtc_service():
     svc = await pc.get_service("echo-service")
     assert await svc.echo("hello") == "hello", "echo service failed"
     await pc.close()
+
+
+def test_rtc_service_sync(socketio_server):
+    """Test RTC service."""
+    from imjoy_rpc.hypha import connect_to_server_sync
+
+    service_id = "test-rtc-service"
+    server = connect_to_server_sync(
+        {
+            "server_url": WS_SERVER_URL,
+        }
+    )
+    server.register_service(
+        {
+            "id": "echo-service",
+            "config": {"visibility": "public"},
+            "type": "echo",
+            "echo": lambda x: x,
+        }
+    )
+    register_rtc_service_sync(server, service_id)
+    pc = get_rtc_service_sync(server, service_id)
+    svc = pc.get_service("echo-service")
+    assert svc.echo("hello") == "hello", "echo service failed"
+    pc.close()

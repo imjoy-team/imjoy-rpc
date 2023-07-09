@@ -1,10 +1,26 @@
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from imjoy_rpc.hypha import connect_to_server
+from imjoy_rpc.hypha import (
+    connect_to_server as connect_to_server_async,
+    register_rtc_service as register_rtc_service_async,
+    get_rtc_service as get_rtc_service_async,
+)
 import time
 from imjoy_rpc.hypha.utils import dotdict
 from imjoy_rpc.hypha.websocket_client import normalize_server_url
+
+import inspect
+
+
+def get_async_methods(instance):
+    methods = []
+    for attr_name in dir(instance):
+        if not attr_name.startswith("_"):
+            attr_value = getattr(instance, attr_name)
+            if inspect.iscoroutinefunction(attr_value):
+                methods.append(attr_name)
+    return methods
 
 
 def convert_sync_to_async(sync_func, loop, executor):
@@ -69,7 +85,7 @@ class SyncHyphaServer:
 
     async def _connect(self, config):
         config["loop"] = self.loop
-        self.server = await connect_to_server(config)
+        self.server = await connect_to_server_async(config)
         skip_keys = ["register_codec"]
         skipped = {k: v for k, v in self.server.items() if k not in skip_keys}
         obj = _encode_callables(
@@ -87,7 +103,7 @@ class SyncHyphaServer:
         self.loop.run_forever()
 
 
-def connect_to_server_sync(config):
+def connect_to_server(config):
     server = SyncHyphaServer()
 
     if not server.loop:
@@ -103,14 +119,14 @@ def connect_to_server_sync(config):
     return server
 
 
-def login_sync(config):
+def login(config):
     """Login to the hypha server."""
     server_url = normalize_server_url(config.get("server_url"))
     service_id = config.get("login_service_id", "public/*:hypha-login")
     timeout = config.get("login_timeout", 60)
     callback = config.get("login_callback")
 
-    server = connect_to_server_sync(
+    server = connect_to_server(
         {"name": "initial login client", "server_url": server_url}
     )
     try:
@@ -128,9 +144,51 @@ def login_sync(config):
         server.disconnect()
 
 
+def register_rtc_service(server, service_id, config=None):
+    assert isinstance(
+        server, SyncHyphaServer
+    ), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
+    future = asyncio.run_coroutine_threadsafe(
+        register_rtc_service_async(
+            server.server,
+            service_id,
+            _encode_callables(
+                config, convert_sync_to_async, server.loop, server.executor
+            ),
+        ),
+        server.loop,
+    )
+    future.result()  # Wait for the service to register
+
+
+def get_rtc_service(server, service_id, config=None):
+    assert isinstance(
+        server, SyncHyphaServer
+    ), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
+
+    future = asyncio.run_coroutine_threadsafe(
+        get_rtc_service_async(
+            server.server,
+            service_id,
+            _encode_callables(
+                config, convert_sync_to_async, server.loop, server.executor
+            ),
+        ),
+        server.loop,
+    )
+    pc = future.result()
+    for func in get_async_methods(pc):
+        setattr(
+            pc,
+            func,
+            convert_async_to_sync(getattr(pc, func), server.loop, server.executor),
+        )
+    return pc
+
+
 if __name__ == "__main__":
     server_url = "https://ai.imjoy.io"
-    server = connect_to_server_sync({"server_url": server_url})
+    server = connect_to_server({"server_url": server_url})
 
     # Now all the functions are sync
     services = server.list_services("public")
@@ -158,12 +216,23 @@ if __name__ == "__main__":
     workspace = server.config.workspace
     token = server.generate_token()
 
-    server2 = connect_to_server_sync(
+    server2 = connect_to_server(
         {"server_url": server_url, "workspace": workspace, "token": token}
     )
     svc = server2.get_service("hello-world")
     print(svc.hello("Joy"))
     assert svc.hello("Joy") == "Hello Joy"
+
+    register_rtc_service(
+        server,
+        service_id="webrtc-service",
+        config={
+            "visibility": "public",
+            # "ice_servers": ice_servers,
+        },
+    )
+
+    svc = get_rtc_service(server, "webrtc-service")
 
     while True:
         print(".", end="", flush=True)

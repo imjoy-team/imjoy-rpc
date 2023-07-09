@@ -204,3 +204,104 @@ if __name__ == "__main__":
 Remote function call is almost the same as calling a local function. The arguments are mapped directly, for example, you can call a Python function `foo(a, b, c)` from javascript or vise versa. However, since Javascript does not support named arguments as Python does, ImJoy does the following conversion:
  * For functions defined in Javascript, there is no difference when calling from Python
  * For functions defined in Python, when calling from Javascript, if the last argument is an object and its `_rkwargs` is set to true, then it will be converted into keyword arguments when calling the Python function. For example, if you have a Python function defined as `def foo(a, b, c=None):`, in Javascript, you should call it as `foo(9, 10, {c: 33, _rkwargs: true})`.
+
+
+## Synchronous Wrapper
+
+To make it easier to work with synchronous python code, we provide a synchronous wrapper, which allows for synchronous usage of the asynchronous `imjoy_rpc.hypha` API.
+
+To use the synchronous wrapper, you can import the following functions from the `imjoy_rpc.hypha.sync` module:
+
+```python
+from imjoy_rpc.hypha.sync import login, connect_to_server, get_rtc_service, register_rtc_service
+```
+**connect_to_server**
+
+The `connect_to_server` function creates a synchronous Hypha server instance and establishes a connection to the server. It takes a configuration object as an argument and returns the server instance.
+
+```python
+server = connect_to_server(config)
+```
+
+**Example:**
+
+```python
+server_url = "https://ai.imjoy.io"
+server = connect_to_server({"server_url": server_url})
+```
+
+
+**login**
+
+The `login` function is used to log in to a Hypha server. It takes a configuration object as an argument and returns the token for connecting to the server.
+
+```python
+token = login(config)
+```
+
+**Example:**
+
+```python
+server_url = "https://ai.imjoy.io"
+
+def login_callback(context):
+    print("Please open the following URL in your browser to log in:")
+    print(context["login_url"])
+
+config = {
+    "server_url": server_url,
+    "login_callback": login_callback,
+}
+
+token = login(config)
+server = connect_to_server({"server_url": server_url, "token": token})
+```
+
+The `config` object should contain the following properties:
+
+- `server_url`: The URL of the Hypha server.
+- `login_service_id`: The service ID for the login service (default: "public/*:hypha-login").
+- `login_timeout`: The timeout duration for the login process (default: 60 seconds).
+- `login_callback`: An optional callback function to handle the login process.
+
+The `login` function connects to the Hypha server, starts the login service, and initiates the login process. If a `login_callback` function is provided, it will be called with the login context. Otherwise, the login URL will be printed to the console, and the user needs to open their browser and complete the login process.
+
+The function returns the result of the login process, which is obtained by checking the login key within the specified timeout duration.
+
+
+**get_rtc_service**
+
+The `get_rtc_service` function retrieves a synchronous Real-Time Communication (RTC) service from the Hypha server. It takes the server instance and a service ID as arguments and returns the synchronous RTC service.
+
+```python
+rtc_service = get_rtc_service(server, service_id, config=None)
+```
+
+**Example:**
+
+```python
+rtc_service = get_rtc_service(server, "webrtc-service")
+```
+
+**register_rtc_service**
+
+The `register_rtc_service` function registers a synchronous RTC service with the Hypha server. It takes the server instance, service ID, and an optional configuration object as arguments.
+
+```python
+register_rtc_service(server, service_id, config=None)
+```
+
+**Example:**
+
+```python
+register_rtc_service(
+    server,
+    service_id="webrtc-service",
+    config={
+        "visibility": "public",
+        # "ice_servers": ice_servers,
+    },
+)
+```
+
+Please note that the synchronous wrapper is designed to provide a convenient synchronous interface for the asynchronous `imjoy-rpc` API. It utilizes asyncio and threading under the hood to achieve synchronous behavior.
