@@ -6,15 +6,25 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
-from imjoy_rpc.hypha.websocket_client import connect_to_server as connect_to_server_async, normalize_server_url
-from imjoy_rpc.hypha.webrtc_client import get_rtc_service as get_rtc_service_async, register_rtc_service as register_rtc_service_async
+from imjoy_rpc.hypha.websocket_client import (
+    connect_to_server as connect_to_server_async,
+    normalize_server_url,
+)
+from imjoy_rpc.hypha.webrtc_client import (
+    get_rtc_service as get_rtc_service_async,
+    register_rtc_service as register_rtc_service_async,
+)
 from imjoy_rpc.hypha.utils import dotdict
 
 
 def get_async_methods(instance):
     """Return a list of coroutine method names in the instance."""
-    return [attr_name for attr_name in dir(instance)
-            if not attr_name.startswith("_") and inspect.iscoroutinefunction(getattr(instance, attr_name))]
+    return [
+        attr_name
+        for attr_name in dir(instance)
+        if not attr_name.startswith("_")
+        and inspect.iscoroutinefunction(getattr(instance, attr_name))
+    ]
 
 
 def convert_sync_to_async(sync_func, loop, executor):
@@ -44,7 +54,9 @@ def convert_async_to_sync(async_func, loop, executor):
         kwargs = _encode_callables(kwargs, convert_sync_to_async, loop, executor)
 
         async def async_wrapper():
-            return _encode_callables(await async_func(*args, **kwargs), convert_async_to_sync, loop, executor)
+            return _encode_callables(
+                await async_func(*args, **kwargs), convert_async_to_sync, loop, executor
+            )
 
         return asyncio.run_coroutine_threadsafe(async_wrapper(), loop).result()
 
@@ -54,7 +66,9 @@ def convert_async_to_sync(async_func, loop, executor):
 def _encode_callables(obj, wrap, loop, executor):
     """Encode callable objects in a collection."""
     if isinstance(obj, dict):
-        return dotdict({k: _encode_callables(v, wrap, loop, executor) for k, v in obj.items()})
+        return dotdict(
+            {k: _encode_callables(v, wrap, loop, executor) for k, v in obj.items()}
+        )
     elif isinstance(obj, (list, tuple)):
         return [_encode_callables(item, wrap, loop, executor) for item in obj]
     elif callable(obj):
@@ -76,11 +90,16 @@ class SyncHyphaServer:
         config["loop"] = self.loop
         self.server = await connect_to_server_async(config)
 
-        skipped = {k: v for k, v in self.server.items() if k not in 'register_codec'}
-        _partial_encode = partial(_encode_callables, wrap=convert_async_to_sync, loop=self.loop, executor=self.executor)
+        skipped = {k: v for k, v in self.server.items() if k not in "register_codec"}
+        _partial_encode = partial(
+            _encode_callables,
+            wrap=convert_async_to_sync,
+            loop=self.loop,
+            executor=self.executor,
+        )
         obj = _partial_encode(skipped)
 
-        for k in 'register_codec':
+        for k in "register_codec":
             obj[k] = self.server[k]
         for k, v in obj.items():
             setattr(self, k, v)
@@ -136,21 +155,45 @@ def login(config):
 
 def register_rtc_service(server, service_id, config=None):
     """Register a service with the RTC service."""
-    assert isinstance(server, SyncHyphaServer), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
-    _partial_encode = partial(_encode_callables, wrap=convert_sync_to_async, loop=server.loop, executor=server.executor)
-    future = asyncio.run_coroutine_threadsafe(register_rtc_service_async(server.server, service_id, _partial_encode(config)), server.loop)
+    assert isinstance(
+        server, SyncHyphaServer
+    ), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
+    _partial_encode = partial(
+        _encode_callables,
+        wrap=convert_sync_to_async,
+        loop=server.loop,
+        executor=server.executor,
+    )
+    future = asyncio.run_coroutine_threadsafe(
+        register_rtc_service_async(server.server, service_id, _partial_encode(config)),
+        server.loop,
+    )
     future.result()  # Wait for the service to register
 
 
 def get_rtc_service(server, service_id, config=None):
     """Get the RTC service."""
-    assert isinstance(server, SyncHyphaServer), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
-    _partial_encode = partial(_encode_callables, wrap=convert_sync_to_async, loop=server.loop, executor=server.executor)
-    future = asyncio.run_coroutine_threadsafe(get_rtc_service_async(server.server, service_id, _partial_encode(config)), server.loop)
+    assert isinstance(
+        server, SyncHyphaServer
+    ), "server must be an instance of SyncHyphaServer, please use hypha.sync.connect_to_server to create a server instance."
+    _partial_encode = partial(
+        _encode_callables,
+        wrap=convert_sync_to_async,
+        loop=server.loop,
+        executor=server.executor,
+    )
+    future = asyncio.run_coroutine_threadsafe(
+        get_rtc_service_async(server.server, service_id, _partial_encode(config)),
+        server.loop,
+    )
     pc = future.result()
 
     for func in get_async_methods(pc):
-        setattr(pc, func, convert_async_to_sync(getattr(pc, func), server.loop, server.executor))
+        setattr(
+            pc,
+            func,
+            convert_async_to_sync(getattr(pc, func), server.loop, server.executor),
+        )
 
     return pc
 
