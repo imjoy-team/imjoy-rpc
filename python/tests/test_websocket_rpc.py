@@ -174,6 +174,30 @@ async def test_connect_to_server(websocket_server):
 
 
 @pytest.mark.asyncio
+async def test_reconnect_to_server(websocket_server):
+    """Test reconnecting to the server."""
+    # test workspace is an exception, so it can pass directly
+    ws = await connect_to_server({"name": "my plugin", "server_url": WS_SERVER_URL})
+    await ws.register_service(
+        {
+            "name": "Hello World",
+            "id": "hello-world",
+            "description": "hello world service",
+            "config": {
+                "visibility": "protected",
+                "run_in_executor": True,
+            },
+            "hello": lambda x: "hello " + x,
+        }
+    )
+    # simulate abnormal close
+    await ws.rpc._connection._websocket.close(1010)
+    # will trigger reconnect
+    svc = await ws.get_service("hello-world")
+    assert await svc.hello("world") == "hello world"
+
+
+@pytest.mark.asyncio
 async def test_numpy_array(websocket_server):
     """Test numpy array."""
     ws = await connect_to_server(

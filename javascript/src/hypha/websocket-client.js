@@ -6,8 +6,10 @@ export { version as VERSION } from "../../package.json";
 export { loadRequirements };
 export { getRTCService, registerRTCService } from "./webrtc-client.js";
 
+const MAX_RETRY = 10000;
+
 class WebsocketRPCConnection {
-  constructor(server_url, client_id, workspace, token, timeout) {
+  constructor(server_url, client_id, workspace, token, timeout = 5) {
     assert(server_url && client_id, "server_url and client_id are required");
     server_url = server_url + "?client_id=" + client_id;
     if (workspace) {
@@ -20,7 +22,10 @@ class WebsocketRPCConnection {
     this._handle_message = null;
     this._reconnection_token = null;
     this._server_url = server_url;
-    this._timeout = timeout || 5; // 5s
+    this._timeout = timeout * 1000; // converting to ms
+    this._opening = false;
+    this._retry_count = 0;
+    this._closing = false;
   }
 
   set_reconnection_token(token) {
@@ -33,50 +38,84 @@ class WebsocketRPCConnection {
   }
 
   async open() {
+    if (this._opening || this._retry_count >= MAX_RETRY) {
+      return;
+    }
+
+    this._opening = true;
     const server_url = this._reconnection_token
       ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
       : this._server_url;
-    console.info("Receating a new connection to ", server_url.split("?")[0]);
+    console.info("Creating a new connection to ", server_url.split("?")[0]);
+    
     this._websocket = new WebSocket(server_url);
     this._websocket.binaryType = "arraybuffer";
     this._websocket.onmessage = event => {
       const data = event.data;
       this._handle_message(data);
     };
-    const self = this;
-    this._websocket.onclose = function() {
+    
+    this._websocket.onclose = event => {
       console.log("websocket closed");
-      self._websocket = null;
+      if (!this._closing) {
+        console.log("Connection interrupted, retrying...");
+        this._retry_count++;
+        setTimeout(() => this.open(), this._timeout);
+      }
+      this._websocket = null;
+      this._opening = false;
     };
-    const promise = await new Promise(resolve => {
-      this._websocket.addEventListener("open", resolve);
-    });
-    return await waitFor(
-      promise,
-      this._timeout,
-      "Timeout Error: Failed connect to the server " + server_url.split("?")[0]
-    );
+
+    this._websocket.onerror = event => {
+      console.log("Error occurred in websocket connection: ", event);
+      this._websocket = null;
+      this._opening = false;
+    };
   }
 
   async emit_message(data) {
     assert(this._handle_message, "No handler for message");
-    if (!this._websocket) {
+    if (!this._websocket || this._websocket.readyState !== WebSocket.OPEN) {
       await this.open();
     }
-    try {
-      if (data.buffer) data = data.buffer;
-      this._websocket.send(data);
-    } catch (exp) {
-      //   data = msgpack_unpackb(data);
-      console.error(`Failed to send data, error: ${exp}`);
-      throw exp;
-    }
+    return new Promise((resolve, reject) => {
+      if (!this._websocket) {
+        reject(new Error("Websocket connection not available"));
+      } else if (this._websocket.readyState === WebSocket.CONNECTING) {
+        const timeout = setTimeout(() => {
+          reject(new Error("WebSocket connection timed out"));
+        }, this._timeout);
+  
+        this._websocket.addEventListener('open', () => {
+          clearTimeout(timeout);
+          try {
+            this._websocket.send(data);
+            resolve();
+          } catch (exp) {
+            console.error(`Failed to send data, error: ${exp}`);
+            reject(exp);
+          }
+        });
+      } else if (this._websocket.readyState === WebSocket.OPEN) {
+        try {
+          this._websocket.send(data);
+          resolve();
+        } catch (exp) {
+          console.error(`Failed to send data, error: ${exp}`);
+          reject(exp);
+        }
+      } else {
+        reject(new Error("WebSocket is not in the OPEN or CONNECTING state"));
+      }
+    });
   }
+  
 
-  async disconnect(reason) {
+  disconnect(reason) {
+    this._closing = true;
     const ws = this._websocket;
     this._websocket = null;
-    if (ws) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
       ws.close(1000, reason);
     }
     console.info(`Websocket connection disconnected (${reason})`);
