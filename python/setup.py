@@ -39,6 +39,7 @@ setup(
     install_requires=REQUIRES,
     extras_require={
         "full": [
+            "aiortc;platform_system!='Emscripten'",
             "numpy",
             "zarr",
             "python-engineio>=4.1.0",

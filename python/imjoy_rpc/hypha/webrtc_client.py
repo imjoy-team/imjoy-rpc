@@ -9,10 +9,18 @@ from imjoy_rpc.hypha import RPC
 
 logger = logging.getLogger("rtc-client")
 try:
-    from aiortc import (RTCConfiguration, RTCIceServer, RTCPeerConnection,
-                        RTCSessionDescription)
+    from aiortc import (
+        RTCConfiguration,
+        RTCIceServer,
+        RTCPeerConnection,
+        RTCSessionDescription,
+    )
+
+    AIORTC_AVAILABLE = True
 except ImportError:
+    AIORTC_AVAILABLE = False
     logger.info("aiortc is not installed, please install it to use webrtc client.")
+
 
 class WebRTCConnection:
     """
@@ -146,6 +154,10 @@ async def _create_offer(params, server=None, config=None, on_init=None, context=
 
 async def get_rtc_service(server, service_id, config=None):
     """Get RTC service."""
+    assert AIORTC_AVAILABLE, (
+        "aiortc is not installed, please install it via "
+        "`pip install aiortc` to use webrtc services."
+    )
     config = config or {}
     config["peer_id"] = config.get("peer_id", shortuuid.uuid())
     loop = asyncio.get_event_loop()
@@ -213,6 +225,10 @@ async def get_rtc_service(server, service_id, config=None):
 
 async def register_rtc_service(server, service_id, config=None):
     """Register RTC service."""
+    assert AIORTC_AVAILABLE, (
+        "aiortc is not installed, please install it via "
+        "`pip install aiortc` to use webrtc services."
+    )
     config = config or {
         "visibility": "protected",
         "require_context": True,
