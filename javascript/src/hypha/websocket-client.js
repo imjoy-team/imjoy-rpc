@@ -185,15 +185,22 @@ export async function connectToServer(config) {
       if (webrtc === true || webrtc === "auto") {
         if (svc.id.includes(":") && svc.id.includes("/")) {
           const client = svc.id.split(":")[0];
-          // Assuming that the client registered a webrtc service with the same client_id
-          const peer = await getRTCService(
-            wm,
-            client + ":" + client.split("/")[1]
-          );
-          return await peer.get_service(query);
+          try {
+            // Assuming that the client registered a webrtc service with the same client_id
+            const peer = await getRTCService(
+              wm,
+              client + ":" + client.split("/")[1]
+            );
+            return await peer.get_service(query);
+          } catch (e) {
+            console.warn(
+              "Failed to get webrtc service, using websocket connection",
+              e
+            );
+          }
         }
         if (webrtc === true) {
-          throw new Error("Cannot use webrtc for a non-remote service");
+          throw new Error("Failed to get the service via webrtc");
         }
       }
       return svc;

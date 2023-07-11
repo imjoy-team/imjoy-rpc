@@ -242,17 +242,22 @@ async def connect_to_server(config):
 
                 if ":" in svc.id and "/" in svc.id and AIORTC_AVAILABLE:
                     client = svc.id.split(":")[0]
-                    # Assuming that the client registered a webrtc service with the same client_id
-                    peer = await get_rtc_service(
-                        wm, client + ":" + client.split("/")[1]
-                    )
-                    return await peer.get_service(query)
+                    try:
+                        # Assuming that the client registered a webrtc service with the same client_id
+                        peer = await get_rtc_service(
+                            wm, client + ":" + client.split("/")[1]
+                        )
+                        return await peer.get_service(query)
+                    except Exception:
+                        logger.warning(
+                            "Failed to get webrtc service, using websocket connection"
+                        )
                 if webrtc is True:
                     if not AIORTC_AVAILABLE:
                         raise Exception(
                             "aiortc is not available, please install it first."
                         )
-                    raise Exception("Cannot use webrtc for a non-remote service")
+                    raise Exception("Failed to get the service via webrtc")
             return svc
 
         wm.get_service = get_service
