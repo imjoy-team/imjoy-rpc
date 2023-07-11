@@ -427,7 +427,9 @@ class RPC(MessageEmitter):
                     "_rdoc": "Get a remote service",
                 }
             )
-            return await asyncio.wait_for(method(service_id), timeout=timeout)
+            svc = await asyncio.wait_for(method(service_id), timeout=timeout)
+            svc["id"] = service_uri
+            return svc
         except Exception as exp:
             logger.exception("Failed to get remote service: %s: %s", service_id, exp)
             raise

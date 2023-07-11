@@ -216,4 +216,45 @@ async def connect_to_server(config):
     wm.list_plugins = wm.list_services
     wm.disconnect = disconnect
     wm.register_codec = rpc.register_codec
+
+    if config.get("webrtc", False):
+        from .webrtc_client import AIORTC_AVAILABLE, register_rtc_service
+
+        if not AIORTC_AVAILABLE:
+            raise Exception("aiortc is not available, please install it first.")
+        await register_rtc_service(wm, client_id)
+
+    if "get_service" in wm or "getService" in wm:
+        _get_service = wm.get_service or wm.getService
+
+        async def get_service(query, webrtc=None):
+            assert webrtc in [
+                None,
+                True,
+                False,
+                "auto",
+            ], "webrtc must be true, false or 'auto'"
+            if webrtc is None and config.get("webrtc", False):
+                webrtc = "auto"
+            svc = await _get_service(query)
+            if webrtc in [True, "auto"]:
+                from .webrtc_client import AIORTC_AVAILABLE, get_rtc_service
+
+                if ":" in svc.id and "/" in svc.id and AIORTC_AVAILABLE:
+                    client = svc.id.split(":")[0]
+                    # Assuming that the client registered a webrtc service with the same client_id
+                    peer = await get_rtc_service(
+                        wm, client + ":" + client.split("/")[1]
+                    )
+                    return await peer.get_service(query)
+                if webrtc is True:
+                    if not AIORTC_AVAILABLE:
+                        raise Exception(
+                            "aiortc is not available, please install it first."
+                        )
+                    raise Exception("Cannot use webrtc for a non-remote service")
+            return svc
+
+        wm.get_service = get_service
+        wm.getService = get_service
     return wm

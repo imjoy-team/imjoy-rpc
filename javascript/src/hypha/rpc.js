@@ -435,11 +435,13 @@ export class RPC extends MessageEmitter {
         _rpromise: true,
         _rdoc: "Get a remote service"
       });
-      return await waitFor(
+      const svc = await waitFor(
         method(service_uri.split(":")[1]),
         timeout,
         "Timeout Error: Failed to get remote service: " + service_uri
       );
+      svc.id = service_uri;
+      return svc;
     } catch (e) {
       console.error("Failed to get remote service: " + service_uri, e);
       throw e;

@@ -40,7 +40,7 @@ describe("RPC", async () => {
     });
     await registerRTCService(server, service_id);
     const pc = await getRTCService(server, service_id);
-    const svc = await pc.get_service("echo-service-rtc");
+    const svc = await pc.getService("echo-service-rtc");
     expect(await svc.echo("hello")).to.equal("hello");
   }).timeout(20000);
 
