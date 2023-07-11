@@ -47,14 +47,14 @@ class WebsocketRPCConnection {
       ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
       : this._server_url;
     console.info("Creating a new connection to ", server_url.split("?")[0]);
-    
+
     this._websocket = new WebSocket(server_url);
     this._websocket.binaryType = "arraybuffer";
     this._websocket.onmessage = event => {
       const data = event.data;
       this._handle_message(data);
     };
-    
+
     this._websocket.onclose = event => {
       console.log("websocket closed");
       if (!this._closing) {
@@ -85,8 +85,8 @@ class WebsocketRPCConnection {
         const timeout = setTimeout(() => {
           reject(new Error("WebSocket connection timed out"));
         }, this._timeout);
-  
-        this._websocket.addEventListener('open', () => {
+
+        this._websocket.addEventListener("open", () => {
           clearTimeout(timeout);
           try {
             this._websocket.send(data);
@@ -109,7 +109,6 @@ class WebsocketRPCConnection {
       }
     });
   }
-  
 
   disconnect(reason) {
     this._closing = true;
@@ -219,7 +218,6 @@ export async function connectToServer(config) {
         [undefined, true, false, "auto"].includes(webrtc),
         "webrtc must be true, false or 'auto'"
       );
-      if (webrtc === undefined && config.webrtc) webrtc = "auto";
       const svc = await _get_service(query);
       if (webrtc === true || webrtc === "auto") {
         if (svc.id.includes(":") && svc.id.includes("/")) {

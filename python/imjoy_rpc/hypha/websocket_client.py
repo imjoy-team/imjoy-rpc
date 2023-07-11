@@ -270,8 +270,6 @@ async def connect_to_server(config):
                 False,
                 "auto",
             ], "webrtc must be true, false or 'auto'"
-            if webrtc is None and config.get("webrtc", False):
-                webrtc = "auto"
             svc = await _get_service(query)
             if webrtc in [True, "auto"]:
                 from .webrtc_client import AIORTC_AVAILABLE, get_rtc_service
@@ -296,6 +294,6 @@ async def connect_to_server(config):
                     raise Exception("Failed to get the service via webrtc")
             return svc
 
-        wm.get_service = get_service
-        wm.getService = get_service
+        wm["get_service"] = get_service
+        wm["getService"] = get_service
     return wm
