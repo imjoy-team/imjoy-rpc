@@ -92,8 +92,8 @@ declare module "imjoy-rpc" {
       loadRequirements: (config: any) => Promise<any>;
       login: (config: LoginConfig) => Promise<any>;
       connectToServer: (config: ServerConfig) => Promise<any>;
-      registerRTCService: (server: any, service_id: string, config: any) => Promise<any>;
-      getRTCService: (server: any, service_id: string, config: any) => Promise<any>;
+      registerRTCService: (server: any, service_id: string, config?: any) => Promise<any>;
+      getRTCService: (server: any, service_id: string, config?: any) => Promise<any>;
     };
   };
 
