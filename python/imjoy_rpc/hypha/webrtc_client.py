@@ -192,7 +192,15 @@ async def get_rtc_service(server, service_id, config=None):
             async def get_service(name):
                 return await rpc.get_remote_service(config["peer_id"] + ":" + name)
 
+            async def disconnect():
+                await rpc.disconnect()
+                await pc.close()
+
             pc.get_service = get_service
+            pc.getService = get_service
+            pc.disconnect = disconnect
+            pc.register_codec = rpc.register_codec
+            pc.registerCodec = rpc.register_codec
             fut.set_result(pc)
             logger.info("Webrtc-based RPC connection established")
 
