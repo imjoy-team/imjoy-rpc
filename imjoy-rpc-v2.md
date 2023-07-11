@@ -205,6 +205,62 @@ Remote function call is almost the same as calling a local function. The argumen
  * For functions defined in Javascript, there is no difference when calling from Python
  * For functions defined in Python, when calling from Javascript, if the last argument is an object and its `_rkwargs` is set to true, then it will be converted into keyword arguments when calling the Python function. For example, if you have a Python function defined as `def foo(a, b, c=None):`, in Javascript, you should call it as `foo(9, 10, {c: 33, _rkwargs: true})`.
 
+## Peer-to-peer connection via WebRTC
+
+The current implementation requires all the traffic going through the websocket server. This is not ideal for large data transmission. Therefore, we implemented webRTC support in addition to the websocket connection. You can use the following two functions for enabling peer-to-peer communication between clients:
+
+Here is an example for setting up a webrtc service on the python side:
+```python
+from imjoy_rpc.hypha import connect_to_server, register_rtc_service, get_rtc_service
+server = await connect_to_server({"server_url": "https://ai.imjoy.io"})
+await register_rtc_service(server, "webrtc-service")
+```
+
+You can also use the synchronous version:
+```python
+from imjoy_rpc.hypha.sync import register_rtc_service, get_rtc_service
+```
+
+Now, in the browser, you can connect to the server and get the webrtc service:
+```html
+<script src="https://cdn.jsdelivr.net/npm/imjoy-rpc@0.5.30/dist/hypha-rpc-websocket.min.js"></script>
+<script>
+const server = await hyphaWebsocketClient.connectToServer({"server_url": "https://ai.imjoy.io"})
+const pc = await hyphaWebsocketClient.getRTCService(server, "webrtc-service");
+</script>
+```
+
+It works by using hypha server as a signaling server, after establishing the connection, the rest goes through webrtc in a peer-to-peer manner. 
+
+Both `register_rtc_service` and `get_rtc_service` take an optional `config` object as the last argument. The `config` object can contain a `on_init(peer_connection)` callback function that will be called when the webrtc connection is established.
+
+You can setup streaming services inside the `on_init` callback. This is ideally suited for applications such as microscope control. As an example, we generate a random video stream on the python side, and provide a microscope control service (e.g. move stage and snap image): https://github.com/oeway/webrtc-hypha-demo
+
+### Enable WebRTC automatically
+
+You can also enable webrtc for the `connect_to_server` function, by setting the `webrtc` option to `True` or `auto` in the config object. For example:
+
+```python
+server = await connect_to_server({"server_url": "https://ai.imjoy.io", "webrtc": True})
+```
+
+Or javascript:
+
+```javascript
+const server = await hyphaWebsocketClient.connectToServer({"server_url": "https://ai.imjoy.io", "webrtc": true})
+```
+
+This will automatically register a webrtc service (named as `<client_id>-rtc`) so that other clients can connect to it.
+
+Now if you register a hypha service, it will be automatically made available through the webrtc connection.
+
+To get the service via webrtc, you can pass `webrtc=True` and `webrtc_config` to `server.get_service()`:
+
+```python
+svc = await server.get_service("my-service", webrtc=True, webrtc_config={})
+```
+
+In the above example, we only show how to enable it in Python, but it also works in Javascript. However, please not that the webrtc won't work directly in pyodide-based environment (e.g. in JupyterLite).
 
 ## Synchronous Wrapper
 

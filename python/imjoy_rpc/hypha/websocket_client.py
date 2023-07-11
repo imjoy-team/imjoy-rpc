@@ -258,12 +258,12 @@ async def connect_to_server(config):
 
         if not AIORTC_AVAILABLE:
             raise Exception("aiortc is not available, please install it first.")
-        await register_rtc_service(wm, client_id + "-rtc")
+        await register_rtc_service(wm, client_id + "-rtc", config.get("webrtc_config"))
 
     if "get_service" in wm or "getService" in wm:
         _get_service = wm.get_service or wm.getService
 
-        async def get_service(query, webrtc=None):
+        async def get_service(query, webrtc=None, webrtc_config=None):
             assert webrtc in [
                 None,
                 True,
@@ -279,9 +279,15 @@ async def connect_to_server(config):
                     try:
                         # Assuming that the client registered a webrtc service with the client_id + "-rtc"
                         peer = await get_rtc_service(
-                            wm, client + ":" + client.split("/")[1] + "-rtc"
+                            wm,
+                            client + ":" + client.split("/")[1] + "-rtc",
+                            webrtc_config,
                         )
-                        return await peer.get_service(svc.id.split(":")[1])
+                        rtc_svc = await peer.get_service(svc.id.split(":")[1])
+                        rtc_svc._webrtc = True
+                        rtc_svc._peer = peer
+                        rtc_svc._service = svc
+                        return rtc_svc
                     except Exception:
                         logger.warning(
                             "Failed to get webrtc service, using websocket connection"

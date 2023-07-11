@@ -210,11 +210,11 @@ export async function connectToServer(config) {
   wm.disconnect = disconnect;
   wm.registerCodec = rpc.register_codec.bind(rpc);
   if (config.webrtc) {
-    await registerRTCService(wm, clientId + "-rtc");
+    await registerRTCService(wm, clientId + "-rtc", config.webrtc_config);
   }
   if (wm.get_service || wm.getService) {
     const _get_service = wm.get_service || wm.getService;
-    wm.get_service = async function(query, webrtc) {
+    wm.get_service = async function(query, webrtc, webrtc_config) {
       assert(
         [undefined, true, false, "auto"].includes(webrtc),
         "webrtc must be true, false or 'auto'"
@@ -227,9 +227,14 @@ export async function connectToServer(config) {
             // Assuming that the client registered a webrtc service with the client_id + "-rtc"
             const peer = await getRTCService(
               wm,
-              client + ":" + client.split("/")[1] + "-rtc"
+              client + ":" + client.split("/")[1] + "-rtc",
+              webrtc_config
             );
-            return await peer.get_service(svc.id.split(":")[1]);
+            const rtcSvc = await peer.get_service(svc.id.split(":")[1]);
+            rtcSvc._webrtc = true;
+            rtcSvc._peer = peer;
+            rtcSvc._service = svc;
+            return rtcSvc;
           } catch (e) {
             console.warn(
               "Failed to get webrtc service, using websocket connection",
