@@ -283,7 +283,7 @@ async def connect_to_server(config):
                         peer = await get_rtc_service(
                             wm, client + ":" + client.split("/")[1]
                         )
-                        return await peer.get_service(query)
+                        return await peer.get_service(svc.id.split(":")[1])
                     except Exception:
                         logger.warning(
                             "Failed to get webrtc service, using websocket connection"

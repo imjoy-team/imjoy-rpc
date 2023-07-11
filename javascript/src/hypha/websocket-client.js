@@ -230,7 +230,7 @@ export async function connectToServer(config) {
               wm,
               client + ":" + client.split("/")[1]
             );
-            return await peer.get_service(query);
+            return await peer.get_service(svc.id.split(":")[1]);
           } catch (e) {
             console.warn(
               "Failed to get webrtc service, using websocket connection",
