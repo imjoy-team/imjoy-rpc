@@ -1,10 +1,11 @@
 import { RPC, API_VERSION } from "./rpc.js";
 import { assert, loadRequirements, randId, waitFor } from "./utils.js";
+import { getRTCService, registerRTCService } from "./webrtc-client.js";
 
 export { RPC, API_VERSION };
 export { version as VERSION } from "../../package.json";
 export { loadRequirements };
-export { getRTCService, registerRTCService } from "./webrtc-client.js";
+export { getRTCService, registerRTCService };
 
 const MAX_RETRY = 10000;
 
@@ -209,7 +210,7 @@ export async function connectToServer(config) {
   wm.disconnect = disconnect;
   wm.registerCodec = rpc.register_codec.bind(rpc);
   if (config.webrtc) {
-    await registerRTCService(wm, clientId);
+    await registerRTCService(wm, clientId + "-rtc");
   }
   if (wm.get_service || wm.getService) {
     const _get_service = wm.get_service || wm.getService;
@@ -223,10 +224,10 @@ export async function connectToServer(config) {
         if (svc.id.includes(":") && svc.id.includes("/")) {
           const client = svc.id.split(":")[0];
           try {
-            // Assuming that the client registered a webrtc service with the same client_id
+            // Assuming that the client registered a webrtc service with the client_id + "-rtc"
             const peer = await getRTCService(
               wm,
-              client + ":" + client.split("/")[1]
+              client + ":" + client.split("/")[1] + "-rtc"
             );
             return await peer.get_service(svc.id.split(":")[1]);
           } catch (e) {

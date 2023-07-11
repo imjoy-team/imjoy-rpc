@@ -231,9 +231,9 @@ export class RPC extends MessageEmitter {
           );
           const reconnection_expires_in =
             this._connection_info.reconnection_expires_in * 0.8;
-          console.info(
-            `Reconnection token obtained: ${this._connection_info.reconnection_token}, will be refreshed in ${reconnection_expires_in} seconds`
-          );
+          // console.info(
+          //   `Reconnection token obtained: ${this._connection_info.reconnection_token}, will be refreshed in ${reconnection_expires_in} seconds`
+          // );
           this._get_connection_info_task = setTimeout(
             this._get_connection_info.bind(this),
             reconnection_expires_in * 1000

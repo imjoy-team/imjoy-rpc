@@ -258,7 +258,7 @@ async def connect_to_server(config):
 
         if not AIORTC_AVAILABLE:
             raise Exception("aiortc is not available, please install it first.")
-        await register_rtc_service(wm, client_id)
+        await register_rtc_service(wm, client_id + "-rtc")
 
     if "get_service" in wm or "getService" in wm:
         _get_service = wm.get_service or wm.getService
@@ -277,9 +277,9 @@ async def connect_to_server(config):
                 if ":" in svc.id and "/" in svc.id and AIORTC_AVAILABLE:
                     client = svc.id.split(":")[0]
                     try:
-                        # Assuming that the client registered a webrtc service with the same client_id
+                        # Assuming that the client registered a webrtc service with the client_id + "-rtc"
                         peer = await get_rtc_service(
-                            wm, client + ":" + client.split("/")[1]
+                            wm, client + ":" + client.split("/")[1] + "-rtc"
                         )
                         return await peer.get_service(svc.id.split(":")[1])
                     except Exception:
