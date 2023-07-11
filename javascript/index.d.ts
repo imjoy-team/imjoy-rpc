@@ -1,4 +1,4 @@
-export interface MessageEmitter {
+interface MessageEmitter {
   emit: (event: any) => void;
   on(event: string, handler: Function): void;
   once(event: string, handler: Function): void;
