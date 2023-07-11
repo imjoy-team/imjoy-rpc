@@ -32,6 +32,8 @@ logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("websocket-client")
 logger.setLevel(logging.WARNING)
 
+MAX_RETRY = 10000
+
 
 class WebsocketRPCConnection:
     """Represent a websocket connection."""
@@ -50,6 +52,9 @@ class WebsocketRPCConnection:
         self._reconnection_token = None
         self._listen_task = None
         self._timeout = timeout
+        self._opening = False
+        self._retry_count = 0
+        self._closing = False
 
     def on_message(self, handler):
         """Handle message."""
@@ -63,25 +68,40 @@ class WebsocketRPCConnection:
     async def open(self):
         """Open the connection."""
         try:
+            if self._opening:
+                return await self._opening
+
+            self._opening = asyncio.get_running_loop().create_future()
             server_url = (
                 (self._server_url + f"&reconnection_token={self._reconnection_token}")
                 if self._reconnection_token
                 else self._server_url
             )
-            logger.info("Receating a new connection to %s", server_url.split("?")[0])
+            logger.info("Creating a new connection to %s", server_url.split("?")[0])
             self._websocket = await asyncio.wait_for(
                 websockets.connect(server_url), self._timeout
             )
-            self._listen_task = asyncio.ensure_future(self._listen(self._websocket))
+            self._listen_task = asyncio.ensure_future(self._listen())
+            self._opening.set_result(True)
+            self._retry_count = 0
         except Exception as exp:
             if hasattr(exp, "status_code") and exp.status_code == 403:
-                raise PermissionError(
-                    f"Permission denied for {server_url}, error: {exp}"
+                self._opening.set_exception(
+                    PermissionError(f"Permission denied for {server_url}, error: {exp}")
                 )
+                # stop retrying
+                self._retry_count = MAX_RETRY
             else:
-                raise Exception(
-                    f"Failed to connect to {server_url.split('?')[0]}: {exp}"
+                self._retry_count += 1
+                self._opening.set_exception(
+                    Exception(
+                        f"Failed to connect to {server_url.split('?')[0]} (retry {self._retry_count}/{MAX_RETRY}): {exp}"
+                    )
                 )
+        finally:
+            if self._opening:
+                await self._opening
+                self._opening = None
 
     async def emit_message(self, data):
         """Emit a message."""
@@ -95,27 +115,43 @@ class WebsocketRPCConnection:
             logger.exception(f"Failed to send data to {data['to']}")
             raise
 
-    async def _listen(self, ws):
+    async def _listen(self):
         """Listen to the connection."""
-        try:
-            while not ws.closed:
-                data = await ws.recv()
-                if self._is_async:
-                    await self._handle_message(data)
+        while True:
+            if self._closing:
+                break
+            try:
+                ws = self._websocket
+                while not ws.closed:
+                    data = await ws.recv()
+                    if self._is_async:
+                        await self._handle_message(data)
+                    else:
+                        self._handle_message(data)
+            except (
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.ConnectionClosedOK,
+                ConnectionAbortedError,
+                ConnectionResetError,
+            ):
+                if not self._closing:
+                    logger.warning("Connection is broken, reopening a new connection.")
+                    await self.open()
+                    if self._retry_count >= MAX_RETRY:
+                        logger.error(
+                            "Failed to connect to %s, max retry reached.",
+                            self._server_url.split("?")[0],
+                        )
+                        break
+                    await asyncio.sleep(3)  # Retry in 3 second
                 else:
-                    self._handle_message(data)
-        except websockets.exceptions.ConnectionClosedError:
-            logger.warning("Connection is broken, reopening a new connection.")
-            asyncio.ensure_future(self.open())
-        except websockets.exceptions.ConnectionClosedOK:
-            pass
+                    logger.info("Websocket connection closed normally")
 
     async def disconnect(self, reason=None):
         """Disconnect."""
-        ws = self._websocket
-        self._websocket = None
-        if ws and not ws.closed:
-            await ws.close(code=1000)
+        self._closing = True
+        if self._websocket and not self._websocket.closed:
+            await self._websocket.close(code=1000)
         if self._listen_task:
             self._listen_task.cancel()
             self._listen_task = None
