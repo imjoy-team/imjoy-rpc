@@ -5,6 +5,7 @@ import inspect
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
 
 from imjoy_rpc.hypha.utils import dotdict
 from imjoy_rpc.hypha.webrtc_client import get_rtc_service as get_rtc_service_async
@@ -33,6 +34,7 @@ def convert_sync_to_async(sync_func, loop, executor):
     if asyncio.iscoroutinefunction(sync_func):
         return sync_func
 
+    @wraps(sync_func)
     async def wrapped_async(*args, **kwargs):
         result_future = loop.create_future()
 
@@ -54,6 +56,7 @@ def convert_sync_to_async(sync_func, loop, executor):
 def convert_async_to_sync(async_func, loop, executor):
     """Convert an asynchronous function to a synchronous function."""
 
+    @wraps(async_func)
     def wrapped_sync(*args, **kwargs):
         args = _encode_callables(args, convert_sync_to_async, loop, executor)
         kwargs = _encode_callables(kwargs, convert_sync_to_async, loop, executor)
