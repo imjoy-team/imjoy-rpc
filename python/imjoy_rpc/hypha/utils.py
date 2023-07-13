@@ -321,6 +321,11 @@ def make_signature(func, name=None, sig=None, doc=None):
 
     if sig:
         func.__signature__ = sig
+        annotations = {}
+        for name, param in sig.parameters.items():
+            if param.annotation is not param.empty:
+                annotations[name] = param.annotation
+        func.__annotations__ = annotations
 
     if doc:
         func.__doc__ = doc

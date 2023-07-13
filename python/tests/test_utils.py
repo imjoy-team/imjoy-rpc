@@ -74,6 +74,19 @@ def test_make_signature():
         str(signature(func_simple)) == "(workspace: str = None, context=None)"
     ), "Function simple test failed for make_signature"
 
+    # Define a function with no initial annotations
+    def func_no_annotations(a, b):
+        return a + b
+
+    # Use make_signature to add annotations
+    make_signature(func_no_annotations, sig="func_no_annotations(a: int, b: str)")
+
+    # Check that the __annotations__ attribute has been correctly set
+    assert func_no_annotations.__annotations__ == {
+        "a": int,
+        "b": str,
+    }, "__annotations__ not correctly set by make_signature"
+
 
 def test_callable_sig():
     """Test callable_sig."""
