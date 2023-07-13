@@ -273,7 +273,8 @@ export class RPC extends MessageEmitter {
       _rtarget: client_id,
       _rmethod: "services.built-in.ping",
       _rpromise: true,
-      _rdoc: "Ping a remote client"
+      _rdoc: "Ping a remote client",
+      _rsig: "ping(msg)"
     });
     assert((await method("ping", timeout)) == "pong");
   }
@@ -433,7 +434,8 @@ export class RPC extends MessageEmitter {
         _rtarget: provider,
         _rmethod: "services.built-in.get_service",
         _rpromise: true,
-        _rdoc: "Get a remote service"
+        _rdoc: "Get a remote service",
+        _rsig: "get_service(service_id)"
       });
       const svc = await waitFor(
         method(service_uri.split(":")[1]),
@@ -863,6 +865,7 @@ export class RPC extends MessageEmitter {
     const parts = method_id.split(".");
     remote_method.__name__ = parts[parts.length - 1];
     remote_method.__doc__ = encoded_method._rdoc;
+    remote_method.__sig__ = encoded_method._rsig;
     return remote_method;
   }
 
@@ -1157,17 +1160,22 @@ export class RPC extends MessageEmitter {
         );
         store[object_id] = aObject;
       }
-      try {
-        const funcInfo = getFunctionInfo(aObject);
-        if (funcInfo) {
-          bObject._rdoc = `${funcInfo.name}(${funcInfo.sig})\n${funcInfo.doc}`;
-        } else {
-          bObject._rdoc = aObject.__doc__;
+      bObject._rdoc = aObject.__doc__;
+      bObject._rsig = aObject.__sig__;
+      if (!bObject._rdoc || !bObject._rsig) {
+        try {
+          const funcInfo = getFunctionInfo(aObject);
+          if (funcInfo && !bObject._rdoc) {
+            bObject._rdoc = `${funcInfo.doc}`;
+          }
+          if (funcInfo && !bObject._rsig) {
+            bObject._rsig = `${funcInfo.name}(${funcInfo.sig})`;
+          }
+        } catch (e) {
+          console.error("Failed to extract function docstring:", aObject);
         }
-      } catch (e) {
-        console.error("Failed to extract function docstring:", aObject);
-        bObject._rdoc = aObject.__doc__;
       }
+
       return bObject;
     }
     const isarray = Array.isArray(aObject);

@@ -73,20 +73,21 @@ describe("RPC", async () => {
     const size = 100000;
     const data = await api.echo(new ArrayBuffer(size));
     expect(data.byteLength).to.equal(size);
-    function square(a) {
-      /* square a number */
-      return a * a;
+    function multiply(a, b) {
+      /* multiply two numbers */
+      return a * b;
     }
     await api.register_service({
       name: "my service",
       id: "test-service",
       description: "test service",
       config: { visibility: "public" },
-      square
+      multiply
     });
     const svc = await api.rpc.get_remote_service("test-service");
-    expect(svc.square.__doc__).to.equal("square(a)\nsquare a number");
-    expect(await svc.square(2)).to.equal(4);
+    expect(svc.multiply.__doc__).to.equal("multiply two numbers");
+    expect(svc.multiply.__sig__).to.equal("multiply(a, b)");
+    expect(await svc.multiply(2, 2)).to.equal(4);
     await api.export(new ImJoyPlugin());
     const dsvc = await api.rpc.get_remote_service("default");
     expect(await dsvc.add2(3)).to.equal(5);

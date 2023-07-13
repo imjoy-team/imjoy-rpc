@@ -1,11 +1,9 @@
 """Provide the RPC."""
 import asyncio
-import contextlib
 import inspect
 import io
 import logging
 import math
-import re
 import sys
 import traceback
 import weakref
@@ -15,7 +13,15 @@ from functools import partial, reduce
 import msgpack
 import shortuuid
 
-from .utils import FuturePromise, MessageEmitter, dotdict, format_traceback
+from .utils import (
+    FuturePromise,
+    MessageEmitter,
+    dotdict,
+    format_traceback,
+    make_signature,
+    callable_doc,
+    callable_sig,
+)
 
 CHUNK_SIZE = 1024 * 500
 API_VERSION = "0.3.0"
@@ -69,25 +75,6 @@ def index_object(obj, ids):
         else:
             _obj = getattr(obj, ids[0])
         return index_object(_obj, ids[1:])
-
-
-def extract_function_info(func):
-    """Extract function info."""
-    # Create an in-memory text stream
-    f = io.StringIO()
-
-    # Redirect the output of help to the text stream
-    with contextlib.redirect_stdout(f):
-        help(func)
-    help_string = f.getvalue()
-    match = re.search(r"(\w+)\((.*?)\)\n\s*(.*)", help_string, re.DOTALL)
-    if match:
-        func_name, func_signature, docstring = match.groups()
-        # Clean up the docstring
-        docstring = func.__doc__ or re.sub(r"\n\s*", " ", docstring).strip()
-        return {"name": func_name, "sig": func_signature, "doc": docstring}
-    else:
-        return None
 
 
 class Timer:
@@ -278,6 +265,7 @@ class RPC(MessageEmitter):
                 "_rmethod": "services.built-in.ping",
                 "_rpromise": True,
                 "_rdoc": "Ping the remote client",
+                "_rsig": "ping(msg)",
             }
         )
         assert (await asyncio.wait_for(method("ping"), timeout)) == "pong"
@@ -425,6 +413,7 @@ class RPC(MessageEmitter):
                     "_rmethod": "services.built-in.get_service",
                     "_rpromise": True,
                     "_rdoc": "Get a remote service",
+                    "_rsig": "get_service(service_id)",
                 }
             )
             svc = await asyncio.wait_for(method(service_id), timeout=timeout)
@@ -827,8 +816,12 @@ class RPC(MessageEmitter):
         remote_method.__rpc_object__ = (
             encoded_method.copy()
         )  # pylint: disable=protected-access
-        remote_method.__name__ = method_id.split(".")[-1]
-        remote_method.__doc__ = encoded_method.get("_rdoc")
+        make_signature(
+            remote_method,
+            name=method_id.split(".")[-1],
+            doc=encoded_method.get("_rdoc"),
+            sig=encoded_method.get("_rsig"),
+        )
         return remote_method
 
     def _log(self, info):
@@ -1060,7 +1053,7 @@ class RPC(MessageEmitter):
                 reject(err)
                 logger.debug("Error during calling method: %s", err)
             else:
-                logger.error("Error during calling method: %s", err)
+                logger.exception("Error during calling method: %s", err)
 
     def encode(self, a_object, session_id=None):
         """Encode object."""
@@ -1135,6 +1128,10 @@ class RPC(MessageEmitter):
                     "_rmethod": annotation["method_id"],
                     "_rpromise": True,
                 }
+                if annotation.get("require_context"):
+                    b_object["_rsig"] = callable_sig(a_object, skip_context=True)
+                else:
+                    b_object["_rsig"] = callable_sig(a_object)
             else:
                 assert isinstance(session_id, str)
                 if hasattr(a_object, "__name__"):
@@ -1154,17 +1151,9 @@ class RPC(MessageEmitter):
                     store is not None
                 ), f"Failed to create session store {session_id} due to invalid parent"
                 store[object_id] = a_object
-            try:
-                func_info = extract_function_info(a_object)
-                if func_info:
-                    b_object[
-                        "_rdoc"
-                    ] = f"{func_info['name']}({func_info['sig']})\n{func_info['doc']}"
-                else:
-                    b_object["_rdoc"] = a_object.__doc__
-            except Exception:  # pylint: disable=broad-except
-                logger.error("Failed to extract function docstring: %s", a_object)
-                b_object["_rdoc"] = a_object.__doc__
+                b_object["_rsig"] = callable_sig(a_object)
+
+            b_object["_rdoc"] = callable_doc(a_object)
             return b_object
 
         isarray = isinstance(a_object, list)

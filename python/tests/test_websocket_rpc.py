@@ -1,19 +1,22 @@
 """Test the hypha server."""
-import pytest
-from imjoy_rpc.hypha import (
-    login,
-    connect_to_server,
-    login_sync,
-    connect_to_server_sync,
-    register_rtc_service,
-    get_rtc_service,
-    register_rtc_service_sync,
-    get_rtc_service_sync,
-)
-from . import WS_SERVER_URL
-import numpy as np
-import requests
 import asyncio
+from inspect import signature
+
+import numpy as np
+import pytest
+import requests
+from imjoy_rpc.hypha import (
+    connect_to_server,
+    connect_to_server_sync,
+    get_rtc_service,
+    get_rtc_service_sync,
+    login,
+    login_sync,
+    register_rtc_service,
+    register_rtc_service_sync,
+)
+
+from . import WS_SERVER_URL
 
 
 class ImJoyPlugin:
@@ -151,7 +154,7 @@ async def test_connect_to_server(websocket_server):
     ws = await connect_to_server({"name": "my plugin", "server_url": WS_SERVER_URL})
     await ws.export(ImJoyPlugin(ws))
 
-    def hello(name, key=12):
+    def hello(name, key=12, context=None):
         """Say hello."""
         print("Hello " + name)
         return "Hello " + name
@@ -170,7 +173,29 @@ async def test_connect_to_server(websocket_server):
     )
 
     svc = await ws.get_service("hello-world")
-    assert svc.hello.__doc__ == f"hello(name, key=12)\n{hello.__doc__}"
+    assert svc.hello.__doc__ == hello.__doc__
+    assert str(signature(svc.hello)) == "(name, key=12, context=None)"
+    assert svc.hello.__name__ == hello.__name__
+
+    await ws.register_service(
+        {
+            "name": "Hello World",
+            "id": "hello-world",
+            "description": "hello world service",
+            "config": {
+                "visibility": "protected",
+                "run_in_executor": True,
+                "require_context": True,
+            },
+            "hello": hello,
+        },
+        overwrite=True,
+    )
+
+    svc = await ws.get_service("hello-world")
+    assert svc.hello.__doc__ == hello.__doc__
+    assert str(signature(svc.hello)) == "(name, key=12)"
+    assert svc.hello.__name__ == hello.__name__
 
 
 @pytest.mark.asyncio

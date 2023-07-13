@@ -1,9 +1,18 @@
 """Provide utility functions for RPC."""
+import ast
 import asyncio
+import contextlib
 import copy
+import inspect
+import io
+import re
 import secrets
 import string
 import traceback
+from functools import partial
+from inspect import Parameter, Signature, signature
+from types import BuiltinFunctionType, FunctionType
+from typing import Any
 
 
 def generate_password(length=50):
@@ -277,3 +286,193 @@ def register_default_codecs(options=None):
         api.registerCodec(
             {"name": "zarr-group", "type": zarr.Group, "encoder": encode_zarr_store}
         )
+
+
+def extract_function_info(func):
+    """Extract function info."""
+    # Create an in-memory text stream
+    f = io.StringIO()
+
+    # Redirect the output of help to the text stream
+    with contextlib.redirect_stdout(f):
+        help(func)
+    help_string = f.getvalue()
+    match = re.search(r"(\w+)\((.*?)\)\n\s*(.*)", help_string, re.DOTALL)
+    if match:
+        func_name, func_signature, docstring = match.groups()
+        # Clean up the docstring
+        docstring = func.__doc__ or re.sub(r"\n\s*", " ", docstring).strip()
+        return {"name": func_name, "sig": func_signature, "doc": docstring}
+    else:
+        return None
+
+
+def make_signature(func, name=None, sig=None, doc=None):
+    """Change signature of func to sig, preserving original behavior.
+
+    sig can be a Signature object or a string without 'def' such as
+    "foo(a, b=0)"
+    """
+
+    if isinstance(sig, str):
+        # Parse signature string
+        func_name, sig = _str_to_signature(sig)
+        name = name or func_name
+
+    if sig:
+        func.__signature__ = sig
+
+    if doc:
+        func.__doc__ = doc
+
+    if name:
+        func.__name__ = name
+
+
+def _str_to_signature(sig_str):
+    """Parse signature string into name and Signature object."""
+    sig_str = sig_str.strip()
+    # Map of common type annotations
+    type_map = {
+        "int": int,
+        "str": str,
+        "bool": bool,
+        "float": float,
+        "dict": dict,
+        "list": list,
+        "None": type(None),
+        "Any": Any,
+    }
+
+    # Split sig_str into parameter part and return annotation part
+    parts = sig_str.split("->")
+    if len(parts) == 2:
+        sig_str, return_anno = parts
+        return_anno = return_anno.strip()
+        if return_anno in type_map:
+            return_anno = type_map[return_anno]
+    elif len(parts) == 1:
+        return_anno = None
+    else:
+        raise SyntaxError(f"Invalid signature: {sig_str}")
+
+    func_def = re.compile(r"(\w+)\((.*)\)")
+
+    m = func_def.match(sig_str)
+    if not m:
+        raise SyntaxError(f"Invalid signature: {sig_str}")
+
+    params_str = m.group(2)
+    func_name = m.group(1)
+    params = []
+
+    if params_str and params_str.strip():
+        pattern = r",(?![^\[\]]*\])"
+        for p in re.split(pattern, params_str):
+            p = p.strip()
+            if not p:  # Skip if p is empty
+                continue
+
+            if p.startswith("**"):
+                # **kwargs
+                params.append(Parameter(p.lstrip("**"), Parameter.VAR_KEYWORD))
+                continue
+
+            if p.startswith("*"):
+                # *args
+                params.append(Parameter(p.lstrip("*"), Parameter.VAR_POSITIONAL))
+                continue
+
+            name, anno, default = p, Parameter.empty, Parameter.empty
+            if ":" in p:
+                # Type annotation
+                p_split = p.split(":")
+                name = p_split[0].strip()
+                anno_str = p_split[1].strip()
+                if "=" in anno_str:
+                    anno, default = anno_str.split("=")
+                    anno = anno.strip()
+                    default = default.strip()
+                else:
+                    anno = anno_str
+
+            else:
+                if "=" in p:
+                    # Keyword argument
+                    name, default = p.split("=")
+                    name = name.strip()
+                    default = default.strip()
+
+            if isinstance(default, str):
+                default = ast.literal_eval(default)
+            if isinstance(anno, str):
+                anno = type_map.get(anno, Any)
+
+            params.append(
+                Parameter(
+                    name,
+                    Parameter.POSITIONAL_OR_KEYWORD,
+                    default=default,
+                    annotation=anno,
+                )
+            )
+    if return_anno:
+        return func_name, Signature(parameters=params, return_annotation=return_anno)
+    else:
+        return func_name, Signature(parameters=params)
+
+
+def callable_sig(any_callable, skip_context=False):
+    """Return the signature of a callable."""
+    try:
+        if isinstance(any_callable, partial):
+            signature = inspect.signature(any_callable.func)
+            name = any_callable.func.__name__
+            fixed = set(any_callable.keywords)
+        elif inspect.isclass(any_callable):
+            signature = inspect.signature(any_callable.__call__)
+            name = any_callable.__name__
+            fixed = set()
+        elif hasattr(any_callable, "__call__") and not isinstance(
+            any_callable, (FunctionType, BuiltinFunctionType)
+        ):
+            signature = inspect.signature(any_callable)
+            name = type(any_callable).__name__
+            fixed = set()
+        else:
+            signature = inspect.signature(any_callable)
+            name = any_callable.__name__
+            fixed = set()
+    except ValueError:
+        # Provide a default signature for built-in functions
+        signature = Signature(
+            parameters=[
+                Parameter(name="args", kind=Parameter.VAR_POSITIONAL),
+                Parameter(name="kwargs", kind=Parameter.VAR_KEYWORD),
+            ]
+        )
+        name = any_callable.__name__
+        fixed = set()
+
+    if skip_context:
+        fixed.add("context")
+
+    params = [p for name, p in signature.parameters.items() if name not in fixed]
+    signature = Signature(parameters=params)
+
+    # Remove invalid characters from name
+    # e.g. <lambda> -> lambda
+    name = re.sub(r"\W", "", name)
+
+    return f"{name}{signature}"
+
+
+def callable_doc(any_callable):
+    """Return the docstring of a callable."""
+    if isinstance(any_callable, partial):
+        return any_callable.func.__doc__
+
+    try:
+        return any_callable.__doc__
+    except AttributeError:
+        return None

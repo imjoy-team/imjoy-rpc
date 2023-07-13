@@ -50,6 +50,7 @@ def convert_sync_to_async(sync_func, loop, executor):
         obj = _encode_callables(result, convert_async_to_sync, loop, executor)
         return obj
 
+    wrapped_async._sync = sync_func
     return wrapped_async
 
 
@@ -68,6 +69,7 @@ def convert_async_to_sync(async_func, loop, executor):
         result = asyncio.run_coroutine_threadsafe(async_wrapper(), loop).result()
         return result
 
+    wrapped_sync._async = async_func
     return wrapped_sync
 
 
