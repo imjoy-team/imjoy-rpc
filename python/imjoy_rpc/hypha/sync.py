@@ -90,11 +90,12 @@ def _encode_callables(obj, wrap, loop, executor):
 class SyncHyphaServer:
     """A class to interact with the Hypha server synchronously."""
 
-    def __init__(self):
+    def __init__(self, sync_max_workers=2):
         self.loop = None
         self.thread = None
         self.server = None
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        # Note: we need at least 2 workers to avoid deadlock
+        self.executor = ThreadPoolExecutor(max_workers=sync_max_workers)
 
     async def _connect(self, config):
         config["loop"] = self.loop
@@ -117,7 +118,7 @@ class SyncHyphaServer:
 
 def connect_to_server(config):
     """Connect to the Hypha server synchronously."""
-    server = SyncHyphaServer()
+    server = SyncHyphaServer(sync_max_workers=config.get("sync_max_workers", 2))
 
     if not server.loop:
         server.thread = threading.Thread(target=server._start_loop, daemon=True)

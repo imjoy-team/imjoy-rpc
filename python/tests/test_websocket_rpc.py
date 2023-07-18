@@ -298,3 +298,69 @@ def test_rtc_service_sync(websocket_server):
     svc = pc.get_service("echo-service")
     assert svc.echo("hello") == "hello", "echo service failed"
     pc.close()
+
+
+def test_connect_to_server_sync_lock(websocket_server):
+    """Test connecting to the server sync with thread locking."""
+    server = connect_to_server_sync(
+        {"client_id": "test-plugin", "server_url": WS_SERVER_URL}
+    )
+    workspace = server.config.workspace
+    token = server.generate_token()
+    assert workspace and token
+
+    services = server.list_services("public")
+    assert isinstance(services, list)
+
+    def hello(name):
+        print("Hello " + name)
+        return "Hello " + name
+
+    def call_hello2():
+        svc = server.get_service("hello-world-2")
+        return svc.call_hello()
+
+    server.register_service(
+        {
+            "name": "Hello World",
+            "id": "hello-world",
+            "config": {
+                "visibility": "protected",
+                "run_in_executor": True,
+            },
+            "hello": hello,
+            "call_hello2": call_hello2,
+        }
+    )
+
+    svc = server.get_service("hello-world")
+    svc.hello("world")
+
+    server2 = connect_to_server_sync(
+        {
+            "client_id": "test-plugin-2",
+            "server_url": WS_SERVER_URL,
+            "workspace": workspace,
+            "token": token,
+        }
+    )
+
+    def call_hello():
+        svc = server2.get_service("hello-world")
+        return svc.hello("world")
+
+    server2.register_service(
+        {
+            "name": "Hello World 2",
+            "id": "hello-world-2",
+            "config": {
+                "visibility": "protected",
+                "run_in_executor": True,
+            },
+            "call_hello": call_hello,
+        }
+    )
+
+    # This will not work if the thread is locked
+    svc = server.get_service("hello-world")
+    svc.call_hello2()
