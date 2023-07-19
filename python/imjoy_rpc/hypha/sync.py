@@ -37,6 +37,8 @@ def convert_sync_to_async(sync_func, loop, executor):
     @wraps(sync_func)
     async def wrapped_async(*args, **kwargs):
         result_future = loop.create_future()
+        args = _encode_callables(args, convert_async_to_sync, loop, executor)
+        kwargs = _encode_callables(kwargs, convert_async_to_sync, loop, executor)
 
         def run_and_set_result():
             try:
