@@ -93,12 +93,16 @@ class WebsocketRPCConnection:
                 self._retry_count = MAX_RETRY
             else:
                 self._retry_count += 1
-                logger.exception("Failed to connect to %s, retrying %d/%d", server_url.split("?")[0], self._retry_count, MAX_RETRY)
+                logger.exception(
+                    "Failed to connect to %s, retrying %d/%d",
+                    server_url.split("?")[0],
+                    self._retry_count,
+                    MAX_RETRY,
+                )
         finally:
             if self._opening:
                 await self._opening
                 self._opening = None
-        
 
     async def emit_message(self, data):
         """Emit a message."""
@@ -175,7 +179,11 @@ async def login(config):
     callback = config.get("login_callback")
 
     server = await connect_to_server(
-        {"name": "initial login client", "server_url": config.get("server_url"), "method_timeout": timeout}
+        {
+            "name": "initial login client",
+            "server_url": config.get("server_url"),
+            "method_timeout": timeout,
+        }
     )
     try:
         svc = await server.get_service(service_id)

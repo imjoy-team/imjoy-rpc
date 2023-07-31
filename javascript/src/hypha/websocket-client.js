@@ -60,7 +60,7 @@ class WebsocketRPCConnection {
         console.info("WebSocket connection established");
         this._retry_count = 0; // Reset retry count
         resolve();
-      }
+      };
 
       websocket.onclose = event => {
         console.log("websocket closed");
