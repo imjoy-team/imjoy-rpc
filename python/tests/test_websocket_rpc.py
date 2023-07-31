@@ -58,7 +58,7 @@ async def test_login(websocket_server):
         {
             "server_url": "https://ai.imjoy.io",
             "login_callback": callback,
-            "login_timeout": 3,
+            "login_timeout": 20,
         }
     )
     assert token == TOKEN
@@ -79,7 +79,7 @@ def test_login_sync(websocket_server):
         {
             "server_url": "https://ai.imjoy.io",
             "login_callback": callback,
-            "login_timeout": 3,
+            "login_timeout": 20,
         }
     )
     assert token == TOKEN

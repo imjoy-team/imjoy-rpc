@@ -38,7 +38,7 @@ MAX_RETRY = 10000
 class WebsocketRPCConnection:
     """Represent a websocket connection."""
 
-    def __init__(self, server_url, client_id, workspace=None, token=None, timeout=5):
+    def __init__(self, server_url, client_id, workspace=None, token=None, timeout=60):
         """Set up instance."""
         self._websocket = None
         self._handle_message = None
@@ -93,15 +93,12 @@ class WebsocketRPCConnection:
                 self._retry_count = MAX_RETRY
             else:
                 self._retry_count += 1
-                self._opening.set_exception(
-                    Exception(
-                        f"Failed to connect to {server_url.split('?')[0]} (retry {self._retry_count}/{MAX_RETRY}): {exp}"
-                    )
-                )
+                logger.exception("Failed to connect to %s, retrying %d/%d", server_url.split("?")[0], self._retry_count, MAX_RETRY)
         finally:
             if self._opening:
                 await self._opening
                 self._opening = None
+        
 
     async def emit_message(self, data):
         """Emit a message."""
@@ -179,7 +176,7 @@ async def login(config):
     callback = config.get("login_callback")
 
     server = await connect_to_server(
-        {"name": "initial login client", "server_url": server_url}
+        {"name": "initial login client", "server_url": server_url, "method_timeout": timeout}
     )
     try:
         svc = await server.get_service(service_id)
@@ -214,7 +211,7 @@ async def connect_to_server(config):
         client_id,
         workspace=config.get("workspace"),
         token=config.get("token"),
-        timeout=config.get("method_timeout", 5),
+        timeout=config.get("method_timeout", 60),
     )
     await connection.open()
     rpc = RPC(

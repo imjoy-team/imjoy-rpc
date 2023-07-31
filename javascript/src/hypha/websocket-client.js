@@ -10,7 +10,7 @@ export { getRTCService, registerRTCService };
 const MAX_RETRY = 10000;
 
 class WebsocketRPCConnection {
-  constructor(server_url, client_id, workspace, token, timeout = 5) {
+  constructor(server_url, client_id, workspace, token, timeout = 60) {
     assert(server_url && client_id, "server_url and client_id are required");
     server_url = server_url + "?client_id=" + client_id;
     if (workspace) {
@@ -24,7 +24,7 @@ class WebsocketRPCConnection {
     this._reconnection_token = null;
     this._server_url = server_url;
     this._timeout = timeout * 1000; // converting to ms
-    this._opening = false;
+    this._opening = null;
     this._retry_count = 0;
     this._closing = false;
   }
@@ -39,39 +39,48 @@ class WebsocketRPCConnection {
   }
 
   async open() {
-    if (this._opening || this._retry_count >= MAX_RETRY) {
-      return;
+    if (this._opening) {
+      return this._opening;
     }
+    this._opening = new Promise((resolve, reject) => {
+      const server_url = this._reconnection_token
+        ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
+        : this._server_url;
+      console.info("Creating a new connection to ", server_url.split("?")[0]);
 
-    this._opening = true;
-    const server_url = this._reconnection_token
-      ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
-      : this._server_url;
-    console.info("Creating a new connection to ", server_url.split("?")[0]);
+      const websocket = new WebSocket(server_url);
+      websocket.binaryType = "arraybuffer";
+      websocket.onmessage = event => {
+        const data = event.data;
+        this._handle_message(data);
+      };
 
-    this._websocket = new WebSocket(server_url);
-    this._websocket.binaryType = "arraybuffer";
-    this._websocket.onmessage = event => {
-      const data = event.data;
-      this._handle_message(data);
-    };
-
-    this._websocket.onclose = event => {
-      console.log("websocket closed");
-      if (!this._closing) {
-        console.log("Connection interrupted, retrying...");
-        this._retry_count++;
-        setTimeout(() => this.open(), this._timeout);
+      websocket.onopen = () => {
+        this._websocket = websocket;
+        console.info("WebSocket connection established");
+        this._retry_count = 0; // Reset retry count
+        resolve();
       }
-      this._websocket = null;
-      this._opening = false;
-    };
 
-    this._websocket.onerror = event => {
-      console.log("Error occurred in websocket connection: ", event);
-      this._websocket = null;
-      this._opening = false;
-    };
+      websocket.onclose = event => {
+        console.log("websocket closed");
+        if (!this._closing) {
+          console.log("Websocket connection interrupted, retrying...");
+          this._retry_count++;
+          setTimeout(() => this.open(), this._timeout);
+        }
+        this._websocket = null;
+      };
+
+      websocket.onerror = event => {
+        console.log("Error occurred in websocket connection: ", event);
+        reject(new Error("Websocket connection failed."));
+        this._websocket = null;
+      };
+    }).finally(() => {
+      this._opening = null;
+    });
+    return this._opening;
   }
 
   async emit_message(data) {
@@ -172,7 +181,7 @@ export async function connectToServer(config) {
     clientId,
     config.workspace,
     config.token,
-    config.method_timeout || 5
+    config.method_timeout || 60
   );
   await connection.open();
   const rpc = new RPC(connection, {
