@@ -369,7 +369,10 @@ def _str_to_signature(sig_str):
 
     params_str = m.group(2)
     func_name = m.group(1)
-    params = []
+
+    positional_params = []
+    keyword_params = []
+    variadic_params = []
 
     if params_str and params_str.strip():
         pattern = r",(?![^\[\]]*\])"
@@ -380,12 +383,14 @@ def _str_to_signature(sig_str):
 
             if p.startswith("**"):
                 # **kwargs
-                params.append(Parameter(p.lstrip("**"), Parameter.VAR_KEYWORD))
+                variadic_params.append(Parameter(p.lstrip("**"), Parameter.VAR_KEYWORD))
                 continue
 
             if p.startswith("*"):
                 # *args
-                params.append(Parameter(p.lstrip("*"), Parameter.VAR_POSITIONAL))
+                variadic_params.append(
+                    Parameter(p.lstrip("*"), Parameter.VAR_POSITIONAL)
+                )
                 continue
 
             name, anno, default = p, Parameter.empty, Parameter.empty
@@ -413,14 +418,19 @@ def _str_to_signature(sig_str):
             if isinstance(anno, str):
                 anno = type_map.get(anno, Any)
 
-            params.append(
-                Parameter(
-                    name,
-                    Parameter.POSITIONAL_OR_KEYWORD,
-                    default=default,
-                    annotation=anno,
-                )
+            parameter = Parameter(
+                name,
+                Parameter.POSITIONAL_OR_KEYWORD,
+                default=default,
+                annotation=anno,
             )
+            if "=" in p:
+                keyword_params.append(parameter)
+            else:
+                positional_params.append(parameter)
+
+    params = positional_params + keyword_params + variadic_params
+
     if return_anno:
         return func_name, Signature(parameters=params, return_annotation=return_anno)
     else:
