@@ -7,10 +7,12 @@ export { version as VERSION } from "../../package.json";
 export { loadRequirements };
 export { getRTCService, registerRTCService };
 
-const MAX_RETRY = 10000;
+function b64toArrayBuffer(base64, type = "application/octet-stream") {
+  return fetch(`data:${type};base64,${base64}`).then(res => res.arrayBuffer());
+}
 
-class WebsocketRPCConnection {
-  constructor(server_url, client_id, workspace, token, timeout = 5) {
+class SSERPCConnection {
+  constructor(server_url, client_id, workspace, token, timeout = 120) {
     assert(server_url && client_id, "server_url and client_id are required");
     server_url = server_url + "?client_id=" + client_id;
     if (workspace) {
@@ -19,7 +21,8 @@ class WebsocketRPCConnection {
     if (token) {
       server_url += "&token=" + token;
     }
-    this._websocket = null;
+    server_url += "&session_id=" + randId();
+    this._events = null;
     this._handle_message = null;
     this._reconnection_token = null;
     this._server_url = server_url;
@@ -38,110 +41,100 @@ class WebsocketRPCConnection {
     this._handle_message = handler;
   }
 
-  async open() {
-    if (this._opening || this._retry_count >= MAX_RETRY) {
-      return;
-    }
+  open() {
+    if (this._opening) return this._opening;
+    this._opening = new Promise((resolve, reject) => {
+      const server_url = this._reconnection_token
+        ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
+        : this._server_url;
+      console.info("Creating a new connection to ", server_url.split("?")[0]);
 
-    this._opening = true;
-    const server_url = this._reconnection_token
-      ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
-      : this._server_url;
-    console.info("Creating a new connection to ", server_url.split("?")[0]);
+      this._events = new EventSource(server_url);
 
-    this._websocket = new WebSocket(server_url);
-    this._websocket.binaryType = "arraybuffer";
-    this._websocket.onmessage = event => {
-      const data = event.data;
-      this._handle_message(data);
-    };
+      this._events.onmessage = async event => {
+        const data = await b64toArrayBuffer(event.data);
+        this._handle_message(data);
+      };
 
-    this._websocket.onclose = event => {
-      console.log("websocket closed");
-      if (!this._closing) {
-        console.log("Connection interrupted, retrying...");
-        this._retry_count++;
-        setTimeout(() => this.open(), this._timeout);
-      }
-      this._websocket = null;
-      this._opening = false;
-    };
+      this._events.onclose = event => {
+        console.log("eventsource closed");
+        if (!this._closing) {
+          console.log("Connection interrupted, retrying...");
+          this._retry_count++;
+          setTimeout(() => this.open(), this._timeout);
+        }
+        this._events = null;
+        this._opening = false;
+        reject("closed");
+      };
 
-    this._websocket.onerror = event => {
-      console.log("Error occurred in websocket connection: ", event);
-      this._websocket = null;
-      this._opening = false;
-    };
+      this._events.onerror = event => {
+        console.trace();
+        console.log(
+          "Error occurred in eventsource connection: ",
+          event.message
+        );
+        // this._events = null;
+        debugger;
+        // this._opening = false;
+        reject(event.toString());
+      };
+      this._events.onopen = event => {
+        resolve(true);
+      };
+    });
+    return this._opening;
+  }
+
+  async _send(data) {
+    await fetch(this._server_url, {
+      method: "POST",
+      mode: "cors", // no-cors, *cors, same-origin
+      cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+      credentials: "same-origin", // include, *same-origin, omit
+      headers: {
+        "Content-Type": "octet-stream"
+        // 'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      redirect: "follow", // manual, *follow, error
+      referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+      body: data // body data type must match "Content-Type" header
+    });
   }
 
   async emit_message(data) {
     assert(this._handle_message, "No handler for message");
-    if (!this._websocket || this._websocket.readyState !== WebSocket.OPEN) {
+    if (!this._events || this._events.readyState === EventSource.CLOSED) {
       await this.open();
     }
-    return new Promise((resolve, reject) => {
-      if (!this._websocket) {
-        reject(new Error("Websocket connection not available"));
-      } else if (this._websocket.readyState === WebSocket.CONNECTING) {
-        const timeout = setTimeout(() => {
-          reject(new Error("WebSocket connection timed out"));
-        }, this._timeout);
-
-        this._websocket.addEventListener("open", () => {
-          clearTimeout(timeout);
-          try {
-            this._websocket.send(data);
-            resolve();
-          } catch (exp) {
-            console.error(`Failed to send data, error: ${exp}`);
-            reject(exp);
-          }
-        });
-      } else if (this._websocket.readyState === WebSocket.OPEN) {
-        try {
-          this._websocket.send(data);
-          resolve();
-        } catch (exp) {
-          console.error(`Failed to send data, error: ${exp}`);
-          reject(exp);
-        }
-      } else {
-        reject(new Error("WebSocket is not in the OPEN or CONNECTING state"));
-      }
-    });
+    await this._send(data);
   }
 
   disconnect(reason) {
     this._closing = true;
-    const ws = this._websocket;
-    this._websocket = null;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.close(1000, reason);
+    const ev = this._events;
+    this._events = null;
+    if (ev && ev.readyState === EventSource.OPEN) {
+      ev.close();
     }
-    console.info(`Websocket connection disconnected (${reason})`);
+    console.info(`EventSource connection disconnected (${reason})`);
   }
 }
 
 function normalizeServerUrl(server_url) {
   if (!server_url) throw new Error("server_url is required");
-  if (server_url.startsWith("http://")) {
-    server_url =
-      server_url.replace("http://", "ws://").replace(/\/$/, "") + "/ws";
-  } else if (server_url.startsWith("https://")) {
-    server_url =
-      server_url.replace("https://", "wss://").replace(/\/$/, "") + "/ws";
-  }
+  server_url = server_url.replace(/\/$/, "") + "/sse";
   return server_url;
 }
 
 export async function login(config) {
   const service_id = config.login_service_id || "public/*:hypha-login";
-  const timeout = config.login_timeout || 60;
+  const timeout = config.login_timeout || 120;
   const callback = config.login_callback;
-
   const server = await connectToServer({
     name: "initial login client",
-    server_url: config.server_url
+    server_url: config.server_url,
+    method_timeout: timeout
   });
   try {
     const svc = await server.get_service(service_id);
@@ -166,22 +159,25 @@ export async function connectToServer(config) {
   }
   let server_url = normalizeServerUrl(config.server_url);
 
-  let connection = new WebsocketRPCConnection(
+  let connection = new SSERPCConnection(
     server_url,
     clientId,
     config.workspace,
     config.token,
-    config.method_timeout || 5
+    config.method_timeout || 120
   );
   await connection.open();
   const rpc = new RPC(connection, {
     client_id: clientId,
     manager_id: "workspace-manager",
-    default_context: { connection_type: "websocket" },
+    default_context: { connection_type: "eventsource" },
     name: config.name,
     method_timeout: config.method_timeout
   });
-  const wm = await rpc.get_remote_service("workspace-manager:default");
+  const wm = await rpc.get_remote_service(
+    "workspace-manager:default",
+    config.method_timeout
+  );
   wm.rpc = rpc;
 
   async function _export(api) {
@@ -236,7 +232,7 @@ export async function connectToServer(config) {
             return rtcSvc;
           } catch (e) {
             console.warn(
-              "Failed to get webrtc service, using websocket connection",
+              "Failed to get webrtc service, using eventsource connection",
               e
             );
           }

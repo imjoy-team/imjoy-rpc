@@ -12,6 +12,7 @@ module.exports = {
       'imjoyRPCSocketIO': path.resolve(__dirname, 'src', 'socketIOMain.js'),
       'hyphaRPC': path.resolve(__dirname, 'src', 'hypha', 'rpc.js'),
       'hyphaWebsocketClient': path.resolve(__dirname, 'src', 'hypha', 'websocket-client.js'),
+      'hyphaSSEClient': path.resolve(__dirname, 'src', 'hypha', 'sse-client.js'),
   },
   output: {
       path: path.resolve(__dirname, 'dist'),
@@ -21,6 +22,7 @@ module.exports = {
           "imjoyRPCSocketIO": 'imjoy-rpc-socketio',
           "hyphaRPC": "hypha-rpc",
           "hyphaWebsocketClient": "hypha-rpc-websocket",
+          "hyphaSSEClient": "hypha-rpc-sse",
         }
         const name = output_names[pathData.chunk.name];
         return process.env.NODE_ENV === 'production'? name + '.min.js': name + '.js';

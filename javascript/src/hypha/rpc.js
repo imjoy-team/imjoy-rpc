@@ -176,7 +176,7 @@ export class RPC extends MessageEmitter {
     this._manager_service = null;
     this._max_message_buffer_size = max_message_buffer_size;
     this._chunk_store = {};
-    this._method_timeout = method_timeout || 20;
+    this._method_timeout = method_timeout || 30;
 
     // make sure there is an execute function
     this._services = {};
@@ -219,7 +219,7 @@ export class RPC extends MessageEmitter {
     if (this.manager_id) {
       // try to get the root service
       try {
-        await this.get_manager_service(5.0);
+        await this.get_manager_service(30.0);
         assert(this._manager_service);
         this._connection_info = await this._manager_service.get_connection_info();
         if (
@@ -356,18 +356,22 @@ export class RPC extends MessageEmitter {
   }
 
   _on_message(message) {
-    assert(message instanceof ArrayBuffer);
-    let unpacker = decodeMulti(message);
-    const { done, value } = unpacker.next();
-    const main = value;
-    // Add trusted context to the method call
-    main["ctx"] = JSON.parse(JSON.stringify(main));
-    Object.assign(main["ctx"], this.default_context);
-    if (!done) {
-      let extra = unpacker.next();
-      Object.assign(main, extra.value);
+    try {
+      assert(message instanceof ArrayBuffer);
+      let unpacker = decodeMulti(message);
+      const { done, value } = unpacker.next();
+      const main = value;
+      // Add trusted context to the method call
+      main["ctx"] = JSON.parse(JSON.stringify(main));
+      Object.assign(main["ctx"], this.default_context);
+      if (!done) {
+        let extra = unpacker.next();
+        Object.assign(main, extra.value);
+      }
+      this._fire(main["type"], main);
+    } catch (error) {
+      console.error(e);
     }
-    this._fire(main["type"], main);
   }
 
   reset() {
@@ -873,7 +877,7 @@ export class RPC extends MessageEmitter {
     if (this.manager_id) {
       // try to get the root service
       try {
-        await this.get_manager_service(5.0);
+        await this.get_manager_service(30.0);
         assert(this._manager_service);
         await this._manager_service.update_client_info(this.get_client_info());
       } catch (exp) {

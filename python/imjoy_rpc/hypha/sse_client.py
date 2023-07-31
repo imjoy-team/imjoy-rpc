@@ -13,7 +13,7 @@ try:
     import js  # noqa: F401
     import pyodide  # noqa: F401
 
-    from .pyodide_websocket import PyodideWebsocketRPCConnection
+    from .pyodide_websocket import PyodideSSERPCConnection
 
     def custom_exception_handler(loop, context):
         """Handle exceptions."""
@@ -35,8 +35,8 @@ logger.setLevel(logging.WARNING)
 MAX_RETRY = 10000
 
 
-class WebsocketRPCConnection:
-    """Represent a websocket connection."""
+class SSERPCConnection:
+    """Represent a server-side event connection."""
 
     def __init__(self, server_url, client_id, workspace=None, token=None, timeout=5):
         """Set up instance."""
@@ -173,12 +173,13 @@ def normalize_server_url(server_url):
 
 async def login(config):
     """Login to the hypha server."""
+    server_url = normalize_server_url(config.get("server_url"))
     service_id = config.get("login_service_id", "public/*:hypha-login")
     timeout = config.get("login_timeout", 60)
     callback = config.get("login_callback")
 
     server = await connect_to_server(
-        {"name": "initial login client", "server_url": config.get("server_url")}
+        {"name": "initial login client", "server_url": server_url}
     )
     try:
         svc = await server.get_service(service_id)
@@ -204,7 +205,7 @@ async def connect_to_server(config):
     server_url = normalize_server_url(config["server_url"])
 
     if IS_PYODIDE:
-        Connection = PyodideWebsocketRPCConnection
+        Connection = PyodideSSERPCConnection
     else:
         Connection = WebsocketRPCConnection
 

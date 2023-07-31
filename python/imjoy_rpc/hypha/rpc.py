@@ -154,7 +154,7 @@ class RPC(MessageEmitter):
         self._manager_service = None
         self._max_message_buffer_size = max_message_buffer_size
         self._chunk_store = {}
-        self._method_timeout = 10 if method_timeout is None else method_timeout
+        self._method_timeout = 30 if method_timeout is None else method_timeout
         self._remote_logger = logger
         self.loop = loop or asyncio.get_event_loop()
         super().__init__(self._remote_logger)
@@ -209,7 +209,7 @@ class RPC(MessageEmitter):
         if self.manager_id:
             # try to get the root service
             try:
-                await self.get_manager_service(timeout=5.0)
+                await self.get_manager_service(timeout=30.0)
                 assert self._manager_service
                 self._connection_info = (
                     await self._manager_service.get_connection_info()
@@ -873,7 +873,7 @@ class RPC(MessageEmitter):
         if self.manager_id:
             # try to get the root service
             try:
-                await self.get_manager_service(timeout=5.0)
+                await self.get_manager_service(timeout=30.0)
                 assert self._manager_service
                 await self._manager_service.update_client_info(self.get_client_info())
             except Exception as exp:  # pylint: disable=broad-except
