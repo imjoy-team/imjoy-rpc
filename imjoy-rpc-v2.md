@@ -227,6 +227,8 @@ Now, in the browser, you can connect to the server and get the webrtc service:
 <script>
 const server = await hyphaWebsocketClient.connectToServer({"server_url": "https://ai.imjoy.io"})
 const pc = await hyphaWebsocketClient.getRTCService(server, "webrtc-service");
+const svc = await pc.get_service("hello"); // now you can get service via webrtc
+// ...
 </script>
 ```
 
