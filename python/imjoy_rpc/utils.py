@@ -15,6 +15,8 @@ import string
 import threading
 import traceback
 import uuid
+import base64
+import json
 
 from .werkzeug.local import Local
 
@@ -875,3 +877,51 @@ def open_elfinder(path, mode="r", encoding=None, newline=None):
     else:
         url = path
     return HTTPFile(url, mode=mode, encoding=encoding, newline=newline, name=path)
+
+
+def elfinder_listdir(path):
+    """List the directory from elFinder."""
+    assert path.startswith("/"), "path must start with /"
+    if path == "/":
+        return ["home", "tmp"]
+    # extract the first part of the path
+    parts = path.split("/")
+    base_path = parts[1]
+    path = "/".join(parts[2:])
+    if not path:
+        path = "/"
+    # Base64 encode the path
+    encoded_path = base64.b64encode(path.encode()).decode()
+    if base_path == "home":
+        base = "v0_"
+    elif base_path == "tmp":
+        base = "v1_"
+    else:
+        base = "v2_"
+    # Prepare the target parameter
+    target_param = base + encoded_path
+
+    # Prepare the URL
+    url = f"{location.origin}/fs/connector?cmd=ls&target={target_param}"
+
+    if IS_PYODIDE:
+        req = _sync_xhr_get(url)
+        if req.status in [200, 206]:
+            file_list = json.loads(req.response.to_py().tobytes().decode())
+            if 'list' in file_list:
+                return file_list['list']
+            else:
+                return []
+        else:
+            raise FileNotFoundError(f"Directory '{path}' could not be found, HTTP status code: {req.status}")
+    else:
+        req = Request(url)
+        response = urlopen(req)
+        if response.getcode() == 200:
+            file_list = json.loads(response.read().decode())
+            if 'list' in file_list:
+                return file_list['list']
+            else:
+                return []
+        else:
+            raise FileNotFoundError(f"Directory '{path}' could not be found, HTTP status code: {response.getcode()}")
