@@ -190,7 +190,7 @@ export async function connectToServer(config) {
     config.workspace,
     config.token,
     config.method_timeout || 60,
-    config.WebSocketClass,
+    config.WebSocketClass
   );
   await connection.open();
   const rpc = new RPC(connection, {
