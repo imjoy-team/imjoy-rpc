@@ -10,7 +10,14 @@ export { getRTCService, registerRTCService };
 const MAX_RETRY = 10000;
 
 class WebsocketRPCConnection {
-  constructor(server_url, client_id, workspace, token, timeout = 60) {
+  constructor(
+    server_url,
+    client_id,
+    workspace,
+    token,
+    timeout = 60,
+    WebSocketClass = null
+  ) {
     assert(server_url && client_id, "server_url and client_id are required");
     server_url = server_url + "?client_id=" + client_id;
     if (workspace) {
@@ -27,6 +34,8 @@ class WebsocketRPCConnection {
     this._opening = null;
     this._retry_count = 0;
     this._closing = false;
+    // Allow to override the WebSocket class for mocking or testing
+    this._WebSocketClass = WebSocketClass || WebSocket;
   }
 
   set_reconnection_token(token) {
@@ -48,7 +57,7 @@ class WebsocketRPCConnection {
         : this._server_url;
       console.info("Creating a new connection to ", server_url.split("?")[0]);
 
-      const websocket = new WebSocket(server_url);
+      const websocket = new this._WebSocketClass(server_url);
       websocket.binaryType = "arraybuffer";
       websocket.onmessage = event => {
         const data = event.data;
@@ -180,7 +189,8 @@ export async function connectToServer(config) {
     clientId,
     config.workspace,
     config.token,
-    config.method_timeout || 60
+    config.method_timeout || 60,
+    config.WebSocketClass,
   );
   await connection.open();
   const rpc = new RPC(connection, {

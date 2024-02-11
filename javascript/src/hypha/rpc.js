@@ -749,7 +749,9 @@ export class RPC extends MessageEmitter {
   ) {
     let target_id = encoded_method._rtarget;
     if (remote_workspace && !target_id.includes("/")) {
-      target_id = remote_workspace + "/" + target_id;
+      if (remote_workspace !== target_id) {
+        target_id = remote_workspace + "/" + target_id;
+      }
       // Fix the target id to be an absolute id
       encoded_method._rtarget = target_id;
     }
