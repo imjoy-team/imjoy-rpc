@@ -370,7 +370,7 @@ export class RPC extends MessageEmitter {
       }
       this._fire(main["type"], main);
     } catch (error) {
-      console.error(e);
+      console.error(error);
     }
   }
 
