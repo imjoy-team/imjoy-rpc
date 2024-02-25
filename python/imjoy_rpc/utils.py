@@ -233,6 +233,7 @@ class MessageEmitter:
 
     def once(self, event, handler):
         """Register an event handler that should only run once."""
+
         # wrap the handler function,
         # this is needed because setting property
         # won't work for member function of a class instance
@@ -908,20 +909,24 @@ def elfinder_listdir(path):
         req = _sync_xhr_get(url)
         if req.status in [200, 206]:
             file_list = json.loads(req.response.to_py().tobytes().decode())
-            if 'list' in file_list:
-                return file_list['list']
+            if "list" in file_list:
+                return file_list["list"]
             else:
                 return []
         else:
-            raise FileNotFoundError(f"Directory '{path}' could not be found, HTTP status code: {req.status}")
+            raise FileNotFoundError(
+                f"Directory '{path}' could not be found, HTTP status code: {req.status}"
+            )
     else:
         req = Request(url)
         response = urlopen(req)
         if response.getcode() == 200:
             file_list = json.loads(response.read().decode())
-            if 'list' in file_list:
-                return file_list['list']
+            if "list" in file_list:
+                return file_list["list"]
             else:
                 return []
         else:
-            raise FileNotFoundError(f"Directory '{path}' could not be found, HTTP status code: {response.getcode()}")
+            raise FileNotFoundError(
+                f"Directory '{path}' could not be found, HTTP status code: {response.getcode()}"
+            )

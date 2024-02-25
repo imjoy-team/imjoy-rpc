@@ -191,6 +191,7 @@ export class RPC extends MessageEmitter {
         name: "RPC built-in services",
         config: { require_context: true, visibility: "public" },
         ping: this._ping.bind(this),
+        get_client_info: this.get_client_info.bind(this),
         get_service: this.get_local_service.bind(this),
         register_service: this.register_service.bind(this),
         message_cache: {
@@ -893,7 +894,7 @@ export class RPC extends MessageEmitter {
     }
   }
 
-  get_client_info() {
+  get_client_info(context) {
     const services = [];
     for (let service of Object.values(this._services)) {
       services.push({

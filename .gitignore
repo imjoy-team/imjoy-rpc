@@ -1,5 +1,6 @@
 *.egg-info
 */dist
+.pypirc
 .ipynb_checkpoints
 #----------------------------------------------------------------------------
 # EMBER-CLI DEFAULT
