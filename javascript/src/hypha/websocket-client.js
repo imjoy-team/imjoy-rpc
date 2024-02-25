@@ -8,7 +8,14 @@ export { loadRequirements };
 export { getRTCService, registerRTCService };
 
 class WebsocketRPCConnection {
-  constructor(server_url, client_id, workspace, token, timeout = 60, WebSocketClass = null) {
+  constructor(
+    server_url,
+    client_id,
+    workspace,
+    token,
+    timeout = 60,
+    WebSocketClass = null
+  ) {
     assert(server_url && client_id, "server_url and client_id are required");
     this._server_url = server_url;
     this._client_id = client_id;
@@ -54,14 +61,16 @@ class WebsocketRPCConnection {
         resolve(websocket);
       };
 
-      websocket.onerror = (event) => {
+      websocket.onerror = event => {
         console.error("WebSocket connection error:", event);
         reject(event);
       };
 
-      websocket.onclose = (event) => {
+      websocket.onclose = event => {
         if (event.code === 1003 && attempt_fallback) {
-          console.info("Received 1003 error, attempting connection with query parameters.");
+          console.info(
+            "Received 1003 error, attempting connection with query parameters."
+          );
           this._attempt_connection_with_query_params(server_url)
             .then(resolve)
             .catch(reject);
@@ -70,7 +79,7 @@ class WebsocketRPCConnection {
         }
       };
 
-      websocket.onmessage = (event) => {
+      websocket.onmessage = event => {
         const data = event.data;
         this._handle_message(data);
       };
@@ -80,23 +89,29 @@ class WebsocketRPCConnection {
   async _attempt_connection_with_query_params(server_url) {
     // Initialize an array to hold parts of the query string
     const queryParamsParts = [];
-  
+
     // Conditionally add each parameter if it has a non-empty value
-    if (this._client_id) queryParamsParts.push(`client_id=${encodeURIComponent(this._client_id)}`);
-    if (this._workspace) queryParamsParts.push(`workspace=${encodeURIComponent(this._workspace)}`);
-    if (this._token) queryParamsParts.push(`token=${encodeURIComponent(this._token)}`);
-    if (this._reconnection_token) queryParamsParts.push(`reconnection_token=${encodeURIComponent(this._reconnection_token)}`);
-  
+    if (this._client_id)
+      queryParamsParts.push(`client_id=${encodeURIComponent(this._client_id)}`);
+    if (this._workspace)
+      queryParamsParts.push(`workspace=${encodeURIComponent(this._workspace)}`);
+    if (this._token)
+      queryParamsParts.push(`token=${encodeURIComponent(this._token)}`);
+    if (this._reconnection_token)
+      queryParamsParts.push(
+        `reconnection_token=${encodeURIComponent(this._reconnection_token)}`
+      );
+
     // Join the parts with '&' to form the final query string, prepend '?' if there are any parameters
-    const queryString = queryParamsParts.length > 0 ? `?${queryParamsParts.join('&')}` : '';
-  
+    const queryString =
+      queryParamsParts.length > 0 ? `?${queryParamsParts.join("&")}` : "";
+
     // Construct the full URL by appending the query string if it exists
     const full_url = server_url + queryString;
-  
+
     this._legacy_auth = true; // Assuming this flag is needed for some other logic
     return await this._attempt_connection(full_url, false);
   }
-  
 
   async open() {
     if (this._closing || this._websocket) {
@@ -105,7 +120,7 @@ class WebsocketRPCConnection {
     try {
       this._opening = true;
       this._websocket = await this._attempt_connection(this._server_url);
-      if(this._legacy_auth){
+      if (this._legacy_auth) {
         // Send authentication info as the first message if connected without query params
         const authInfo = JSON.stringify({
           client_id: this._client_id,
@@ -127,7 +142,7 @@ class WebsocketRPCConnection {
   }
 
   async emit_message(data) {
-    if(this._closing) {
+    if (this._closing) {
       throw new Error("Connection is closing");
     }
     await this._opening;
