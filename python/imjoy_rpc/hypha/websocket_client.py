@@ -3,8 +3,8 @@ import asyncio
 import inspect
 import logging
 import sys
+import json
 
-import msgpack
 import shortuuid
 
 from .rpc import RPC
@@ -32,8 +32,6 @@ logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("websocket-client")
 logger.setLevel(logging.WARNING)
 
-MAX_RETRY = 10000
-
 
 class WebsocketRPCConnection:
     """Represent a websocket connection."""
@@ -42,19 +40,18 @@ class WebsocketRPCConnection:
         """Set up instance."""
         self._websocket = None
         self._handle_message = None
+        self._disconnect_handler = None  # Disconnection handler
+        self._on_open = None  # Connection open handler
         assert server_url and client_id
-        server_url = server_url + f"?client_id={client_id}"
-        if workspace is not None:
-            server_url += f"&workspace={workspace}"
-        if token:
-            server_url += f"&token={token}"
         self._server_url = server_url
+        self._client_id = client_id
+        self._workspace = workspace
+        self._token = token
         self._reconnection_token = None
-        self._listen_task = None
         self._timeout = timeout
-        self._opening = False
-        self._retry_count = 0
         self._closing = False
+        self._opening = False
+        self._legacy_auth = None
 
     def on_message(self, handler):
         """Handle message."""
@@ -65,88 +62,127 @@ class WebsocketRPCConnection:
         """Set reconnect token."""
         self._reconnection_token = token
 
-    async def open(self):
-        """Open the connection."""
-        try:
-            if self._opening:
-                return await self._opening
+    def on_disconnected(self, handler):
+        """Register a disconnection event handler."""
+        self._disconnect_handler = handler
 
-            self._opening = asyncio.get_running_loop().create_future()
-            server_url = (
-                (self._server_url + f"&reconnection_token={self._reconnection_token}")
-                if self._reconnection_token
-                else self._server_url
-            )
-            logger.info("Creating a new connection to %s", server_url.split("?")[0])
-            self._websocket = await asyncio.wait_for(
+    def on_open(self, handler):
+        """Register a connection open event handler."""
+        self._on_open = handler
+
+    async def _attempt_connection(self, server_url, attempt_fallback=True):
+        """Attempt to establish a WebSocket connection."""
+        try:
+            self._legacy_auth = False
+            websocket = await asyncio.wait_for(
                 websockets.connect(server_url), self._timeout
             )
-            self._listen_task = asyncio.ensure_future(self._listen())
-            self._opening.set_result(True)
-            self._retry_count = 0
-        except Exception as exp:
-            if hasattr(exp, "status_code") and exp.status_code == 403:
-                self._opening.set_exception(
-                    PermissionError(f"Permission denied for {server_url}, error: {exp}")
+            return websocket
+        except websockets.exceptions.InvalidStatusCode as e:
+            # websocket code should be 1003, but it's not available in the library
+            if e.status_code == 403 and attempt_fallback:
+                logger.info(
+                    "Received 403 error, attempting connection with query parameters."
                 )
-                # stop retrying
-                self._retry_count = MAX_RETRY
+                self._legacy_auth = True
+                return await self._attempt_connection_with_query_params(server_url)
             else:
-                self._retry_count += 1
-                logger.exception(
-                    "Failed to connect to %s, retrying %d/%d",
-                    server_url.split("?")[0],
-                    self._retry_count,
-                    MAX_RETRY,
+                raise
+
+    async def _attempt_connection_with_query_params(self, server_url):
+        """Attempt to establish a WebSocket connection including authentication details in the query string."""
+        # Initialize an empty list to hold query parameters
+        query_params_list = []
+
+        # Add each parameter only if it has a non-empty value
+        if self._client_id:
+            query_params_list.append(f"client_id={self._client_id}")
+        if self._workspace:
+            query_params_list.append(f"workspace={self._workspace}")
+        if self._token:
+            query_params_list.append(f"token={self._token}")
+        if self._reconnection_token:
+            query_params_list.append(f"reconnection_token={self._reconnection_token}")
+
+        # Join the parameters with '&' to form the final query string
+        query_string = "&".join(query_params_list)
+
+        # Construct the full URL by appending the query string if it's not empty
+        full_url = f"{server_url}?{query_string}" if query_string else server_url
+
+        # Attempt to establish the WebSocket connection with the constructed URL
+        return await websockets.connect(full_url)
+
+    async def open(self):
+        """Open the connection with fallback logic for backward compatibility."""
+        if self._closing:
+            raise Exception("Connection is closing, cannot open a new connection.")
+        logger.info("Creating a new connection to %s", self._server_url.split("?")[0])
+        self._opening = True
+        try:
+            if self._websocket and not self._websocket.closed:
+                await self._websocket.close(code=1000)
+            self._websocket = await self._attempt_connection(self._server_url)
+            # Send authentication info as the first message if connected without query params
+            if not self._legacy_auth:
+                auth_info = json.dumps(
+                    {
+                        "client_id": self._client_id,
+                        "workspace": self._workspace,
+                        "token": self._token,
+                        "reconnection_token": self._reconnection_token,
+                    }
                 )
+                await self._websocket.send(auth_info)
+            self._listen_task = asyncio.ensure_future(self._listen())
+            if self._on_open:
+                asyncio.ensure_future(self._on_open(self))
+        except Exception as exp:
+            logger.exception("Failed to connect to %s", self._server_url.split("?")[0])
+            raise
         finally:
-            if self._opening:
-                await self._opening
-                self._opening = None
+            self._opening = False
 
     async def emit_message(self, data):
         """Emit a message."""
-        assert self._handle_message is not None, "No handler for message"
-        if not self._websocket or self._websocket.closed:
+        if self._closing:
+            raise Exception("Connection is closing")
+        if self._opening:
+            while self._opening:
+                logger.info("Waiting for connection to open...")
+                await asyncio.sleep(0.1)
+        if (
+            not self._handle_message
+            or self._closing
+            or not self._websocket
+            or self._websocket.closed
+        ):
             await self.open()
+
         try:
             await self._websocket.send(data)
-        except Exception:
-            data = msgpack.unpackb(data)
-            logger.exception(f"Failed to send data to {data['to']}")
-            raise
+        except Exception as exp:
+            logger.exception("Failed to send message")
+            raise exp
 
     async def _listen(self):
-        """Listen to the connection."""
-        while True:
-            if self._closing:
-                break
-            try:
-                ws = self._websocket
-                while not ws.closed:
-                    data = await ws.recv()
+        """Listen to the connection and handle disconnection."""
+        try:
+            while not self._closing and not self._websocket.closed:
+                data = await self._websocket.recv()
+                try:
                     if self._is_async:
                         await self._handle_message(data)
                     else:
                         self._handle_message(data)
-            except (
-                websockets.exceptions.ConnectionClosedError,
-                websockets.exceptions.ConnectionClosedOK,
-                ConnectionAbortedError,
-                ConnectionResetError,
-            ):
-                if not self._closing:
-                    logger.warning("Connection is broken, reopening a new connection.")
-                    await self.open()
-                    if self._retry_count >= MAX_RETRY:
-                        logger.error(
-                            "Failed to connect to %s, max retry reached.",
-                            self._server_url.split("?")[0],
-                        )
-                        break
-                    await asyncio.sleep(3)  # Retry in 3 second
-                else:
-                    logger.info("Websocket connection closed normally")
+                except Exception as exp:
+                    logger.exception("Failed to handle message: %s", data)
+        except Exception as e:
+            logger.warning("Connection closed or error occurred: %s", str(e))
+            if self._disconnect_handler:
+                await self._disconnect_handler(self, str(e))
+            logger.info("Reconnecting to %s", self._server_url.split("?")[0])
+            await self.open()
 
     async def disconnect(self, reason=None):
         """Disconnect."""
@@ -155,7 +191,6 @@ class WebsocketRPCConnection:
             await self._websocket.close(code=1000)
         if self._listen_task:
             self._listen_task.cancel()
-            self._listen_task = None
         logger.info("Websocket connection disconnected (%s)", reason)
 
 
@@ -220,6 +255,7 @@ async def connect_to_server(config):
         token=config.get("token"),
         timeout=config.get("method_timeout", 60),
     )
+
     await connection.open()
     rpc = RPC(
         connection,
@@ -256,6 +292,8 @@ async def connect_to_server(config):
     wm.list_plugins = wm.list_services
     wm.disconnect = disconnect
     wm.register_codec = rpc.register_codec
+    wm.on_disconnected = connection.on_disconnected
+    wm.on_open = connection.on_open
 
     if config.get("webrtc", False):
         from .webrtc_client import AIORTC_AVAILABLE, register_rtc_service

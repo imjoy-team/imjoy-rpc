@@ -65,6 +65,7 @@ class SocketIOManager:
 
     def init(self, config=None):
         """Initialize the connection."""
+
         # register a minimal plugin api
         def setup():
             pass

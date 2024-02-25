@@ -23,7 +23,6 @@ def websocket_server_fixture():
         [sys.executable, "-m", "hypha.server", f"--port={WS_PORT}"],
         env=test_env,
     ) as proc:
-
         timeout = 10
         while timeout > 0:
             try:

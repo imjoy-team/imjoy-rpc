@@ -90,6 +90,7 @@ def test_make_signature():
 
 def test_callable_sig():
     """Test callable_sig."""
+
     # Function
     def func(a, b, context=None):
         return a + b
@@ -127,6 +128,7 @@ def test_callable_sig():
 
 def test_callable_doc():
     """Test callable_doc."""
+
     # Function with docstring
     def func_with_doc(a, b):
         "This is a function with a docstring"

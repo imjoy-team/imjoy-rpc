@@ -172,6 +172,7 @@ class RPC(MessageEmitter):
                     "name": "RPC built-in services",
                     "config": {"require_context": True, "visibility": "public"},
                     "ping": self._ping,
+                    "get_client_info": self.get_client_info,
                     "get_service": self.get_local_service,
                     "register_service": self.register_service,
                     "message_cache": {
@@ -884,7 +885,7 @@ class RPC(MessageEmitter):
                     exp,
                 )
 
-    def get_client_info(self):
+    def get_client_info(self, context=None):
         """Get client info."""
         return {
             "id": self._client_id,
@@ -1118,7 +1119,6 @@ class RPC(MessageEmitter):
             return b_object
 
         if callable(a_object):
-
             if a_object in self._method_annotations:
                 annotation = self._method_annotations[a_object]
                 b_object = {
