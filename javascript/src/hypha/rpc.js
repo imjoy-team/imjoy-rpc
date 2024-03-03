@@ -1236,7 +1236,11 @@ export class RPC extends MessageEmitter {
       };
     } else if (aObject instanceof Error) {
       console.error(aObject);
-      bObject = { _rtype: "error", _rvalue: aObject.toString() };
+      bObject = {
+        _rtype: "error",
+        _rvalue: aObject.toString(),
+        _rtrace: aObject.stack
+      };
     }
     // send objects supported by structure clone algorithm
     // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
@@ -1405,7 +1409,9 @@ export class RPC extends MessageEmitter {
           bObject = aObject;
         }
       } else if (aObject._rtype === "error") {
-        bObject = new Error(aObject._rvalue);
+        bObject = new Error(
+          "RemoteError: " + aObject._rvalue + "\n" + (aObject._rtrace || "")
+        );
       } else if (aObject._rtype === "typedarray") {
         const arraytype = dtypeToTypedArray[aObject._rdtype];
         if (!arraytype)

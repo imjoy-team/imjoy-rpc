@@ -1,6 +1,6 @@
 
 .vscode
-
+.pypirc
 *.DS_Store
 *.app
 node_modules

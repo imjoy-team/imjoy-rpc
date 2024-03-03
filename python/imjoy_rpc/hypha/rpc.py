@@ -77,6 +77,12 @@ def index_object(obj, ids):
         return index_object(_obj, ids[1:])
 
 
+class RemoteException(Exception):
+    """Represent a remote exception."""
+
+    pass
+
+
 class Timer:
     """Represent a timer."""
 
@@ -817,12 +823,17 @@ class RPC(MessageEmitter):
         remote_method.__rpc_object__ = (
             encoded_method.copy()
         )  # pylint: disable=protected-access
-        make_signature(
-            remote_method,
-            name=method_id.split(".")[-1],
-            doc=encoded_method.get("_rdoc"),
-            sig=encoded_method.get("_rsig"),
-        )
+        try:
+            make_signature(
+                remote_method,
+                name=method_id.split(".")[-1],
+                doc=encoded_method.get("_rdoc"),
+                sig=encoded_method.get("_rsig"),
+            )
+        except Exception as exp:
+            logger.warning(
+                "Failed to generate signature for method: %s, error: %s", method_id, exp
+            )
         return remote_method
 
     def _log(self, info):
@@ -1193,7 +1204,16 @@ class RPC(MessageEmitter):
             }
 
         elif isinstance(a_object, Exception):
-            b_object = {"_rtype": "error", "_rvalue": str(a_object)}
+            exc_traceback = "".join(
+                traceback.format_exception(
+                    etype=type(a_object), value=a_object, tb=a_object.__traceback__
+                )
+            )
+            b_object = {
+                "_rtype": "error",
+                "_rvalue": str(a_object),
+                "_rtrace": exc_traceback,
+            }
         elif isinstance(a_object, memoryview):
             b_object = {"_rtype": "memoryview", "_rvalue": a_object.tobytes()}
         elif isinstance(
@@ -1364,7 +1384,12 @@ class RPC(MessageEmitter):
                     )
                 )
             elif a_object["_rtype"] == "error":
-                b_object = Exception(a_object["_rvalue"])
+                b_object = RemoteException(
+                    "RemoteError:"
+                    + a_object["_rvalue"]
+                    + "\n"
+                    + (a_object.get("_rtrace") if a_object.get("_rtrace") else "")
+                )
             else:
                 # make sure all the interface functions are decoded
                 temp = a_object["_rtype"]
