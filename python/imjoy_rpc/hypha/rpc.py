@@ -1206,7 +1206,7 @@ class RPC(MessageEmitter):
         elif isinstance(a_object, Exception):
             exc_traceback = "".join(
                 traceback.format_exception(
-                    etype=type(a_object), value=a_object, tb=a_object.__traceback__
+                    type(a_object), value=a_object, tb=a_object.__traceback__
                 )
             )
             b_object = {
