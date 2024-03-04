@@ -479,7 +479,19 @@ def callable_sig(any_callable, skip_context=False):
     # e.g. <lambda> -> lambda
     name = re.sub(r"\W", "", name)
 
-    return f"{name}{signature}"
+    primitive = True
+    for p in signature.parameters.values():
+        if (
+            p.default is not None
+            and p.default != inspect._empty
+            and not isinstance(p.default, (str, int, float, bool, list, dict, tuple))
+        ):
+            primitive = False
+    if primitive:
+        sig_str = str(signature)
+    else:
+        sig_str = f"({', '.join([p.name for p in signature.parameters.values()])})"
+    return f"{name}{sig_str}"
 
 
 def callable_doc(any_callable):
