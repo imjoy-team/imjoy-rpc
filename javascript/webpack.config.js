@@ -15,6 +15,7 @@ module.exports = {
       'hyphaSSEClient': path.resolve(__dirname, 'src', 'hypha', 'sse-client.js'),
   },
   output: {
+      globalObject: 'this',
       path: path.resolve(__dirname, 'dist'),
       filename(pathData){
         const output_names = {
