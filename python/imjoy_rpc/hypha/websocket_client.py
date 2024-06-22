@@ -12,6 +12,7 @@ from .rpc import RPC
 try:
     import js  # noqa: F401
     import pyodide  # noqa: F401
+    from pyodide.ffi import create_proxy  # noqa: F401
 
     from .pyodide_websocket import PyodideWebsocketRPCConnection
 
@@ -357,5 +358,5 @@ def setup_local_client(enable_execution=False):
                         return
             fut.set_result(server)
 
-    js.globalThis.addEventListener("message", message_handler, False)
+    js.globalThis.addEventListener("message", create_proxy(message_handler), False)
     return fut

@@ -46,11 +46,11 @@ class LocalWebSocket {
             break;
           case "connected":
             this.readyState = WebSocket.OPEN;
-            this.onopen();
+            this.onopen(event);
             break;
           case "closed":
             this.readyState = WebSocket.CLOSED;
-            this.onclose();
+            this.onclose(event);
             break;
           default:
             break;
@@ -59,10 +59,8 @@ class LocalWebSocket {
       false
     );
 
-    if(!this.client_id)
-      throw new Error("client_id is required");
-    if(!this.workspace)
-      throw new Error("workspace is required");
+    if (!this.client_id) throw new Error("client_id is required");
+    if (!this.workspace) throw new Error("workspace is required");
     this.postMessage({
       type: "connect",
       url: this.url,
@@ -84,7 +82,11 @@ class LocalWebSocket {
 
   close() {
     this.readyState = WebSocket.CLOSING;
-    this.postMessage({ type: "close", from: this.client_id, workspace: this.workspace });
+    this.postMessage({
+      type: "close",
+      from: this.client_id,
+      workspace: this.workspace
+    });
     this.onclose();
   }
 
@@ -159,7 +161,7 @@ class PyodideWebsocketRPCConnection:
 
         self._websocket.onclose = closed
 
-        def opened(evt):
+        def opened(evt=None):
             """Handle opened event."""
             fut.set_result(None)
 

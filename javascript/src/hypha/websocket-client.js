@@ -330,11 +330,11 @@ class LocalWebSocket {
             break;
           case "connected":
             this.readyState = WebSocket.OPEN;
-            this.onopen();
+            this.onopen(event);
             break;
           case "closed":
             this.readyState = WebSocket.CLOSED;
-            this.onclose();
+            this.onclose(event);
             break;
           default:
             break;
@@ -512,5 +512,10 @@ export function setupLocalClient({ enable_execution = false }) {
       },
       false
     );
+    if (isWindow) {
+      window.parent.postMessage({ type: "hyphaClientReady" }, "*");
+    } else {
+      self.postMessage({ type: "hyphaClientReady" });
+    }
   });
 }
