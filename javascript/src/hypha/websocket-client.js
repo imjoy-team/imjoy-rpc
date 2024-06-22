@@ -34,8 +34,10 @@ class WebsocketRPCConnection {
     this._opening = null;
     this._retry_count = 0;
     this._closing = false;
+    this._client_id = client_id;
+    this._workspace = workspace;
     // Allow to override the WebSocket class for mocking or testing
-    this._WebSocketClass = WebSocketClass || WebSocket;
+    this._WebSocketClass = WebSocketClass;
   }
 
   set_reconnection_token(token) {
@@ -57,7 +59,24 @@ class WebsocketRPCConnection {
         : this._server_url;
       console.info("Creating a new connection to ", server_url.split("?")[0]);
 
-      const websocket = new this._WebSocketClass(server_url);
+      let websocket = null;
+      if(server_url.startsWith("wss://local-hypha-server:")){
+        if(this._WebSocketClass){
+          websocket = new this._WebSocketClass(server_url) 
+        }
+        else{
+          console.log("Using local websocket")
+          websocket = new LocalWebSocket(server_url, this._client_id, this._workspace);
+        }
+      }
+      else{
+        if(this._WebSocketClass){
+          websocket = new this._WebSocketClass(server_url)
+        }
+        else{
+          websocket = new WebSocket(server_url);
+        }
+      }
       websocket.binaryType = "arraybuffer";
       websocket.onmessage = event => {
         const data = event.data;
@@ -181,7 +200,9 @@ export async function connectToServer(config) {
   let clientId = config.client_id;
   if (!clientId) {
     clientId = randId();
+    config.client_id = clientId;
   }
+  
   let server_url = normalizeServerUrl(config.server_url);
 
   let connection = new WebsocketRPCConnection(
@@ -271,112 +292,100 @@ export async function connectToServer(config) {
   return wm;
 }
 
-export async function connectToLocalServer({
-  server_url,
-  workspace,
-  client_id,
-  token,
-  method_timeout,
-  name
-}) {
-  const context = typeof window !== "undefined" ? window : self;
-  const isWindow = typeof window !== "undefined";
-  const postMessage = message => {
-    if (isWindow) {
-      window.parent.postMessage(message, "*");
-    } else {
-      self.postMessage(message);
-    }
-  };
+class LocalWebSocket {
+  constructor(url, client_id, workspace) {
+    this.url = url;
+    this.onopen = () => {};
+    this.onmessage = () => {};
+    this.onclose = () => {};
+    this.onerror = () => {};
+    this.client_id = client_id;
+    this.workspace = workspace;
+    const context = typeof window !== "undefined" ? window : self;
+    const isWindow = typeof window !== "undefined";
+    this.postMessage = message => {
+      if (isWindow) {
+        window.parent.postMessage(message, "*");
+      } else {
+        self.postMessage(message);
+      }
+    };
 
-  class WebSocketProxy {
-    constructor(url) {
-      this.url = url;
-      this.onopen = () => {};
-      this.onmessage = () => {};
-      this.onclose = () => {};
-      this.onerror = () => {};
+    this.readyState = WebSocket.CONNECTING;
+    context.addEventListener(
+      "message",
+      event => {
+        const { type, data, to } = event.data;
+        if (to !== this.client_id) {
+          console.debug("message not for me", to, this.client_id);
+          return;
+        }
+        switch (type) {
+          case "message":
+            if (this.readyState === WebSocket.OPEN && this.onmessage) {
+              this.onmessage({ data: data });
+            }
+            break;
+          case "connected":
+            this.readyState = WebSocket.OPEN;
+            this.onopen();
+            break;
+          case "closed":
+            this.readyState = WebSocket.CLOSED;
+            this.onclose();
+            break;
+          default:
+            break;
+        }
+      },
+      false
+    );
 
-      this.readyState = WebSocket.CONNECTING;
-      context.addEventListener(
-        "message",
-        event => {
-          const { type, data, to } = event.data;
-          if (to !== client_id) {
-            console.debug("message not for me", to, client_id);
-            return;
-          }
-          switch (type) {
-            case "message":
-              if (this.readyState === WebSocket.OPEN && this.onmessage) {
-                this.onmessage({ data: data });
-              }
-              break;
-            case "connected":
-              this.readyState = WebSocket.OPEN;
-              this.onopen();
-              break;
-            case "closed":
-              this.readyState = WebSocket.CLOSED;
-              this.onclose();
-              break;
-            default:
-              break;
-          }
-        },
-        false
-      );
-      postMessage({
-        type: "connect",
-        url: this.url,
-        from: client_id,
-        workspace
+    if(!this.client_id)
+      throw new Error("client_id is required");
+    if(!this.workspace)
+      throw new Error("workspace is required");
+    this.postMessage({
+      type: "connect",
+      url: this.url,
+      from: this.client_id,
+      workspace: this.workspace
+    });
+  }
+
+  send(data) {
+    if (this.readyState === WebSocket.OPEN) {
+      this.postMessage({
+        type: "message",
+        data: data,
+        from: this.client_id,
+        workspace: this.workspace
       });
     }
+  }
 
-    send(data) {
-      if (this.readyState === WebSocket.OPEN) {
-        postMessage({
-          type: "message",
-          data: data,
-          from: client_id,
-          workspace
-        });
-      }
+  close() {
+    this.readyState = WebSocket.CLOSING;
+    this.postMessage({ type: "close", from: this.client_id, workspace: this.workspace });
+    this.onclose();
+  }
+
+  addEventListener(type, listener) {
+    if (type === "message") {
+      this.onmessage = listener;
     }
-
-    close() {
-      this.readyState = WebSocket.CLOSING;
-      postMessage({ type: "close", from: client_id, workspace });
-      this.onclose();
+    if (type === "open") {
+      this.onopen = listener;
     }
-
-    addEventListener(type, listener) {
-      if (type === "message") {
-        this.onmessage = listener;
-      }
-      if (type === "open") {
-        this.onopen = listener;
-      }
-      if (type === "close") {
-        this.onclose = listener;
-      }
-      if (type === "error") {
-        this.onerror = listener;
-      }
+    if (type === "close") {
+      this.onclose = listener;
+    }
+    if (type === "error") {
+      this.onerror = listener;
     }
   }
-  const server = await connectToServer({
-    server_url,
-    workspace,
-    client_id,
-    method_timeout,
-    name,
-    token,
-    WebSocketClass: WebSocketProxy
-  });
-  return server;
 }
+
 
 export async function setupLocalClient({enable_execution=false}) {
   const context = typeof window !== "undefined" ? window : self;
@@ -400,8 +409,13 @@ export async function setupLocalClient({enable_execution=false}) {
           console.error("server_url, workspace, and client_id are required.");
           return;
         }
-        hyphaWebsocketClient
-          .connectToLocalServer({
+
+        if(!server_url.startsWith("https://local-hypha-server:")){
+          console.error("server_url should start with https://local-hypha-server:");
+          return;
+        }
+        
+        connectToServer({
             server_url,
             workspace,
             client_id,
