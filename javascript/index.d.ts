@@ -47,6 +47,7 @@ interface ServerConfig {
   token?: string;
   method_timeout?: number;
   name?: string;
+  WebSocketClass?: any;
 }
 
 interface LoginConfig {
