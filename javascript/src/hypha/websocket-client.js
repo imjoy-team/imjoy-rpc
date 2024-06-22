@@ -65,7 +65,7 @@ class WebsocketRPCConnection {
           websocket = new this._WebSocketClass(server_url);
         } else {
           console.log("Using local websocket");
-          console.log("Connecting to local websocket " + server_url)
+          console.log("Connecting to local websocket " + server_url);
           websocket = new LocalWebSocket(
             server_url,
             this._client_id,
