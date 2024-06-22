@@ -135,7 +135,7 @@ class PyodideWebsocketRPCConnection:
     async def open(self):
         """Open the connection."""
         if self._server_url.startswith("wss://local-hypha-server:"):
-            print("Using local websocket")
+            js.console.log("Connecting to local websocket " + self._server_url)
             LocalWebSocket = js.eval("(" + local_websocket_patch + ")")
             self._websocket = LocalWebSocket.new(self._server_url, self._client_id, self._workspace)
         else:
