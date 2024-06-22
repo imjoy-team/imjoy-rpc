@@ -55,7 +55,7 @@ class PyodideSSERPCConnection:
 
         self._websocket.onclose = closed
 
-        def opened(evt):
+        def opened(evt=None):
             """Handle opened event."""
             fut.set_result(None)
 

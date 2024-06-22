@@ -3,6 +3,7 @@ import asyncio
 import inspect
 import logging
 import sys
+import types
 
 import msgpack
 import shortuuid
@@ -347,8 +348,15 @@ def setup_local_client(enable_execution=False):
                 for script in config["scripts"]:
                     if script.get("lang") != "python":
                         raise Exception("Only python scripts are supported")
+                    imjoyModule = types.ModuleType('imjoy')
+                    imjoyModule.api = server
+                    sys.modules['imjoy'] = imjoyModule
+                    import imjoy_rpc
+                    imjoy_rpc.api = server
+                    sys.modules['imjoy_rpc'] = imjoy_rpc
+                    
                     try:
-                        eval(script["content"], {"api": server})
+                        exec(script["content"])
                     except Exception as e:
                         await server.update_client_info({
                             "id": client_id,
