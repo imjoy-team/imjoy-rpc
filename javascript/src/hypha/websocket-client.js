@@ -60,20 +60,21 @@ class WebsocketRPCConnection {
       console.info("Creating a new connection to ", server_url.split("?")[0]);
 
       let websocket = null;
-      if(server_url.startsWith("wss://local-hypha-server:")){
-        if(this._WebSocketClass){
-          websocket = new this._WebSocketClass(server_url) 
+      if (server_url.startsWith("wss://local-hypha-server:")) {
+        if (this._WebSocketClass) {
+          websocket = new this._WebSocketClass(server_url);
+        } else {
+          console.log("Using local websocket");
+          websocket = new LocalWebSocket(
+            server_url,
+            this._client_id,
+            this._workspace
+          );
         }
-        else{
-          console.log("Using local websocket")
-          websocket = new LocalWebSocket(server_url, this._client_id, this._workspace);
-        }
-      }
-      else{
-        if(this._WebSocketClass){
-          websocket = new this._WebSocketClass(server_url)
-        }
-        else{
+      } else {
+        if (this._WebSocketClass) {
+          websocket = new this._WebSocketClass(server_url);
+        } else {
           websocket = new WebSocket(server_url);
         }
       }
@@ -202,7 +203,7 @@ export async function connectToServer(config) {
     clientId = randId();
     config.client_id = clientId;
   }
-  
+
   let server_url = normalizeServerUrl(config.server_url);
 
   let connection = new WebsocketRPCConnection(
@@ -341,10 +342,8 @@ class LocalWebSocket {
       false
     );
 
-    if(!this.client_id)
-      throw new Error("client_id is required");
-    if(!this.workspace)
-      throw new Error("workspace is required");
+    if (!this.client_id) throw new Error("client_id is required");
+    if (!this.workspace) throw new Error("workspace is required");
     this.postMessage({
       type: "connect",
       url: this.url,
@@ -366,7 +365,11 @@ class LocalWebSocket {
 
   close() {
     this.readyState = WebSocket.CLOSING;
-    this.postMessage({ type: "close", from: this.client_id, workspace: this.workspace });
+    this.postMessage({
+      type: "close",
+      from: this.client_id,
+      workspace: this.workspace
+    });
     this.onclose();
   }
 
@@ -386,8 +389,7 @@ class LocalWebSocket {
   }
 }
 
-
-export async function setupLocalClient({enable_execution=false}) {
+export async function setupLocalClient({ enable_execution = false }) {
   const context = typeof window !== "undefined" ? window : self;
   const isWindow = typeof window !== "undefined";
   context.addEventListener(
@@ -401,103 +403,104 @@ export async function setupLocalClient({enable_execution=false}) {
         token,
         method_timeout,
         name,
-        config,
+        config
       } = event.data;
-      
+
       if (type === "initializeHyphaClient") {
         if (!server_url || !workspace || !client_id) {
           console.error("server_url, workspace, and client_id are required.");
           return;
         }
 
-        if(!server_url.startsWith("https://local-hypha-server:")){
-          console.error("server_url should start with https://local-hypha-server:");
+        if (!server_url.startsWith("https://local-hypha-server:")) {
+          console.error(
+            "server_url should start with https://local-hypha-server:"
+          );
           return;
         }
-        
+
         connectToServer({
-            server_url,
-            workspace,
-            client_id,
-            token,
-            method_timeout,
-            name,
-          })
-          .then(async server => {
-            globalThis.api = server;
-            // for iframe
-            if (isWindow && enable_execution) {
-              function loadScript(script) {
-                return new Promise((resolve, reject) => {
-                  const scriptElement = document.createElement("script");
-                  scriptElement.innerHTML = script.content;
-                  scriptElement.lang = script.lang;
+          server_url,
+          workspace,
+          client_id,
+          token,
+          method_timeout,
+          name
+        }).then(async server => {
+          globalThis.api = server;
+          // for iframe
+          if (isWindow && enable_execution) {
+            function loadScript(script) {
+              return new Promise((resolve, reject) => {
+                const scriptElement = document.createElement("script");
+                scriptElement.innerHTML = script.content;
+                scriptElement.lang = script.lang;
 
-                  scriptElement.onload = () => resolve();
-                  scriptElement.onerror = e => reject(e);
+                scriptElement.onload = () => resolve();
+                scriptElement.onerror = e => reject(e);
 
-                  document.head.appendChild(scriptElement);
-                });
-              }
-              if (config.styles && config.styles.length > 0) {
-                for (const style of config.styles) {
-                  const styleElement = document.createElement("style");
-                  styleElement.innerHTML = style.content;
-                  styleElement.lang = style.lang;
-                  document.head.appendChild(styleElement);
-                }
-              }
-              if (config.links && config.links.length > 0) {
-                for (const link of config.links) {
-                  const linkElement = document.createElement("a");
-                  linkElement.href = link.url;
-                  linkElement.innerText = link.text;
-                  document.body.appendChild(linkElement);
-                }
-              }
-              if (config.windows && config.windows.length > 0) {
-                for (const w of config.windows) {
-                  document.body.innerHTML = w.content;
-                  break;
-                }
-              }
-              if (config.scripts && config.scripts.length > 0) {
-                try {
-                  for (const script of config.scripts) {
-                    if (script.lang !== "javascript")
-                      throw new Error("Only javascript scripts are supported");
-                    await loadScript(script); // Await the loading of each script
-                  }
-                } catch (e) {
-                  // If any script fails to load, send an error message
-                  await server.update_client_info({
-                    id: client_id,
-                    error: e.message
-                  });
-                }
+                document.head.appendChild(scriptElement);
+              });
+            }
+            if (config.styles && config.styles.length > 0) {
+              for (const style of config.styles) {
+                const styleElement = document.createElement("style");
+                styleElement.innerHTML = style.content;
+                styleElement.lang = style.lang;
+                document.head.appendChild(styleElement);
               }
             }
-            // for web worker
-            else if (
-              !isWindow &&
-              enable_execution &&
-              config.scripts &&
-              config.scripts.length > 0
-            ) {
+            if (config.links && config.links.length > 0) {
+              for (const link of config.links) {
+                const linkElement = document.createElement("a");
+                linkElement.href = link.url;
+                linkElement.innerText = link.text;
+                document.body.appendChild(linkElement);
+              }
+            }
+            if (config.windows && config.windows.length > 0) {
+              for (const w of config.windows) {
+                document.body.innerHTML = w.content;
+                break;
+              }
+            }
+            if (config.scripts && config.scripts.length > 0) {
               try {
                 for (const script of config.scripts) {
                   if (script.lang !== "javascript")
                     throw new Error("Only javascript scripts are supported");
-                  eval(script.content);
+                  await loadScript(script); // Await the loading of each script
                 }
               } catch (e) {
+                // If any script fails to load, send an error message
                 await server.update_client_info({
                   id: client_id,
                   error: e.message
                 });
               }
             }
-          });
+          }
+          // for web worker
+          else if (
+            !isWindow &&
+            enable_execution &&
+            config.scripts &&
+            config.scripts.length > 0
+          ) {
+            try {
+              for (const script of config.scripts) {
+                if (script.lang !== "javascript")
+                  throw new Error("Only javascript scripts are supported");
+                eval(script.content);
+              }
+            } catch (e) {
+              await server.update_client_info({
+                id: client_id,
+                error: e.message
+              });
+            }
+          }
+        });
       }
     },
     false
