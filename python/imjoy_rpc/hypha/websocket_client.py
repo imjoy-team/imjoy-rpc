@@ -307,3 +307,50 @@ async def connect_to_server(config):
         wm["get_service"] = get_service
         wm["getService"] = get_service
     return wm
+
+
+def setup_local_client(enable_execution=False):
+    async def message_handler(event):
+        data = event.data.to_py()
+        type = data.get("type")
+        server_url = data.get("server_url")
+        workspace = data.get("workspace")
+        client_id = data.get("client_id")
+        token = data.get("token")
+        method_timeout = data.get("method_timeout")
+        name = data.get("name")
+        config = data.get("config")
+
+        if type == "initializeHyphaClient":
+            if not server_url or not workspace or not client_id:
+                print("server_url, workspace, and client_id are required.")
+                return
+
+            if not server_url.startswith("https://local-hypha-server:"):
+                print("server_url should start with https://local-hypha-server:")
+                return
+
+            server = await connect_to_server({
+                "server_url": server_url,
+                "workspace": workspace,
+                "client_id": client_id,
+                "token": token,
+                "method_timeout": method_timeout,
+                "name": name
+            })
+
+            js.globalThis.api = server
+
+            if enable_execution and config.get("scripts"):
+                for script in config["scripts"]:
+                    if script.get("lang") != "python":
+                        raise Exception("Only python scripts are supported")
+                    try:
+                        eval(script["content"], {"api": server})
+                    except Exception as e:
+                        await server.update_client_info({
+                            "id": client_id,
+                            "error": str(e)
+                        })
+
+    js.globalThis.addEventListener("message", message_handler, False)

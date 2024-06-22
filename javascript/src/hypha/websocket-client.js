@@ -65,6 +65,7 @@ class WebsocketRPCConnection {
           websocket = new this._WebSocketClass(server_url);
         } else {
           console.log("Using local websocket");
+          console.log("Connecting to local websocket " + server_url)
           websocket = new LocalWebSocket(
             server_url,
             this._client_id,
@@ -389,7 +390,7 @@ class LocalWebSocket {
   }
 }
 
-export async function setupLocalClient({ enable_execution = false }) {
+export function setupLocalClient({ enable_execution = false }) {
   const context = typeof window !== "undefined" ? window : self;
   const isWindow = typeof window !== "undefined";
   context.addEventListener(
