@@ -391,119 +391,126 @@ class LocalWebSocket {
 }
 
 export function setupLocalClient({ enable_execution = false }) {
-  const context = typeof window !== "undefined" ? window : self;
-  const isWindow = typeof window !== "undefined";
-  context.addEventListener(
-    "message",
-    event => {
-      const {
-        type,
-        server_url,
-        workspace,
-        client_id,
-        token,
-        method_timeout,
-        name,
-        config
-      } = event.data;
-
-      if (type === "initializeHyphaClient") {
-        if (!server_url || !workspace || !client_id) {
-          console.error("server_url, workspace, and client_id are required.");
-          return;
-        }
-
-        if (!server_url.startsWith("https://local-hypha-server:")) {
-          console.error(
-            "server_url should start with https://local-hypha-server:"
-          );
-          return;
-        }
-
-        connectToServer({
+  return new Promise((resolve, reject) => {
+    const context = typeof window !== "undefined" ? window : self;
+    const isWindow = typeof window !== "undefined";
+    context.addEventListener(
+      "message",
+      event => {
+        const {
+          type,
           server_url,
           workspace,
           client_id,
           token,
           method_timeout,
-          name
-        }).then(async server => {
-          globalThis.api = server;
-          // for iframe
-          if (isWindow && enable_execution) {
-            function loadScript(script) {
-              return new Promise((resolve, reject) => {
-                const scriptElement = document.createElement("script");
-                scriptElement.innerHTML = script.content;
-                scriptElement.lang = script.lang;
+          name,
+          config
+        } = event.data;
 
-                scriptElement.onload = () => resolve();
-                scriptElement.onerror = e => reject(e);
+        if (type === "initializeHyphaClient") {
+          if (!server_url || !workspace || !client_id) {
+            console.error("server_url, workspace, and client_id are required.");
+            return;
+          }
 
-                document.head.appendChild(scriptElement);
-              });
-            }
-            if (config.styles && config.styles.length > 0) {
-              for (const style of config.styles) {
-                const styleElement = document.createElement("style");
-                styleElement.innerHTML = style.content;
-                styleElement.lang = style.lang;
-                document.head.appendChild(styleElement);
+          if (!server_url.startsWith("https://local-hypha-server:")) {
+            console.error(
+              "server_url should start with https://local-hypha-server:"
+            );
+            return;
+          }
+
+          connectToServer({
+            server_url,
+            workspace,
+            client_id,
+            token,
+            method_timeout,
+            name
+          }).then(async server => {
+            globalThis.api = server;
+            // for iframe
+            if (isWindow && enable_execution) {
+              function loadScript(script) {
+                return new Promise((resolve, reject) => {
+                  const scriptElement = document.createElement("script");
+                  scriptElement.innerHTML = script.content;
+                  scriptElement.lang = script.lang;
+
+                  scriptElement.onload = () => resolve();
+                  scriptElement.onerror = e => reject(e);
+
+                  document.head.appendChild(scriptElement);
+                });
+              }
+              if (config.styles && config.styles.length > 0) {
+                for (const style of config.styles) {
+                  const styleElement = document.createElement("style");
+                  styleElement.innerHTML = style.content;
+                  styleElement.lang = style.lang;
+                  document.head.appendChild(styleElement);
+                }
+              }
+              if (config.links && config.links.length > 0) {
+                for (const link of config.links) {
+                  const linkElement = document.createElement("a");
+                  linkElement.href = link.url;
+                  linkElement.innerText = link.text;
+                  document.body.appendChild(linkElement);
+                }
+              }
+              if (config.windows && config.windows.length > 0) {
+                for (const w of config.windows) {
+                  document.body.innerHTML = w.content;
+                  break;
+                }
+              }
+              if (config.scripts && config.scripts.length > 0) {
+                try {
+                  for (const script of config.scripts) {
+                    if (script.lang !== "javascript")
+                      throw new Error("Only javascript scripts are supported");
+                    await loadScript(script); // Await the loading of each script
+                  }
+                } catch (e) {
+                  // If any script fails to load, send an error message
+                  await server.update_client_info({
+                    id: client_id,
+                    error: e.message
+                  });
+                  reject(e);
+                  return;
+                }
               }
             }
-            if (config.links && config.links.length > 0) {
-              for (const link of config.links) {
-                const linkElement = document.createElement("a");
-                linkElement.href = link.url;
-                linkElement.innerText = link.text;
-                document.body.appendChild(linkElement);
-              }
-            }
-            if (config.windows && config.windows.length > 0) {
-              for (const w of config.windows) {
-                document.body.innerHTML = w.content;
-                break;
-              }
-            }
-            if (config.scripts && config.scripts.length > 0) {
+            // for web worker
+            else if (
+              !isWindow &&
+              enable_execution &&
+              config.scripts &&
+              config.scripts.length > 0
+            ) {
               try {
                 for (const script of config.scripts) {
                   if (script.lang !== "javascript")
                     throw new Error("Only javascript scripts are supported");
-                  await loadScript(script); // Await the loading of each script
+                  eval(script.content);
                 }
               } catch (e) {
-                // If any script fails to load, send an error message
                 await server.update_client_info({
                   id: client_id,
                   error: e.message
                 });
+                reject(e);
+                return;
               }
             }
-          }
-          // for web worker
-          else if (
-            !isWindow &&
-            enable_execution &&
-            config.scripts &&
-            config.scripts.length > 0
-          ) {
-            try {
-              for (const script of config.scripts) {
-                if (script.lang !== "javascript")
-                  throw new Error("Only javascript scripts are supported");
-                eval(script.content);
-              }
-            } catch (e) {
-              await server.update_client_info({
-                id: client_id,
-                error: e.message
-              });
-            }
-          }
-        });
-      }
-    },
-    false
-  );
+            resolve(server);
+          });
+        }
+      },
+      false
+    );
+  });
 }

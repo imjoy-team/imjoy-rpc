@@ -310,6 +310,7 @@ async def connect_to_server(config):
 
 
 def setup_local_client(enable_execution=False):
+    fut = asyncio.Future()
     async def message_handler(event):
         data = event.data.to_py()
         type = data.get("type")
@@ -352,5 +353,9 @@ def setup_local_client(enable_execution=False):
                             "id": client_id,
                             "error": str(e)
                         })
+                        fut.set_exception(e)
+                        return
+            fut.set_result(server)
 
     js.globalThis.addEventListener("message", message_handler, False)
+    return fut
