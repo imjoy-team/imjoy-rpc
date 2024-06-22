@@ -220,6 +220,12 @@ class RPC(MessageEmitter):
                 self._connection_info = (
                     await self._manager_service.get_connection_info()
                 )
+                if (
+                    not self._local_workspace
+                    and self._connection_info
+                    and self._connection_info.get("workspace")
+                ):
+                    self._local_workspace = self._connection_info["workspace"]
                 if "reconnection_token" in self._connection_info and hasattr(
                     self._connection, "set_reconnection_token"
                 ):

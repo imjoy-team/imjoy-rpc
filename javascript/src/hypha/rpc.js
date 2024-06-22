@@ -223,6 +223,13 @@ export class RPC extends MessageEmitter {
         assert(this._manager_service);
         this._connection_info = await this._manager_service.get_connection_info();
         if (
+          !this._local_workspace &&
+          this._connection_info &&
+          this._connection_info.workspace
+        ) {
+          this._local_workspace = this._connection_info.workspace;
+        }
+        if (
           this._connection_info.reconnection_token &&
           this._connection.set_reconnection_token
         ) {
