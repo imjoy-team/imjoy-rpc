@@ -270,3 +270,222 @@ export async function connectToServer(config) {
   }
   return wm;
 }
+
+export async function connectToLocalServer({
+  server_url,
+  workspace,
+  client_id,
+  token,
+  method_timeout,
+  name
+}) {
+  const context = typeof window !== "undefined" ? window : self;
+  const isWindow = typeof window !== "undefined";
+  const postMessage = message => {
+    if (isWindow) {
+      window.parent.postMessage(message, "*");
+    } else {
+      self.postMessage(message);
+    }
+  };
+
+  class WebSocketProxy {
+    constructor(url) {
+      this.url = url;
+      this.onopen = () => {};
+      this.onmessage = () => {};
+      this.onclose = () => {};
+      this.onerror = () => {};
+
+      this.readyState = WebSocket.CONNECTING;
+      context.addEventListener(
+        "message",
+        event => {
+          const { type, data, to } = event.data;
+          if (to !== client_id) {
+            console.debug("message not for me", to, client_id);
+            return;
+          }
+          switch (type) {
+            case "message":
+              if (this.readyState === WebSocket.OPEN && this.onmessage) {
+                this.onmessage({ data: data });
+              }
+              break;
+            case "connected":
+              this.readyState = WebSocket.OPEN;
+              this.onopen();
+              break;
+            case "closed":
+              this.readyState = WebSocket.CLOSED;
+              this.onclose();
+              break;
+            default:
+              break;
+          }
+        },
+        false
+      );
+      postMessage({
+        type: "connect",
+        url: this.url,
+        from: client_id,
+        workspace
+      });
+    }
+
+    send(data) {
+      if (this.readyState === WebSocket.OPEN) {
+        postMessage({
+          type: "message",
+          data: data,
+          from: client_id,
+          workspace
+        });
+      }
+    }
+
+    close() {
+      this.readyState = WebSocket.CLOSING;
+      postMessage({ type: "close", from: client_id, workspace });
+      this.onclose();
+    }
+
+    addEventListener(type, listener) {
+      if (type === "message") {
+        this.onmessage = listener;
+      }
+      if (type === "open") {
+        this.onopen = listener;
+      }
+      if (type === "close") {
+        this.onclose = listener;
+      }
+      if (type === "error") {
+        this.onerror = listener;
+      }
+    }
+  }
+  const server = await connectToServer({
+    server_url,
+    workspace,
+    client_id,
+    method_timeout,
+    name,
+    token,
+    WebSocketClass: WebSocketProxy
+  });
+  return server;
+}
+
+export async function setupLocalClient({enable_execution=false}) {
+  const context = typeof window !== "undefined" ? window : self;
+  const isWindow = typeof window !== "undefined";
+  context.addEventListener(
+    "message",
+    event => {
+      const {
+        type,
+        server_url,
+        workspace,
+        client_id,
+        token,
+        method_timeout,
+        name,
+        config,
+      } = event.data;
+      
+      if (type === "initializeHyphaClient") {
+        if (!server_url || !workspace || !client_id) {
+          console.error("server_url, workspace, and client_id are required.");
+          return;
+        }
+        hyphaWebsocketClient
+          .connectToLocalServer({
+            server_url,
+            workspace,
+            client_id,
+            token,
+            method_timeout,
+            name,
+          })
+          .then(async server => {
+            globalThis.api = server;
+            // for iframe
+            if (isWindow && enable_execution) {
+              function loadScript(script) {
+                return new Promise((resolve, reject) => {
+                  const scriptElement = document.createElement("script");
+                  scriptElement.innerHTML = script.content;
+                  scriptElement.lang = script.lang;
+
+                  scriptElement.onload = () => resolve();
+                  scriptElement.onerror = e => reject(e);
+
+                  document.head.appendChild(scriptElement);
+                });
+              }
+              if (config.styles && config.styles.length > 0) {
+                for (const style of config.styles) {
+                  const styleElement = document.createElement("style");
+                  styleElement.innerHTML = style.content;
+                  styleElement.lang = style.lang;
+                  document.head.appendChild(styleElement);
+                }
+              }
+              if (config.links && config.links.length > 0) {
+                for (const link of config.links) {
+                  const linkElement = document.createElement("a");
+                  linkElement.href = link.url;
+                  linkElement.innerText = link.text;
+                  document.body.appendChild(linkElement);
+                }
+              }
+              if (config.windows && config.windows.length > 0) {
+                for (const w of config.windows) {
+                  document.body.innerHTML = w.content;
+                  break;
+                }
+              }
+              if (config.scripts && config.scripts.length > 0) {
+                try {
+                  for (const script of config.scripts) {
+                    if (script.lang !== "javascript")
+                      throw new Error("Only javascript scripts are supported");
+                    await loadScript(script); // Await the loading of each script
+                  }
+                } catch (e) {
+                  // If any script fails to load, send an error message
+                  await server.update_client_info({
+                    id: client_id,
+                    error: e.message
+                  });
+                }
+              }
+            }
+            // for web worker
+            else if (
+              !isWindow &&
+              enable_execution &&
+              config.scripts &&
+              config.scripts.length > 0
+            ) {
+              try {
+                for (const script of config.scripts) {
+                  if (script.lang !== "javascript")
+                    throw new Error("Only javascript scripts are supported");
+                  eval(script.content);
+                }
+              } catch (e) {
+                await server.update_client_info({
+                  id: client_id,
+                  error: e.message
+                });
+              }
+            }
+          });
+      }
+    },
+    false
+  );
+}
