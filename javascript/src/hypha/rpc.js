@@ -223,6 +223,13 @@ export class RPC extends MessageEmitter {
         assert(this._manager_service);
         this._connection_info = await this._manager_service.get_connection_info();
         if (
+          !this._local_workspace &&
+          this._connection_info &&
+          this._connection_info.workspace
+        ) {
+          this._local_workspace = this._connection_info.workspace;
+        }
+        if (
           this._connection_info.reconnection_token &&
           this._connection.set_reconnection_token
         ) {
@@ -827,11 +834,21 @@ export class RPC extends MessageEmitter {
             [`Method call time out: ${method_name}`],
             method_name
           );
+          // By default, hypha will clear the session after the method is called
+          // However, if the args contains _rintf === true, we will not clear the session
+          let clear_after_called = true;
+          for (let arg of args) {
+            if (typeof arg === "object" && arg._rintf === true) {
+              debugger;
+              clear_after_called = false;
+              break;
+            }
+          }
           extra_data["promise"] = await self._encode_promise(
             resolve,
             reject,
             local_session_id,
-            true,
+            clear_after_called,
             timer,
             local_workspace
           );

@@ -220,6 +220,12 @@ class RPC(MessageEmitter):
                 self._connection_info = (
                     await self._manager_service.get_connection_info()
                 )
+                if (
+                    not self._local_workspace
+                    and self._connection_info
+                    and self._connection_info.get("workspace")
+                ):
+                    self._local_workspace = self._connection_info["workspace"]
                 if "reconnection_token" in self._connection_info and hasattr(
                     self._connection, "set_reconnection_token"
                 ):
@@ -779,11 +785,18 @@ class RPC(MessageEmitter):
                         f"Method call time out: {method_name}",
                         label=method_name,
                     )
+                    # By default, hypha will clear the session after the method is called
+                    # However, if the args contains _rintf === true, we will not clear the session
+                    clear_after_called = True
+                    for arg in args:
+                        if (isinstance(arg, dict) and arg.get("_rintf")) or (hasattr(arg, "_rintf") and arg._rintf == True):
+                            clear_after_called = False
+                            break
                     extra_data["promise"] = self._encode_promise(
                         resolve=resolve,
                         reject=reject,
                         session_id=local_session_id,
-                        clear_after_called=True,
+                        clear_after_called=clear_after_called,
                         timer=timer,
                         local_workspace=local_workspace,
                     )

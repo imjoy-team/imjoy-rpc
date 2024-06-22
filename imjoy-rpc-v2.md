@@ -47,6 +47,7 @@ The data representation is a JSON object (but can contain binary data, e.g. `Arr
 
 Notes:
  - `_encode(...)` in the imjoy-rpc representation means the type will be recursively encoded (decoded).
+ - When sending functions to be used remotely in a remote function call (e.g. passing an object with member functions when calling a remote function), the functions will only be available during the call and will be removed after the call. If you want to keep the function available for later calls, you can either mark the function as a "interface" function by setting any of the containing objects' `_rintf` to true, or you can register the function as a service, then call the service instead.
  - For n-D numpy array, there is no established n-D array library in javascript, the current behavior is, if there is `tf`(Tensorflow.js) detected, then it will be decoded into `tf.Tensor`. If `nj`(numjs) is detected, then it will be decoded into `nj.array`.
  - Typed array will be represented as numpy array if available, otherwise it will be converted to raw bytes.    
     Type Conversion
