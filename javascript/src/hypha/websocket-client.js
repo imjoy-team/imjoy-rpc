@@ -34,8 +34,10 @@ class WebsocketRPCConnection {
     this._opening = null;
     this._retry_count = 0;
     this._closing = false;
+    this._client_id = client_id;
+    this._workspace = workspace;
     // Allow to override the WebSocket class for mocking or testing
-    this._WebSocketClass = WebSocketClass || WebSocket;
+    this._WebSocketClass = WebSocketClass;
   }
 
   set_reconnection_token(token) {
@@ -57,7 +59,25 @@ class WebsocketRPCConnection {
         : this._server_url;
       console.info("Creating a new connection to ", server_url.split("?")[0]);
 
-      const websocket = new this._WebSocketClass(server_url);
+      let websocket = null;
+      if (server_url.startsWith("wss://local-hypha-server:")) {
+        if (this._WebSocketClass) {
+          websocket = new this._WebSocketClass(server_url);
+        } else {
+          console.log("Using local websocket");
+          websocket = new LocalWebSocket(
+            server_url,
+            this._client_id,
+            this._workspace
+          );
+        }
+      } else {
+        if (this._WebSocketClass) {
+          websocket = new this._WebSocketClass(server_url);
+        } else {
+          websocket = new WebSocket(server_url);
+        }
+      }
       websocket.binaryType = "arraybuffer";
       websocket.onmessage = event => {
         const data = event.data;
@@ -181,7 +201,9 @@ export async function connectToServer(config) {
   let clientId = config.client_id;
   if (!clientId) {
     clientId = randId();
+    config.client_id = clientId;
   }
+
   let server_url = normalizeServerUrl(config.server_url);
 
   let connection = new WebsocketRPCConnection(
@@ -269,4 +291,218 @@ export async function connectToServer(config) {
     wm.getService = wm.get_service;
   }
   return wm;
+}
+
+class LocalWebSocket {
+  constructor(url, client_id, workspace) {
+    this.url = url;
+    this.onopen = () => {};
+    this.onmessage = () => {};
+    this.onclose = () => {};
+    this.onerror = () => {};
+    this.client_id = client_id;
+    this.workspace = workspace;
+    const context = typeof window !== "undefined" ? window : self;
+    const isWindow = typeof window !== "undefined";
+    this.postMessage = message => {
+      if (isWindow) {
+        window.parent.postMessage(message, "*");
+      } else {
+        self.postMessage(message);
+      }
+    };
+
+    this.readyState = WebSocket.CONNECTING;
+    context.addEventListener(
+      "message",
+      event => {
+        const { type, data, to } = event.data;
+        if (to !== this.client_id) {
+          console.debug("message not for me", to, this.client_id);
+          return;
+        }
+        switch (type) {
+          case "message":
+            if (this.readyState === WebSocket.OPEN && this.onmessage) {
+              this.onmessage({ data: data });
+            }
+            break;
+          case "connected":
+            this.readyState = WebSocket.OPEN;
+            this.onopen();
+            break;
+          case "closed":
+            this.readyState = WebSocket.CLOSED;
+            this.onclose();
+            break;
+          default:
+            break;
+        }
+      },
+      false
+    );
+
+    if (!this.client_id) throw new Error("client_id is required");
+    if (!this.workspace) throw new Error("workspace is required");
+    this.postMessage({
+      type: "connect",
+      url: this.url,
+      from: this.client_id,
+      workspace: this.workspace
+    });
+  }
+
+  send(data) {
+    if (this.readyState === WebSocket.OPEN) {
+      this.postMessage({
+        type: "message",
+        data: data,
+        from: this.client_id,
+        workspace: this.workspace
+      });
+    }
+  }
+
+  close() {
+    this.readyState = WebSocket.CLOSING;
+    this.postMessage({
+      type: "close",
+      from: this.client_id,
+      workspace: this.workspace
+    });
+    this.onclose();
+  }
+
+  addEventListener(type, listener) {
+    if (type === "message") {
+      this.onmessage = listener;
+    }
+    if (type === "open") {
+      this.onopen = listener;
+    }
+    if (type === "close") {
+      this.onclose = listener;
+    }
+    if (type === "error") {
+      this.onerror = listener;
+    }
+  }
+}
+
+export async function setupLocalClient({ enable_execution = false }) {
+  const context = typeof window !== "undefined" ? window : self;
+  const isWindow = typeof window !== "undefined";
+  context.addEventListener(
+    "message",
+    event => {
+      const {
+        type,
+        server_url,
+        workspace,
+        client_id,
+        token,
+        method_timeout,
+        name,
+        config
+      } = event.data;
+
+      if (type === "initializeHyphaClient") {
+        if (!server_url || !workspace || !client_id) {
+          console.error("server_url, workspace, and client_id are required.");
+          return;
+        }
+
+        if (!server_url.startsWith("https://local-hypha-server:")) {
+          console.error(
+            "server_url should start with https://local-hypha-server:"
+          );
+          return;
+        }
+
+        connectToServer({
+          server_url,
+          workspace,
+          client_id,
+          token,
+          method_timeout,
+          name
+        }).then(async server => {
+          globalThis.api = server;
+          // for iframe
+          if (isWindow && enable_execution) {
+            function loadScript(script) {
+              return new Promise((resolve, reject) => {
+                const scriptElement = document.createElement("script");
+                scriptElement.innerHTML = script.content;
+                scriptElement.lang = script.lang;
+
+                scriptElement.onload = () => resolve();
+                scriptElement.onerror = e => reject(e);
+
+                document.head.appendChild(scriptElement);
+              });
+            }
+            if (config.styles && config.styles.length > 0) {
+              for (const style of config.styles) {
+                const styleElement = document.createElement("style");
+                styleElement.innerHTML = style.content;
+                styleElement.lang = style.lang;
+                document.head.appendChild(styleElement);
+              }
+            }
+            if (config.links && config.links.length > 0) {
+              for (const link of config.links) {
+                const linkElement = document.createElement("a");
+                linkElement.href = link.url;
+                linkElement.innerText = link.text;
+                document.body.appendChild(linkElement);
+              }
+            }
+            if (config.windows && config.windows.length > 0) {
+              for (const w of config.windows) {
+                document.body.innerHTML = w.content;
+                break;
+              }
+            }
+            if (config.scripts && config.scripts.length > 0) {
+              try {
+                for (const script of config.scripts) {
+                  if (script.lang !== "javascript")
+                    throw new Error("Only javascript scripts are supported");
+                  await loadScript(script); // Await the loading of each script
+                }
+              } catch (e) {
+                // If any script fails to load, send an error message
+                await server.update_client_info({
+                  id: client_id,
+                  error: e.message
+                });
+              }
+            }
+          }
+          // for web worker
+          else if (
+            !isWindow &&
+            enable_execution &&
+            config.scripts &&
+            config.scripts.length > 0
+          ) {
+            try {
+              for (const script of config.scripts) {
+                if (script.lang !== "javascript")
+                  throw new Error("Only javascript scripts are supported");
+                eval(script.content);
+              }
+            } catch (e) {
+              await server.update_client_info({
+                id: client_id,
+                error: e.message
+              });
+            }
+          }
+        });
+      }
+    },
+    false
+  );
 }

@@ -2,12 +2,108 @@
 import asyncio
 import inspect
 from js import WebSocket
+import js
 
 try:
     from pyodide.ffi import to_js
 except ImportError:
     from pyodide import to_js
 
+local_websocket_patch = """
+class LocalWebSocket {
+  constructor(url, client_id, workspace) {
+    this.url = url;
+    this.onopen = () => {};
+    this.onmessage = () => {};
+    this.onclose = () => {};
+    this.onerror = () => {};
+    this.client_id = client_id;
+    this.workspace = workspace;
+    const context = typeof window !== "undefined" ? window : self;
+    const isWindow = typeof window !== "undefined";
+    this.postMessage = message => {
+      if (isWindow) {
+        window.parent.postMessage(message, "*");
+      } else {
+        self.postMessage(message);
+      }
+    };
+
+    this.readyState = WebSocket.CONNECTING;
+    context.addEventListener(
+      "message",
+      event => {
+        const { type, data, to } = event.data;
+        if (to !== this.client_id) {
+          console.debug("message not for me", to, this.client_id);
+          return;
+        }
+        switch (type) {
+          case "message":
+            if (this.readyState === WebSocket.OPEN && this.onmessage) {
+              this.onmessage({ data: data });
+            }
+            break;
+          case "connected":
+            this.readyState = WebSocket.OPEN;
+            this.onopen();
+            break;
+          case "closed":
+            this.readyState = WebSocket.CLOSED;
+            this.onclose();
+            break;
+          default:
+            break;
+        }
+      },
+      false
+    );
+
+    if(!this.client_id)
+      throw new Error("client_id is required");
+    if(!this.workspace)
+      throw new Error("workspace is required");
+    this.postMessage({
+      type: "connect",
+      url: this.url,
+      from: this.client_id,
+      workspace: this.workspace
+    });
+  }
+
+  send(data) {
+    if (this.readyState === WebSocket.OPEN) {
+      this.postMessage({
+        type: "message",
+        data: data,
+        from: this.client_id,
+        workspace: this.workspace
+      });
+    }
+  }
+
+  close() {
+    this.readyState = WebSocket.CLOSING;
+    this.postMessage({ type: "close", from: this.client_id, workspace: this.workspace });
+    this.onclose();
+  }
+
+  addEventListener(type, listener) {
+    if (type === "message") {
+      this.onmessage = listener;
+    }
+    if (type === "open") {
+      this.onopen = listener;
+    }
+    if (type === "close") {
+      this.onclose = listener;
+    }
+    if (type === "error") {
+      this.onerror = listener;
+    }
+  }
+}
+"""
 
 class PyodideWebsocketRPCConnection:
     """Represent a pyodide websocket RPC connection."""
@@ -19,6 +115,7 @@ class PyodideWebsocketRPCConnection:
         self._websocket = None
         self._handle_message = None
         assert server_url and client_id
+             
         server_url = server_url + f"?client_id={client_id}"
         if workspace is not None:
             server_url += f"&workspace={workspace}"
@@ -27,6 +124,8 @@ class PyodideWebsocketRPCConnection:
         self._server_url = server_url
         self._logger = logger
         self._timeout = timeout
+        self._client_id = client_id
+        self._workspace = workspace
 
     def on_message(self, handler):
         """Register a message handler."""
@@ -35,7 +134,12 @@ class PyodideWebsocketRPCConnection:
 
     async def open(self):
         """Open the connection."""
-        self._websocket = WebSocket.new(self._server_url)
+        if self._server_url.startswith("wss://local-hypha-server:"):
+            print("Using local websocket")
+            LocalWebSocket = js.eval("(" + local_websocket_patch + ")")
+            self._websocket = LocalWebSocket.new(self._server_url, self._client_id, self._workspace)
+        else:
+            self._websocket = WebSocket.new(self._server_url)
         self._websocket.binaryType = "arraybuffer"
 
         def onmessage(evt):

@@ -839,7 +839,6 @@ export class RPC extends MessageEmitter {
           let clear_after_called = true;
           for (let arg of args) {
             if (typeof arg === "object" && arg._rintf === true) {
-              debugger;
               clear_after_called = false;
               break;
             }
