@@ -346,19 +346,8 @@ def setup_local_client(enable_execution=False, execute=None):
             try:
                 if enable_execution and execute:
                     await execute(server, config)
-                elif enable_execution and config.get("scripts"):
-                    for script in config["scripts"]:
-                        if script.get("lang") != "python":
-                            raise Exception("Only python scripts are supported")
-                        imjoyModule = types.ModuleType('imjoy')
-                        imjoyModule.api = server
-                        sys.modules['imjoy'] = imjoyModule
-                        import imjoy_rpc
-                        imjoy_rpc.api = server
-                        sys.modules['imjoy_rpc'] = imjoy_rpc
-                        
-                        # TODO: currently, we need to set the api object to the global scope
-                        exec(script["content"], {"api": server})
+                elif enable_execution:
+                    raise Exception("execute function is required for enable_execution")
             except Exception as e:
                 await server.update_client_info({
                     "id": client_id,
