@@ -311,7 +311,7 @@ async def connect_to_server(config):
     return wm
 
 
-def setup_local_client(enable_execution=False):
+def setup_local_client(enable_execution=False, execute=None):
     fut = asyncio.Future()
     async def message_handler(event):
         data = event.data.to_py()
@@ -343,28 +343,29 @@ def setup_local_client(enable_execution=False):
             })
 
             js.globalThis.api = server
-
-            if enable_execution and config.get("scripts"):
-                for script in config["scripts"]:
-                    if script.get("lang") != "python":
-                        raise Exception("Only python scripts are supported")
-                    imjoyModule = types.ModuleType('imjoy')
-                    imjoyModule.api = server
-                    sys.modules['imjoy'] = imjoyModule
-                    import imjoy_rpc
-                    imjoy_rpc.api = server
-                    sys.modules['imjoy_rpc'] = imjoy_rpc
-                    
-                    # TODO: currently, we need to set the api object to the global scope
-                    try:
+            try:
+                if enable_execution and execute:
+                    await execute(server)
+                elif enable_execution and config.get("scripts"):
+                    for script in config["scripts"]:
+                        if script.get("lang") != "python":
+                            raise Exception("Only python scripts are supported")
+                        imjoyModule = types.ModuleType('imjoy')
+                        imjoyModule.api = server
+                        sys.modules['imjoy'] = imjoyModule
+                        import imjoy_rpc
+                        imjoy_rpc.api = server
+                        sys.modules['imjoy_rpc'] = imjoy_rpc
+                        
+                        # TODO: currently, we need to set the api object to the global scope
                         exec(script["content"], {"api": server})
-                    except Exception as e:
-                        await server.update_client_info({
-                            "id": client_id,
-                            "error": str(e)
-                        })
-                        fut.set_exception(e)
-                        return
+            except Exception as e:
+                await server.update_client_info({
+                    "id": client_id,
+                    "error": str(e)
+                })
+                fut.set_exception(e)
+                return
             fut.set_result(server)
 
     js.globalThis.addEventListener("message", create_proxy(message_handler), False)

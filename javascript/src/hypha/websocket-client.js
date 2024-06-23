@@ -390,7 +390,7 @@ class LocalWebSocket {
   }
 }
 
-export function setupLocalClient({ enable_execution = false }) {
+export function setupLocalClient({ enable_execution = false, execute = null }) {
   return new Promise((resolve, reject) => {
     const context = typeof window !== "undefined" ? window : self;
     const isWindow = typeof window !== "undefined";
@@ -430,83 +430,76 @@ export function setupLocalClient({ enable_execution = false }) {
             name
           }).then(async server => {
             globalThis.api = server;
-            // for iframe
-            if (isWindow && enable_execution) {
-              function loadScript(script) {
-                return new Promise((resolve, reject) => {
-                  const scriptElement = document.createElement("script");
-                  scriptElement.innerHTML = script.content;
-                  scriptElement.lang = script.lang;
+            try {
+              if (enable_execution && execute) {
+                await execute(server, config);
+              }
+              // for iframe
+              else if (isWindow && enable_execution) {
+                function loadScript(script) {
+                  return new Promise((resolve, reject) => {
+                    const scriptElement = document.createElement("script");
+                    scriptElement.innerHTML = script.content;
+                    scriptElement.lang = script.lang;
 
-                  scriptElement.onload = () => resolve();
-                  scriptElement.onerror = e => reject(e);
+                    scriptElement.onload = () => resolve();
+                    scriptElement.onerror = e => reject(e);
 
-                  document.head.appendChild(scriptElement);
-                });
-              }
-              if (config.styles && config.styles.length > 0) {
-                for (const style of config.styles) {
-                  const styleElement = document.createElement("style");
-                  styleElement.innerHTML = style.content;
-                  styleElement.lang = style.lang;
-                  document.head.appendChild(styleElement);
+                    document.head.appendChild(scriptElement);
+                  });
                 }
-              }
-              if (config.links && config.links.length > 0) {
-                for (const link of config.links) {
-                  const linkElement = document.createElement("a");
-                  linkElement.href = link.url;
-                  linkElement.innerText = link.text;
-                  document.body.appendChild(linkElement);
+                if (config.styles && config.styles.length > 0) {
+                  for (const style of config.styles) {
+                    const styleElement = document.createElement("style");
+                    styleElement.innerHTML = style.content;
+                    styleElement.lang = style.lang;
+                    document.head.appendChild(styleElement);
+                  }
                 }
-              }
-              if (config.windows && config.windows.length > 0) {
-                for (const w of config.windows) {
-                  document.body.innerHTML = w.content;
-                  break;
+                if (config.links && config.links.length > 0) {
+                  for (const link of config.links) {
+                    const linkElement = document.createElement("a");
+                    linkElement.href = link.url;
+                    linkElement.innerText = link.text;
+                    document.body.appendChild(linkElement);
+                  }
                 }
-              }
-              if (config.scripts && config.scripts.length > 0) {
-                try {
+                if (config.windows && config.windows.length > 0) {
+                  for (const w of config.windows) {
+                    document.body.innerHTML = w.content;
+                    break;
+                  }
+                }
+                if (config.scripts && config.scripts.length > 0) {
                   for (const script of config.scripts) {
                     if (script.lang !== "javascript")
                       throw new Error("Only javascript scripts are supported");
                     await loadScript(script); // Await the loading of each script
                   }
-                } catch (e) {
-                  // If any script fails to load, send an error message
-                  await server.update_client_info({
-                    id: client_id,
-                    error: e.message
-                  });
-                  reject(e);
-                  return;
                 }
               }
-            }
-            // for web worker
-            else if (
-              !isWindow &&
-              enable_execution &&
-              config.scripts &&
-              config.scripts.length > 0
-            ) {
-              try {
+              // for web worker
+              else if (
+                !isWindow &&
+                enable_execution &&
+                config.scripts &&
+                config.scripts.length > 0
+              ) {
                 for (const script of config.scripts) {
                   if (script.lang !== "javascript")
                     throw new Error("Only javascript scripts are supported");
                   eval(script.content);
                 }
-              } catch (e) {
-                await server.update_client_info({
-                  id: client_id,
-                  error: e.message
-                });
-                reject(e);
-                return;
               }
+              resolve(server);
+            } catch (e) {
+              // If any script fails to load, send an error message
+              await server.update_client_info({
+                id: client_id,
+                error: e.message
+              });
+              reject(e);
             }
-            resolve(server);
           });
         }
       },
