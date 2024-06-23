@@ -355,6 +355,7 @@ def setup_local_client(enable_execution=False):
                     imjoy_rpc.api = server
                     sys.modules['imjoy_rpc'] = imjoy_rpc
                     
+                    # TODO: currently, we need to set the api object to the global scope
                     try:
                         exec(script["content"], {"api": server})
                     except Exception as e:
