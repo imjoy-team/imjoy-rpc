@@ -356,7 +356,7 @@ def setup_local_client(enable_execution=False):
                     sys.modules['imjoy_rpc'] = imjoy_rpc
                     
                     try:
-                        exec(script["content"])
+                        exec(script["content"], {"api": server})
                     except Exception as e:
                         await server.update_client_info({
                             "id": client_id,
