@@ -345,7 +345,7 @@ def setup_local_client(enable_execution=False, execute=None):
             js.globalThis.api = server
             try:
                 if enable_execution and execute:
-                    await execute(server)
+                    await execute(server, config)
                 elif enable_execution and config.get("scripts"):
                     for script in config["scripts"]:
                         if script.get("lang") != "python":
