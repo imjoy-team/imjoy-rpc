@@ -390,7 +390,7 @@ class LocalWebSocket {
   }
 }
 
-export function setupLocalClient({ enable_execution = false, execute = null }) {
+export function setupLocalClient({ enable_execution = false, on_ready = null }) {
   return new Promise((resolve, reject) => {
     const context = typeof window !== "undefined" ? window : self;
     const isWindow = typeof window !== "undefined";
@@ -431,11 +431,8 @@ export function setupLocalClient({ enable_execution = false, execute = null }) {
           }).then(async server => {
             globalThis.api = server;
             try {
-              if (enable_execution && execute) {
-                await execute(server, config);
-              }
               // for iframe
-              else if (isWindow && enable_execution) {
+              if (isWindow && enable_execution) {
                 function loadScript(script) {
                   return new Promise((resolve, reject) => {
                     const scriptElement = document.createElement("script");
@@ -490,6 +487,10 @@ export function setupLocalClient({ enable_execution = false, execute = null }) {
                     throw new Error("Only javascript scripts are supported");
                   eval(script.content);
                 }
+              }
+
+              if (on_ready) {
+                await on_ready(server, config);
               }
               resolve(server);
             } catch (e) {

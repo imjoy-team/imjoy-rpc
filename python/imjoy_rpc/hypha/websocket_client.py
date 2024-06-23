@@ -311,7 +311,7 @@ async def connect_to_server(config):
     return wm
 
 
-def setup_local_client(enable_execution=False, execute=None):
+def setup_local_client(enable_execution=False, on_ready=None):
     fut = asyncio.Future()
     async def message_handler(event):
         data = event.data.to_py()
@@ -344,10 +344,10 @@ def setup_local_client(enable_execution=False, execute=None):
 
             js.globalThis.api = server
             try:
-                if enable_execution and execute:
-                    await execute(server, config)
-                elif enable_execution:
-                    raise Exception("execute function is required for enable_execution")
+                if enable_execution:
+                    raise NotImplementedError("execution is not implemented")
+                if on_ready:
+                    await on_ready(server, config)
             except Exception as e:
                 await server.update_client_info({
                     "id": client_id,
