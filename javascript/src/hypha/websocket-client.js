@@ -199,6 +199,11 @@ export async function login(config) {
 }
 
 export async function connectToServer(config) {
+  if (config.server) {
+    config.server_url = config.server_url || config.server.url;
+    config.WebSocketClass =
+      config.WebSocketClass || config.server.WebSocketClass;
+  }
   let clientId = config.client_id;
   if (!clientId) {
     clientId = randId();
@@ -390,7 +395,10 @@ class LocalWebSocket {
   }
 }
 
-export function setupLocalClient({ enable_execution = false, on_ready = null }) {
+export function setupLocalClient({
+  enable_execution = false,
+  on_ready = null
+}) {
   return new Promise((resolve, reject) => {
     const context = typeof window !== "undefined" ? window : self;
     const isWindow = typeof window !== "undefined";

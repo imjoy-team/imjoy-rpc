@@ -40,8 +40,14 @@ interface hRPC extends MessageEmitter {
   decode(aObject: any): Promise<any>;
 }
 
+interface HyphaServer {
+  url: string;
+  WebSocketClass: any;
+}
+
 interface ServerConfig {
-  server_url: string;
+  server?: HyphaServer;
+  server_url?: string;
   client_id?: string;
   workspace?: string;
   token?: string;
