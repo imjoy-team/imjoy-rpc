@@ -30,6 +30,13 @@ except ImportError:
 
     IS_PYODIDE = False
 
+try:
+    import google.colab.output
+    from imjoy_rpc.hypha.colab_websocket import ColabWebsocketRPCConnection
+    IS_COLAB = True
+except ImportError:
+    IS_COLAB = False
+
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger("websocket-client")
 logger.setLevel(logging.WARNING)
@@ -212,8 +219,11 @@ async def connect_to_server(config):
 
     if IS_PYODIDE:
         Connection = PyodideWebsocketRPCConnection
+    elif IS_COLAB and server_url.startswith("wss://local-hypha-server:"):
+        Connection = ColabWebsocketRPCConnection
     else:
         Connection = WebsocketRPCConnection
+    
 
     connection = Connection(
         server_url,
