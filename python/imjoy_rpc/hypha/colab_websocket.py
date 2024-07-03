@@ -122,28 +122,28 @@ class ColabWebsocketProxy {
     this.websocket.onopen = (event) => {
       console.log("WebSocket connection opened");
       google.colab.kernel.comms.open(this.workspace, {}).then((comm) => {
-      setTimeout(async () => {
-          this.readyState = WebSocket.OPEN;
-          console.log('===> WebSocket connection opened');
-          for await (const msg of comm.messages) {
-          const data = msg.data;
-          console.log('Received message from kernel:', data);
-          const buffer_paths = data.__buffer_paths__ || [];
-          delete data.__buffer_paths__;
-          put_buffers(data, buffer_paths, msg.buffers || []);
-          if (data.type === "log" || data.type === "info") {
-              console.log(data.message);
-          } else if (data.type === "error") {
-              console.error(data.message);
-          } else if (data.type === "message") {
-              this.send(data.data);
-          }
-          }
-      }, 0);
-  
-      this.comm = comm;
+        setTimeout(async () => {
+            this.readyState = WebSocket.OPEN;
+            console.log('===> WebSocket connection opened');
+            for await (const msg of comm.messages) {
+            const data = msg.data;
+            console.log('Received message from kernel:', data);
+            const buffer_paths = data.__buffer_paths__ || [];
+            delete data.__buffer_paths__;
+            put_buffers(data, buffer_paths, msg.buffers || []);
+            if (data.type === "log" || data.type === "info") {
+                console.log(data.message);
+            } else if (data.type === "error") {
+                console.error(data.message);
+            } else if (data.type === "message") {
+                this.send(data.data);
+            }
+            }
+        }, 0);
+    
+        this.comm = comm;
       }).catch((e) => {
-      console.error("Failed to connect to kernel comm:", e);
+        console.error("Failed to connect to kernel comm:", e);
       });
     };
 
