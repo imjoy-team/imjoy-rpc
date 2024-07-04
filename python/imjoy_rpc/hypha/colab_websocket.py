@@ -1,3 +1,8 @@
+"""
+Create a hypha server in colab iframe and connect to it using a websocket proxy.
+
+TODO: the code is not working because comm message cannot be handled while awaiting in the event loop.
+"""
 import asyncio
 import uuid
 from IPython.display import display, HTML
