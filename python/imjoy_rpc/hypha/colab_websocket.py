@@ -1,93 +1,27 @@
 import asyncio
 import uuid
 from IPython.display import display, HTML
-from imjoy_rpc.connection.colab_connection import put_buffers, remove_buffers
 
 colab_websocket_proxy_js = """
+import { HyphaServer, connectToServer } from "https://cdn.jsdelivr.net/npm/hypha-core@0.1.9/dist/hypha-core.mjs";
+
+const hyphaServer = new HyphaServer({
+  url: "https://local-hypha-server:8080"
+});
+
+hyphaServer.on("add_window", (config) => {
+  const wb = new WinBox(config.name || config.src.slice(0, 128), {
+    background: "#448aff",
+  });
+  wb.body.innerHTML = `<iframe src="${config.src}" id="${config.window_id}" style="width: 100%; height: 100%; border: none;"></iframe>`;
+});
+
 function isSerializable(object) {
   return typeof object === "object" && object && object.toJSON;
 }
 
 function isObject(value) {
   return value && typeof value === "object" && value.constructor === Object;
-}
-
-function put_buffers(state, buffer_paths, buffers) {
-  buffers = buffers.map(b => b instanceof DataView ? b.buffer : b);
-  for (let i = 0; i < buffer_paths.length; i++) {
-    const buffer_path = buffer_paths[i];
-    let obj = state;
-    for (let j = 0; j < buffer_path.length - 1; j++) {
-      obj = obj[buffer_path[j]];
-    }
-    obj[buffer_path[buffer_path.length - 1]] = buffers[i];
-  }
-}
-
-function remove_buffers(state) {
-  const buffers = [];
-  const buffer_paths = [];
-  function remove(obj, path) {
-    if (isSerializable(obj)) {
-      obj = obj.toJSON();
-    }
-    if (Array.isArray(obj)) {
-      let is_cloned = false;
-      for (let i = 0; i < obj.length; i++) {
-        const value = obj[i];
-        if (value) {
-          if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
-            if (!is_cloned) {
-              obj = obj.slice();
-              is_cloned = true;
-            }
-            buffers.push(ArrayBuffer.isView(value) ? value.buffer : value);
-            buffer_paths.push(path.concat([i]));
-            obj[i] = null;
-          } else {
-            const new_value = remove(value, path.concat([i]));
-            if (new_value !== value) {
-              if (!is_cloned) {
-                obj = obj.slice();
-                is_cloned = true;
-              }
-              obj[i] = new_value;
-            }
-          }
-        }
-      }
-    } else if (isObject(obj)) {
-      for (const key in obj) {
-        let is_cloned = false;
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-          const value = obj[key];
-          if (value) {
-            if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
-              if (!is_cloned) {
-                obj = { ...obj };
-                is_cloned = true;
-              }
-              buffers.push(ArrayBuffer.isView(value) ? value.buffer : value);
-              buffer_paths.push(path.concat([key]));
-              delete obj[key];
-            } else {
-              const new_value = remove(value, path.concat([key]));
-              if (new_value !== value) {
-                if (!is_cloned) {
-                  obj = { ...obj };
-                  is_cloned = true;
-                }
-                obj[key] = new_value;
-              }
-            }
-          }
-        }
-      }
-    }
-    return obj;
-  }
-  const new_state = remove(state, []);
-  return { state: new_state, buffers, buffer_paths };
 }
 
 class ColabWebsocketProxy {
@@ -115,10 +49,15 @@ class ColabWebsocketProxy {
     this.connect();
   }
 
-  connect() {
-    this.websocket = new WebSocket(this.url);
+  async connect() {
+    if(this.url.startsWith('wss://local-hypha-server:')){
+      console.log('Using mock websocket', this.url, hyphaServer.url)
+      this.websocket = new hyphaServer.WebSocketClass(hyphaServer.wsUrl);
+    }
+    else{
+      this.websocket = new WebSocket(this.url);
+    }
     this.websocket.binaryType = "arraybuffer";
-
     this.websocket.onopen = (event) => {
       console.log("WebSocket connection opened");
       google.colab.kernel.comms.open(this.workspace, {}).then((comm) => {
@@ -126,18 +65,16 @@ class ColabWebsocketProxy {
             this.readyState = WebSocket.OPEN;
             console.log('===> WebSocket connection opened');
             for await (const msg of comm.messages) {
-            const data = msg.data;
-            console.log('Received message from kernel:', data);
-            const buffer_paths = data.__buffer_paths__ || [];
-            delete data.__buffer_paths__;
-            put_buffers(data, buffer_paths, msg.buffers || []);
-            if (data.type === "log" || data.type === "info") {
-                console.log(data.message);
-            } else if (data.type === "error") {
-                console.error(data.message);
-            } else if (data.type === "message") {
-                this.send(data.data);
-            }
+              const data = msg.data;
+              console.log('Received message from kernel:', data);
+              if (data.type === "log" || data.type === "info") {
+                  console.log(data.message);
+              } else if (data.type === "error") {
+                  console.error(data.message);
+              } else if (data.type === "message") {
+                  console.log('Sending message comm', msg.buffers[0]);
+                  this.send(msg.buffers[0]);
+              }
             }
         }, 0);
     
@@ -223,15 +160,18 @@ class ColabWebsocketRPCConnection:
                 """Handle a message."""
                 data = msg["content"]["data"]
                 if "type" in data:
-                    if "__buffer_paths__" in data:
-                        buffer_paths = data["__buffer_paths__"]
-                        del data["__buffer_paths__"]
-                        put_buffers(data, buffer_paths, msg["buffers"])
-                    loop = asyncio.get_running_loop()
-                    if self._is_async:
-                        loop.create_task(self._handle_message(data))
-                    else:
-                        self._handle_message(data)
+                    if data["type"] == "message":
+                        loop = asyncio.get_running_loop()
+                        if self._is_async:
+                            loop.create_task(self._handle_message(msg["buffers"][0]))
+                        else:
+                            self._handle_message(msg["buffers"][0])
+                    elif data["type"] == "log":
+                        if self.logger:
+                            self.logger.info(data["message"])
+                    elif data["type"] == "error":
+                        if self.logger:
+                            self.logger.error(data["message"])
 
             comm.on_msg(msg_cb)
             self.connected_event.set_result(None)
@@ -250,12 +190,7 @@ class ColabWebsocketRPCConnection:
         """Emit a message."""
         if not self.comm:
             await self.open()
-        msg, buffer_paths, buffers = remove_buffers(data)
-        if len(buffers) > 0:
-            msg["__buffer_paths__"] = buffer_paths
-            self.comm.send(msg, buffers=buffers)
-        else:
-            self.comm.send(msg)
+        self.comm.send({"type": "message"}, buffers=[data])
 
     async def disconnect(self, reason=None):
         """Disconnect."""
