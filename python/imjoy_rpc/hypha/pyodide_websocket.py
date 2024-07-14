@@ -107,6 +107,7 @@ class LocalWebSocket {
 }
 """
 
+
 class PyodideWebsocketRPCConnection:
     """Represent a pyodide websocket RPC connection."""
 
@@ -117,7 +118,7 @@ class PyodideWebsocketRPCConnection:
         self._websocket = None
         self._handle_message = None
         assert server_url and client_id
-             
+
         server_url = server_url + f"?client_id={client_id}"
         if workspace is not None:
             server_url += f"&workspace={workspace}"
@@ -139,7 +140,9 @@ class PyodideWebsocketRPCConnection:
         if self._server_url.startswith("wss://local-hypha-server:"):
             js.console.log("Connecting to local websocket " + self._server_url)
             LocalWebSocket = js.eval("(" + local_websocket_patch + ")")
-            self._websocket = LocalWebSocket.new(self._server_url, self._client_id, self._workspace)
+            self._websocket = LocalWebSocket.new(
+                self._server_url, self._client_id, self._workspace
+            )
         else:
             self._websocket = WebSocket.new(self._server_url)
         self._websocket.binaryType = "arraybuffer"

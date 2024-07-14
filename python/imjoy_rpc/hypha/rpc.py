@@ -704,6 +704,18 @@ class RPC(MessageEmitter):
         logger.info("All chunks sent (%d)", chunk_num)
         await message_cache.process(message_id, bool(session_id))
 
+    def emit(self, main_message, extra_data=None):
+        """Emit a message."""
+        assert isinstance(main_message, dict) and "type" in main_message
+        message_package = msgpack.packb(main_message)
+        if extra_data:
+            message_package = message_package + msgpack.packb(extra_data)
+        total_size = len(message_package)
+        if total_size <= CHUNK_SIZE + 1024:
+            return self.loop.create_task(self._emit_message(message_package))
+        else:
+            raise Exception("Message is too large to send in one go.")
+
     def _generate_remote_method(
         self,
         encoded_method,
@@ -789,7 +801,9 @@ class RPC(MessageEmitter):
                     # However, if the args contains _rintf === true, we will not clear the session
                     clear_after_called = True
                     for arg in args:
-                        if (isinstance(arg, dict) and arg.get("_rintf")) or (hasattr(arg, "_rintf") and arg._rintf == True):
+                        if (isinstance(arg, dict) and arg.get("_rintf")) or (
+                            hasattr(arg, "_rintf") and arg._rintf == True
+                        ):
                             clear_after_called = False
                             break
                     extra_data["promise"] = self._encode_promise(

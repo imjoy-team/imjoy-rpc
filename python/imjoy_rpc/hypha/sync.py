@@ -93,6 +93,7 @@ class SyncHyphaServer:
     """A class to interact with the Hypha server synchronously."""
 
     def __init__(self, sync_max_workers=2):
+        """Initialize the SyncHyphaServer."""
         self.loop = None
         self.thread = None
         self.server = None
@@ -212,6 +213,7 @@ if __name__ == "__main__":
     print("Public services: #", len(services))
 
     def hello(name):
+        """Say hello."""
         print("Hello " + name)
         print("Current thread id: ", threading.get_ident(), threading.current_thread())
         time.sleep(2)

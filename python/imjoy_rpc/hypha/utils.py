@@ -9,8 +9,9 @@ import re
 import secrets
 import string
 import traceback
+import collections.abc
 from functools import partial
-from inspect import Parameter, Signature, signature
+from inspect import Parameter, Signature
 from types import BuiltinFunctionType, FunctionType
 from typing import Any
 
@@ -24,11 +25,22 @@ def generate_password(length=50):
 _hash_id = generate_password()
 
 
+def recursive_hash(obj):
+    """Generate a hash for nested dictionaries and lists."""
+    if isinstance(obj, collections.abc.Hashable) and not isinstance(obj, dotdict):
+        return hash(obj)
+    elif isinstance(obj, dict) or isinstance(obj, dotdict):
+        return hash(tuple(sorted((k, recursive_hash(v)) for k, v in obj.items())))
+    elif isinstance(obj, (list, tuple)):
+        return hash(tuple(recursive_hash(i) for i in obj))
+    else:
+        raise TypeError(f"Unsupported type: {type(obj)}")
+
+
 class dotdict(dict):  # pylint: disable=invalid-name
     """Access dictionary attributes with dot.notation."""
 
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
+    __getattr__ = dict.__getitem__
     __delattr__ = dict.__delitem__
 
     def __setattr__(self, name, value):
@@ -41,15 +53,22 @@ class dotdict(dict):  # pylint: disable=invalid-name
 
     def __hash__(self):
         """Return the hash."""
-        if self.__rid__ and type(self.__rid__) is str:
+        if hasattr(self, "__rid__") and isinstance(self.__rid__, str):
             return hash(self.__rid__ + _hash_id)
 
-        # FIXME: This does not address the issue of inner list
-        return hash(tuple(sorted(self.items())))
+        return recursive_hash(self)
 
     def __deepcopy__(self, memo=None):
         """Make a deep copy."""
         return dotdict(copy.deepcopy(dict(self), memo=memo))
+
+    def __getattribute__(self, name):
+        if name in self:
+            return self[name]
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            return None
 
 
 def format_traceback(traceback_string):
@@ -313,7 +332,6 @@ def make_signature(func, name=None, sig=None, doc=None):
     sig can be a Signature object or a string without 'def' such as
     "foo(a, b=0)"
     """
-
     if isinstance(sig, str):
         # Parse signature string
         func_name, sig = _str_to_signature(sig)

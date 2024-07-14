@@ -3,12 +3,12 @@ import asyncio
 import inspect
 import logging
 import sys
-import types
 
 import msgpack
 import shortuuid
 
 from .rpc import RPC
+from .utils import dotdict
 
 try:
     import js  # noqa: F401
@@ -253,11 +253,27 @@ async def connect_to_server(config):
         await rpc.disconnect()
         await connection.disconnect()
 
+    wm.config = dotdict(wm.config)
+    wm.config["client_id"] = client_id
     wm.export = export
     wm.get_plugin = get_plugin
     wm.list_plugins = wm.list_services
     wm.disconnect = disconnect
     wm.register_codec = rpc.register_codec
+
+    def emit_msg(message):
+        assert isinstance(message, dict), "message must be a dictionary"
+        assert "to" in message, "message must have a 'to' field"
+        assert "type" in message, "message must have a 'type' field"
+        assert message["type"] != "method", "message type cannot be 'method'"
+        return rpc.emit(message)
+
+    def on_msg(type, handler):
+        assert type != "method", "message type cannot be 'method'"
+        rpc.on(type, handler)
+
+    wm.emit = emit_msg
+    wm.on = on_msg
 
     if config.get("webrtc", False):
         from .webrtc_client import AIORTC_AVAILABLE, register_rtc_service
@@ -283,7 +299,8 @@ async def connect_to_server(config):
                 if ":" in svc.id and "/" in svc.id and AIORTC_AVAILABLE:
                     client = svc.id.split(":")[0]
                     try:
-                        # Assuming that the client registered a webrtc service with the client_id + "-rtc"
+                        # Assuming that the client registered
+                        # a webrtc service with the client_id + "-rtc"
                         peer = await get_rtc_service(
                             wm,
                             client + ":" + client.split("/")[1] + "-rtc",
@@ -310,9 +327,10 @@ async def connect_to_server(config):
         wm["getService"] = get_service
     return wm
 
-
 def setup_local_client(enable_execution=False, on_ready=None):
+    """Set up a local client."""
     fut = asyncio.Future()
+
     async def message_handler(event):
         data = event.data.to_py()
         type = data.get("type")
@@ -333,14 +351,16 @@ def setup_local_client(enable_execution=False, on_ready=None):
                 print("server_url should start with https://local-hypha-server:")
                 return
 
-            server = await connect_to_server({
-                "server_url": server_url,
-                "workspace": workspace,
-                "client_id": client_id,
-                "token": token,
-                "method_timeout": method_timeout,
-                "name": name
-            })
+            server = await connect_to_server(
+                {
+                    "server_url": server_url,
+                    "workspace": workspace,
+                    "client_id": client_id,
+                    "token": token,
+                    "method_timeout": method_timeout,
+                    "name": name,
+                }
+            )
 
             js.globalThis.api = server
             try:
@@ -349,10 +369,7 @@ def setup_local_client(enable_execution=False, on_ready=None):
                 if on_ready:
                     await on_ready(server, config)
             except Exception as e:
-                await server.update_client_info({
-                    "id": client_id,
-                    "error": str(e)
-                })
+                await server.update_client_info({"id": client_id, "error": str(e)})
                 fut.set_exception(e)
                 return
             fut.set_result(server)

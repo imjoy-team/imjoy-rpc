@@ -8,6 +8,7 @@ import msgpack
 import shortuuid
 
 from .rpc import RPC
+from .websocket_client import WebsocketRPCConnection
 
 try:
     import js  # noqa: F401
@@ -95,7 +96,8 @@ class SSERPCConnection:
                 self._retry_count += 1
                 self._opening.set_exception(
                     Exception(
-                        f"Failed to connect to {server_url.split('?')[0]} (retry {self._retry_count}/{MAX_RETRY}): {exp}"
+                        f"Failed to connect to {server_url.split('?')[0]} "
+                        f"(retry {self._retry_count}/{MAX_RETRY}): {exp}"
                     )
                 )
         finally:
