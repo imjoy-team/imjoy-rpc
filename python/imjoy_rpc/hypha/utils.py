@@ -332,7 +332,6 @@ def make_signature(func, name=None, sig=None, doc=None):
     sig can be a Signature object or a string without 'def' such as
     "foo(a, b=0)"
     """
-
     if isinstance(sig, str):
         # Parse signature string
         func_name, sig = _str_to_signature(sig)

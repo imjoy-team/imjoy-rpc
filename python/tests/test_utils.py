@@ -1,10 +1,7 @@
-from types import BuiltinFunctionType
+"""Tests for the utils module."""
 from functools import partial
 from imjoy_rpc.hypha.utils import callable_sig, callable_doc, make_signature
 
-from inspect import signature
-
-# Import necessary modules
 from inspect import signature
 from typing import Union, Optional
 
@@ -98,7 +95,8 @@ def test_callable_sig():
     assert callable_sig(func, skip_context=True) == "func(a, b)"
 
     # Lambda function
-    lambda_func = lambda a, b, context=None: a + b
+    def lambda_func(a, b, context=None):
+        return a + b
     assert callable_sig(lambda_func) == "lambda(a, b, context=None)"
     assert callable_sig(lambda_func, skip_context=True) == "lambda(a, b)"
 
@@ -129,7 +127,7 @@ def test_callable_doc():
     """Test callable_doc."""
     # Function with docstring
     def func_with_doc(a, b):
-        "This is a function with a docstring"
+        """This is a function with a docstring."""
         return a + b
 
     assert callable_doc(func_with_doc) == "This is a function with a docstring"
@@ -138,11 +136,11 @@ def test_callable_doc():
     def func_without_doc(a, b):
         return a + b
 
-    assert callable_doc(func_without_doc) == None
+    assert callable_doc(func_without_doc) is None
 
     # Partial function with docstring
     def partial_func_with_doc(a, b=3):
-        "This is a partial function with a docstring"
+        """This is a partial function with a docstring"""
         return a + b
 
     partial_func = partial(partial_func_with_doc, b=3)

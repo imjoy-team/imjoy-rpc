@@ -299,7 +299,8 @@ async def connect_to_server(config):
                 if ":" in svc.id and "/" in svc.id and AIORTC_AVAILABLE:
                     client = svc.id.split(":")[0]
                     try:
-                        # Assuming that the client registered a webrtc service with the client_id + "-rtc"
+                        # Assuming that the client registered
+                        # a webrtc service with the client_id + "-rtc"
                         peer = await get_rtc_service(
                             wm,
                             client + ":" + client.split("/")[1] + "-rtc",
@@ -326,8 +327,8 @@ async def connect_to_server(config):
         wm["getService"] = get_service
     return wm
 
-
 def setup_local_client(enable_execution=False, on_ready=None):
+    """Set up a local client."""
     fut = asyncio.Future()
 
     async def message_handler(event):

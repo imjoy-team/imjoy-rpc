@@ -1,3 +1,4 @@
+"""QR code generator and display functions."""
 # Code adopted from https://github.com/Khalil-Youssefi/qrcodeT/tree/master
 # Released under MIT license
 
@@ -5,6 +6,7 @@ import numpy as np
 
 
 def qrcode2text(img):
+    """Convert a QR code image to text."""
     bindata = np.array(img)[::10, ::10] + 0
     if bindata.shape[0] % 2 != 0:
         bindata.resize((bindata.shape[0] + 1, bindata.shape[1]), refcheck=False)
@@ -19,6 +21,7 @@ def qrcode2text(img):
 
 
 def generate_qrcode(txt, fill_color="black", back_color="white"):
+    """Generate a QR code image."""
     import qrcode
 
     qr = qrcode.QRCode(
@@ -34,6 +37,7 @@ def generate_qrcode(txt, fill_color="black", back_color="white"):
 
 
 def print_qrcode(txt):
+    """Print a QR code to the console."""
     chars = qrcode2text(generate_qrcode(txt))
     for i in range(chars.shape[0]):
         for j in range(chars.shape[1]):
@@ -42,6 +46,7 @@ def print_qrcode(txt):
 
 
 def qrcode2html(txt):
+    """Convert a QR code to HTML."""
     chars = qrcode2text(generate_qrcode(txt))
     qrcode_str = ""
     for i in range(chars.shape[0]):
@@ -52,6 +57,7 @@ def qrcode2html(txt):
 
 
 def in_ipynb():
+    """Check if running in a Jupyter notebook."""
     try:
         cfg = get_ipython().config
         if isinstance(cfg, dict):
@@ -63,6 +69,7 @@ def in_ipynb():
 
 
 def display_qrcode(text):
+    """Display a QR code in the console or Jupyter notebook."""
     if in_ipynb():
         from IPython.display import display, HTML
 
