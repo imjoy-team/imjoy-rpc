@@ -748,7 +748,10 @@ export class RPC extends MessageEmitter {
   }
 
   emit(main_message, extra_data) {
-    assert(typeof main_message === "object" && main_message.type, "Invalid message, must be an object with a type field.");
+    assert(
+      typeof main_message === "object" && main_message.type,
+      "Invalid message, must be an object with a type field."
+    );
     let message_package = msgpack_packb(main_message);
     if (extra_data) {
       const extra = msgpack_packb(extra_data);

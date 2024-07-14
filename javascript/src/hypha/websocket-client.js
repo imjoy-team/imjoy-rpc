@@ -250,7 +250,7 @@ export async function connectToServer(config) {
     await connection.disconnect();
   }
 
-  wm.config["client_id"] = client_id
+  wm.config["client_id"] = client_id;
   wm.export = _export;
   wm.getPlugin = getPlugin;
   wm.listPlugins = wm.listServices;
@@ -258,7 +258,10 @@ export async function connectToServer(config) {
   wm.registerCodec = rpc.register_codec.bind(rpc);
 
   wm.emit = async function(message) {
-    assert(message && typeof message === "object", "message must be a dictionary");
+    assert(
+      message && typeof message === "object",
+      "message must be a dictionary"
+    );
     assert("to" in message, "message must have a 'to' field");
     assert("type" in message, "message must have a 'type' field");
     assert(type !== "method", "message type cannot be 'method'");
@@ -269,7 +272,6 @@ export async function connectToServer(config) {
     assert(type !== "method", "message type cannot be 'method'");
     rpc.on(type, handler);
   };
-
 
   if (config.webrtc) {
     await registerRTCService(wm, clientId + "-rtc", config.webrtc_config);
