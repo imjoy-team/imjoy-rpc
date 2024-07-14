@@ -250,7 +250,7 @@ export async function connectToServer(config) {
     await connection.disconnect();
   }
 
-  wm.config["client_id"] = client_id;
+  wm.config["client_id"] = clientId;
   wm.export = _export;
   wm.getPlugin = getPlugin;
   wm.listPlugins = wm.listServices;
