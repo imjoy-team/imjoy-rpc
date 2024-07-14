@@ -252,7 +252,7 @@ async def connect_to_server(config):
         """Disconnect the rpc and server connection."""
         await rpc.disconnect()
         await connection.disconnect()
-    
+
     wm.config = dotdict(wm.config)
     wm.config["client_id"] = client_id
     wm.export = export
@@ -267,7 +267,7 @@ async def connect_to_server(config):
         assert "type" in message, "message must have a 'type' field"
         assert message["type"] != "method", "message type cannot be 'method'"
         return rpc.emit(message)
-    
+
     def on_msg(type, handler):
         assert type != "method", "message type cannot be 'method'"
         rpc.on(type, handler)
@@ -329,6 +329,7 @@ async def connect_to_server(config):
 
 def setup_local_client(enable_execution=False, on_ready=None):
     fut = asyncio.Future()
+
     async def message_handler(event):
         data = event.data.to_py()
         type = data.get("type")
@@ -349,14 +350,16 @@ def setup_local_client(enable_execution=False, on_ready=None):
                 print("server_url should start with https://local-hypha-server:")
                 return
 
-            server = await connect_to_server({
-                "server_url": server_url,
-                "workspace": workspace,
-                "client_id": client_id,
-                "token": token,
-                "method_timeout": method_timeout,
-                "name": name
-            })
+            server = await connect_to_server(
+                {
+                    "server_url": server_url,
+                    "workspace": workspace,
+                    "client_id": client_id,
+                    "token": token,
+                    "method_timeout": method_timeout,
+                    "name": name,
+                }
+            )
 
             js.globalThis.api = server
             try:
@@ -365,10 +368,7 @@ def setup_local_client(enable_execution=False, on_ready=None):
                 if on_ready:
                     await on_ready(server, config)
             except Exception as e:
-                await server.update_client_info({
-                    "id": client_id,
-                    "error": str(e)
-                })
+                await server.update_client_info({"id": client_id, "error": str(e)})
                 fut.set_exception(e)
                 return
             fut.set_result(server)

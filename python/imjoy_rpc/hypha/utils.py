@@ -24,6 +24,7 @@ def generate_password(length=50):
 
 _hash_id = generate_password()
 
+
 def recursive_hash(obj):
     """Generate a hash for nested dictionaries and lists."""
     if isinstance(obj, collections.abc.Hashable) and not isinstance(obj, dotdict):
@@ -34,6 +35,7 @@ def recursive_hash(obj):
         return hash(tuple(recursive_hash(i) for i in obj))
     else:
         raise TypeError(f"Unsupported type: {type(obj)}")
+
 
 class dotdict(dict):  # pylint: disable=invalid-name
     """Access dictionary attributes with dot.notation."""

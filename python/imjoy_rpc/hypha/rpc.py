@@ -703,7 +703,7 @@ class RPC(MessageEmitter):
             )
         logger.info("All chunks sent (%d)", chunk_num)
         await message_cache.process(message_id, bool(session_id))
-    
+
     def emit(self, main_message, extra_data=None):
         """Emit a message."""
         assert isinstance(main_message, dict) and "type" in main_message
@@ -801,7 +801,9 @@ class RPC(MessageEmitter):
                     # However, if the args contains _rintf === true, we will not clear the session
                     clear_after_called = True
                     for arg in args:
-                        if (isinstance(arg, dict) and arg.get("_rintf")) or (hasattr(arg, "_rintf") and arg._rintf == True):
+                        if (isinstance(arg, dict) and arg.get("_rintf")) or (
+                            hasattr(arg, "_rintf") and arg._rintf == True
+                        ):
                             clear_after_called = False
                             break
                     extra_data["promise"] = self._encode_promise(
