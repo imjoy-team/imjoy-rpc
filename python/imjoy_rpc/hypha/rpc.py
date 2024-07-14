@@ -703,6 +703,18 @@ class RPC(MessageEmitter):
             )
         logger.info("All chunks sent (%d)", chunk_num)
         await message_cache.process(message_id, bool(session_id))
+    
+    def emit(self, main_message, extra_data=None):
+        """Emit a message."""
+        assert isinstance(main_message, dict) and "type" in main_message
+        message_package = msgpack.packb(main_message)
+        if extra_data:
+            message_package = message_package + msgpack.packb(extra_data)
+        total_size = len(message_package)
+        if total_size <= CHUNK_SIZE + 1024:
+            return self.loop.create_task(self._emit_message(message_package))
+        else:
+            raise Exception("Message is too large to send in one go.")
 
     def _generate_remote_method(
         self,

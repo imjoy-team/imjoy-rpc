@@ -3,12 +3,12 @@ import asyncio
 import inspect
 import logging
 import sys
-import types
 
 import msgpack
 import shortuuid
 
 from .rpc import RPC
+from .utils import dotdict
 
 try:
     import js  # noqa: F401
@@ -252,12 +252,28 @@ async def connect_to_server(config):
         """Disconnect the rpc and server connection."""
         await rpc.disconnect()
         await connection.disconnect()
-
+    
+    wm.config = dotdict(wm.config)
+    wm.config["client_id"] = client_id
     wm.export = export
     wm.get_plugin = get_plugin
     wm.list_plugins = wm.list_services
     wm.disconnect = disconnect
     wm.register_codec = rpc.register_codec
+
+    def emit_msg(message):
+        assert isinstance(message, dict), "message must be a dictionary"
+        assert "to" in message, "message must have a 'to' field"
+        assert "type" in message, "message must have a 'type' field"
+        assert message["type"] != "method", "message type cannot be 'method'"
+        return rpc.emit(message)
+    
+    def on_msg(type, handler):
+        assert type != "method", "message type cannot be 'method'"
+        rpc.on(type, handler)
+
+    wm.emit = emit_msg
+    wm.on = on_msg
 
     if config.get("webrtc", False):
         from .webrtc_client import AIORTC_AVAILABLE, register_rtc_service

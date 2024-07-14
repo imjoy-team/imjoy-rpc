@@ -747,6 +747,21 @@ export class RPC extends MessageEmitter {
     await message_cache.process(message_id, !!session_id);
   }
 
+  emit(main_message, extra_data) {
+    assert(typeof main_message === "object" && main_message.type, "Invalid message, must be an object with a type field.");
+    let message_package = msgpack_packb(main_message);
+    if (extra_data) {
+      const extra = msgpack_packb(extra_data);
+      message_package = new Uint8Array([...message_package, ...extra]);
+    }
+    const total_size = message_package.length;
+    if (total_size <= CHUNK_SIZE + 1024) {
+      return this._emit_message(message_package);
+    } else {
+      throw new Error("Message is too large to send in one go.");
+    }
+  }
+
   _generate_remote_method(
     encoded_method,
     remote_parent,
@@ -858,7 +873,7 @@ export class RPC extends MessageEmitter {
           const extra = msgpack_packb(extra_data);
           message_package = new Uint8Array([...message_package, ...extra]);
         }
-        let total_size = message_package.length;
+        const total_size = message_package.length;
         if (total_size <= CHUNK_SIZE + 1024) {
           self._emit_message(message_package).then(function() {
             if (timer) {
