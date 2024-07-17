@@ -144,6 +144,7 @@ class RPC(MessageEmitter):
         max_message_buffer_size=0,
         loop=None,
         workspace=None,
+        silent=False,
     ):
         """Set up instance."""
         self._codecs = codecs or {}
@@ -151,10 +152,9 @@ class RPC(MessageEmitter):
         assert client_id is not None, "client_id is required"
         self._client_id = client_id
         self._name = name
-        self._workspace = None
         self._local_workspace = workspace
-        self._connection_info = None
         self.manager_id = manager_id
+        self._silent = silent
         self.default_context = default_context or {}
         self._method_annotations = weakref.WeakKeyDictionary()
         self._manager_service = None
@@ -175,7 +175,7 @@ class RPC(MessageEmitter):
                 {
                     "id": "built-in",
                     "type": "built-in",
-                    "name": "RPC built-in services",
+                    "name": f"Builtin services for {self._local_workspace}/{self._client_id}",
                     "config": {"require_context": True, "visibility": "public"},
                     "ping": self._ping,
                     "get_service": self.get_local_service,
@@ -196,60 +196,21 @@ class RPC(MessageEmitter):
             self._emit_message = connection.emit_message
             connection.on_message(self._on_message)
             self._connection = connection
-
-            # Update the server and obtain client info
-            self._get_connection_info_task = asyncio.ensure_future(
-                self._get_connection_info()
-            )
+            async def update_services(_):
+                if not self._silent and self.manager_id:
+                    logger.info("Connection established, reporting services...")
+                    for service in self._services.values():
+                        service_info = self._extract_service_info(service)
+                        await self.emit({"type": "service-added", "to": self.manager_id, "service": service_info})
+            connection.on_connect(update_services)
         else:
 
             async def _emit_message(_):
                 logger.info("No connection to emit message")
 
             self._emit_message = _emit_message
-            self._get_connection_info_task = None
 
         self.check_modules()
-
-    async def _get_connection_info(self):
-        if self.manager_id:
-            # try to get the root service
-            try:
-                await self.get_manager_service(timeout=30.0)
-                assert self._manager_service
-                self._connection_info = (
-                    await self._manager_service.get_connection_info()
-                )
-                if (
-                    not self._local_workspace
-                    and self._connection_info
-                    and self._connection_info.get("workspace")
-                ):
-                    self._local_workspace = self._connection_info["workspace"]
-                if "reconnection_token" in self._connection_info and hasattr(
-                    self._connection, "set_reconnection_token"
-                ):
-                    self._connection.set_reconnection_token(
-                        self._connection_info["reconnection_token"]
-                    )
-                    reconnection_expires_in = (
-                        self._connection_info["reconnection_expires_in"] * 0.8
-                    )
-                    logger.debug(
-                        "Reconnection token obtained: %s, "
-                        "will be refreshed in %d seconds",
-                        self._connection_info.get("reconnection_token"),
-                        reconnection_expires_in,
-                    )
-                    await asyncio.sleep(reconnection_expires_in)
-                    await self._get_connection_info()
-            except Exception as exp:  # pylint: disable=broad-except
-                logger.warning(
-                    "Failed to fetch user info from %s: %s "
-                    "(reconnection will also fail)",
-                    self.manager_id,
-                    exp,
-                )
 
     def register_codec(self, config):
         """Register codec."""
@@ -374,10 +335,8 @@ class RPC(MessageEmitter):
 
     async def disconnect(self):
         """Disconnect."""
-        if self._get_connection_info_task:
-            self._get_connection_info_task.cancel()
-            self._get_connection_info_task = None
         self._fire("disconnect")
+        self._connection.disconnect()
 
     async def get_manager_service(self, timeout=None):
         """Get remote root service."""
@@ -392,13 +351,15 @@ class RPC(MessageEmitter):
 
     def get_local_service(self, service_id, context=None):
         """Get a local service."""
-        assert service_id is not None
+        assert service_id is not None and context is not None
         ws, client_id = context["to"].split("/")
         assert client_id == self._client_id, "Services can only be accessed locally"
 
         service = self._services.get(service_id)
         if not service:
             raise KeyError("Service not found: %s", service_id)
+        
+        service["config"]["workspace"] = ws
         # allow access for the same workspace
         if service["config"].get("visibility", "protected") == "public":
             return service
@@ -407,7 +368,7 @@ class RPC(MessageEmitter):
         if context["from"].startswith(ws + "/"):
             return service
 
-        raise Exception(f"Permission denied for service: {service_id}")
+        raise Exception(f"Permission denied for protected service: {service_id}, workspace mismatch: {ws} != {context['from']}")
 
     async def get_remote_service(self, service_uri=None, timeout=None):
         """Get a remote service."""
@@ -546,6 +507,15 @@ class RPC(MessageEmitter):
             )
         self._services[api["id"]] = api
         return api
+    
+    def _extract_service_info(self, service):
+        return {
+            "id": f'{self._client_id}:{service["id"]}',
+            "type": service["type"],
+            "name": service["name"],
+            "description": service.get("description", ""),
+            "config": service["config"],
+        }
 
     async def register_service(self, api, overwrite=False, notify=True, context=None):
         """Register a service."""
@@ -557,19 +527,13 @@ class RPC(MessageEmitter):
                 workspace == context["from"].split("/")[0]
             ), "Services can only be registered from the same workspace"
         service = self.add_service(api, overwrite=overwrite)
+        service_info = self._extract_service_info(service)
         if notify:
-            self._fire(
-                "service-updated",
-                {"service_id": service["id"], "api": service, "type": "add"},
-            )
-            await self._notify_service_update()
-        return {
-            "id": f'{self._client_id}:{service["id"]}',
-            "type": service["type"],
-            "name": service["name"],
-            "description": service.get("description", ""),
-            "config": service["config"],
-        }
+            if self.manager_id:
+                self.emit({"type": "service-added", "to": self.manager_id, "service": service_info})
+            else:
+                self.emit({"type": "service-added", "to":"*", "service": service_info})
+        return service_info
 
     async def unregister_service(self, service, notify=True):
         """Register a service."""
@@ -579,11 +543,11 @@ class RPC(MessageEmitter):
             raise Exception(f"Service not found: {service.get('id')}")
         del self._services[service["id"]]
         if notify:
-            self._fire(
-                "service-updated",
-                {"service_id": service["id"], "api": service, "type": "remove"},
-            )
-            await self._notify_service_update()
+            service_info = self._extract_service_info(service)
+            if self.manager_id:
+                self.emit({"type": "service-removed", "to": self.manager_id, "service": service_info})
+            else:
+                self.emit({"type": "service-removed", "to":"*", "service": service_info})
 
     def check_modules(self):
         """Check if all the modules exists."""
@@ -758,12 +722,16 @@ class RPC(MessageEmitter):
                     session_id=local_session_id,
                     local_workspace=local_workspace,
                 )
+                if self._local_workspace is None:
+                    from_client = self._client_id
+                elif self._local_workspace == "*":
+                    from_client = target_id.split("/")[0] + "/" + self._client_id
+                else:
+                    from_client = self._local_workspace + "/" + self._client_id
 
                 main_message = {
                     "type": "method",
-                    "from": self._local_workspace + "/" + self._client_id
-                    if self._local_workspace
-                    else self._client_id,
+                    "from": from_client,
                     "to": target_id,
                     "method": method_id,
                 }
@@ -921,19 +889,15 @@ class RPC(MessageEmitter):
                     self.manager_id,
                     exp,
                 )
+        else:
+            logger.warning("No manager id provided, cannot notify service update")
 
     def get_client_info(self):
         """Get client info."""
         return {
             "id": self._client_id,
             "services": [
-                {
-                    "id": f'{self._client_id}:{service["id"]}',
-                    "type": service["type"],
-                    "name": service["name"],
-                    "description": service.get("description", ""),
-                    "config": service["config"],
-                }
+                self._extract_service_info(service)
                 for service in self._services.values()
             ],
         }
@@ -952,7 +916,18 @@ class RPC(MessageEmitter):
                 data["to"] if "/" in data["to"] else remote_workspace + "/" + data["to"]
             )
             data["ctx"]["to"] = data["to"]
-            local_workspace = data.get("to").split("/")[0]
+            if self._local_workspace is None:
+                local_workspace = data.get("to").split("/")[0]
+            elif self._local_workspace == "*":
+                local_workspace = remote_workspace
+            else:
+                if self._local_workspace:
+                    assert data.get("to").split("/")[0] == self._local_workspace, (
+                        "Workspace mismatch: "
+                        f"{data.get('to').split('/')[0]} != {self._local_workspace}"
+                    )
+                local_workspace = self._local_workspace
+            
             local_parent = data.get("parent")
 
             if "promise" in data:
@@ -1034,10 +1009,11 @@ class RPC(MessageEmitter):
                     and "/" not in session_target_id
                 ):
                     session_target_id = local_workspace + "/" + session_target_id
-                if session_target_id != data["from"]:
+                if self._local_workspace != "*" and session_target_id != data["from"]:
                     raise PermissionError(
                         f"Access denied for method call ({method_name}) "
                         f"from {data['from']}"
+                        f" to target {session_target_id}"
                     )
 
             # Make sure the parent session is still open

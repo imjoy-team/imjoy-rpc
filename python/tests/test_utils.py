@@ -97,8 +97,8 @@ def test_callable_sig():
     # Lambda function
     def lambda_func(a, b, context=None):
         return a + b
-    assert callable_sig(lambda_func) == "lambda(a, b, context=None)"
-    assert callable_sig(lambda_func, skip_context=True) == "lambda(a, b)"
+    assert callable_sig(lambda_func) == "lambda_func(a, b, context=None)"
+    assert callable_sig(lambda_func, skip_context=True) == "lambda_func(a, b)"
 
     # Class with a __call__ method
     class CallableClass:
@@ -130,7 +130,7 @@ def test_callable_doc():
         """This is a function with a docstring."""
         return a + b
 
-    assert callable_doc(func_with_doc) == "This is a function with a docstring"
+    assert callable_doc(func_with_doc) == "This is a function with a docstring."
 
     # Function without docstring
     def func_without_doc(a, b):

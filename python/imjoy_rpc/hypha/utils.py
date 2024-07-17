@@ -190,14 +190,14 @@ class FuturePromise(Promise, asyncio.Future):
         """Resolve promise."""
         if self._resolve_handler or self._finally_handler:
             super().resolve(result)
-        else:
+        elif not self.done():
             self.set_result(result)
 
     def reject(self, error):
         """Reject promise."""
         if self._catch_handler or self._finally_handler:
             super().reject(error)
-        else:
+        elif not self.done():
             if error:
                 self.set_exception(Exception(str(error)))
             else:
@@ -249,7 +249,9 @@ class MessageEmitter:
         if event in self._event_handlers:
             for handler in self._event_handlers[event]:
                 try:
-                    handler(data)
+                    ret = handler(data)
+                    if inspect.isawaitable(ret):
+                        asyncio.ensure_future(ret)
                 except Exception as err:
                     traceback_error = traceback.format_exc()
                     if self._logger:

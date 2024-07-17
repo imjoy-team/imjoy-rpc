@@ -158,7 +158,8 @@ export class RPC extends MessageEmitter {
       method_timeout = null,
       max_message_buffer_size = 0,
       debug = false,
-      workspace = null
+      workspace = null,
+      silent = false
     }
   ) {
     super(debug);
@@ -167,10 +168,9 @@ export class RPC extends MessageEmitter {
     assert(client_id, "client_id is required");
     this._client_id = client_id;
     this._name = name;
-    this._connection_info = null;
-    this._workspace = null;
     this._local_workspace = workspace;
     this.manager_id = manager_id;
+    this._silent = silent;
     this.default_context = default_context || {};
     this._method_annotations = new WeakMap();
     this._manager_service = null;
@@ -188,7 +188,7 @@ export class RPC extends MessageEmitter {
       this.add_service({
         id: "built-in",
         type: "built-in",
-        name: "RPC built-in services",
+        name: `Built-in services for ${this._local_workspace}/${this._client_id}`,
         config: { require_context: true, visibility: "public" },
         ping: this._ping.bind(this),
         get_service: this.get_local_service.bind(this),
@@ -206,49 +206,20 @@ export class RPC extends MessageEmitter {
       this._emit_message = connection.emit_message.bind(connection);
       connection.on_message(this._on_message.bind(this));
       this._connection = connection;
-      // Update the server and obtain client info
-      this._get_connection_info();
+      connection.on_connect(async ()=>{
+        if(!this._silent && this.manager_id) {
+          console.log("Connection established, reporting services...");
+          for(let service of Object.values(this._services)) {
+            const serviceInfo = this._extract_service_info(service);
+            await this.emit({type: "service-added", to: this.manager_id, service: serviceInfo});
+          }
+        }
+      })
+      
     } else {
       this._emit_message = function() {
         console.log("No connection to emit message");
       };
-    }
-  }
-
-  async _get_connection_info() {
-    if (this.manager_id) {
-      // try to get the root service
-      try {
-        await this.get_manager_service(30.0);
-        assert(this._manager_service);
-        this._connection_info = await this._manager_service.get_connection_info();
-        if (
-          !this._local_workspace &&
-          this._connection_info &&
-          this._connection_info.workspace
-        ) {
-          this._local_workspace = this._connection_info.workspace;
-        }
-        if (
-          this._connection_info.reconnection_token &&
-          this._connection.set_reconnection_token
-        ) {
-          this._connection.set_reconnection_token(
-            this._connection_info.reconnection_token
-          );
-          const reconnection_expires_in =
-            this._connection_info.reconnection_expires_in * 0.8;
-          // console.info(
-          //   `Reconnection token obtained: ${this._connection_info.reconnection_token}, will be refreshed in ${reconnection_expires_in} seconds`
-          // );
-          this._get_connection_info_task = setTimeout(
-            this._get_connection_info.bind(this),
-            reconnection_expires_in * 1000
-          );
-        }
-      } catch (exp) {
-        console.warn("Failed to fetch user info from ", this.manager_id, exp);
-      }
     }
   }
 
@@ -387,11 +358,8 @@ export class RPC extends MessageEmitter {
   }
 
   async disconnect() {
-    if (this._get_connection_info_task) {
-      clearTimeout(this._get_connection_info_task);
-      this._get_connection_info_task = null;
-    }
     this._fire("disconnect");
+    await this._connection.disconnect();
   }
 
   async get_manager_service(timeout) {
@@ -419,6 +387,7 @@ export class RPC extends MessageEmitter {
       throw new Error("Service not found: " + service_id);
     }
 
+    service.config["workspace"] = ws;
     // allow access for the same workspace
     if (service.config.visibility == "public") {
       return service;
@@ -429,7 +398,7 @@ export class RPC extends MessageEmitter {
       return service;
     }
 
-    throw new Error("Permission denied for service: " + service_id);
+    throw new Error(`Permission denied for protected service: ${service_id}, workspace mismatch: ${ws} != ${context["from"]}`);
   }
   async get_remote_service(service_uri, timeout) {
     timeout = timeout === undefined ? this._method_timeout : timeout;
@@ -573,6 +542,16 @@ export class RPC extends MessageEmitter {
     return api;
   }
 
+  _extract_service_info(service) {
+    return {
+      id: `${this._client_id}:${service["id"]}`,
+      type: service["type"],
+      name: service["name"],
+      description: service["description"] || "",
+      config: service["config"]
+    }
+  }
+
   async register_service(api, overwrite, notify, context) {
     if (notify === undefined) notify = true;
     if (context) {
@@ -585,21 +564,16 @@ export class RPC extends MessageEmitter {
       );
     }
     const service = this.add_service(api, overwrite);
+    const serviceInfo = this._extract_service_info(service)
     if (notify) {
-      this._fire("service-updated", {
-        service_id: service["id"],
-        api: service,
-        type: "add"
-      });
-      await this._notify_service_update();
+      if(this.manager_id) {
+        this.emit({type: "service-added", to: this.manager_id, service: serviceInfo});
+      }
+      else {
+        this.emit({type: "service-added", to: "*", service: serviceInfo});
+      }
     }
-    return {
-      id: `${this._client_id}:${service["id"]}`,
-      type: service["type"],
-      name: service["name"],
-      description: service["description"] || "",
-      config: service["config"]
-    };
+    return serviceInfo;
   }
   async unregister_service(service, notify) {
     if (service instanceof Object) {
@@ -610,12 +584,15 @@ export class RPC extends MessageEmitter {
     }
     const api = this._services[service];
     delete this._services[service];
-    this._fire("service-updated", {
-      service_id: service,
-      api: api,
-      type: "remove"
-    });
-    await this._notify_service_update();
+    if (notify) {
+      const serviceInfo = this._extract_service_info(api)
+      if(this.manager_id) {
+        this.emit({type: "service-removed", to: this.manager_id, service: serviceInfo});
+      }
+      else {
+        this.emit({type: "service-removed", to: "*", service: serviceInfo});
+      }
+    }
   }
 
   _ndarray(typedArray, shape, dtype) {
@@ -814,11 +791,19 @@ export class RPC extends MessageEmitter {
           args[argLength - 1] !== null &&
           args[argLength - 1]._rkwargs;
         if (withKwargs) delete args[argLength - 1]._rkwargs;
+
+        let from_client;
+        if (!self._local_workspace) {
+          from_client = self._client_id;
+        } else if (self._local_workspace === "*") {
+          from_client = target_id.split("/")[0] + "/" + self._client_id;
+        } else {
+          from_client = self._local_workspace + "/" + self._client_id;
+        }
+
         let main_message = {
           type: "method",
-          from: self._local_workspace
-            ? self._local_workspace + "/" + self._client_id
-            : self._client_id,
+          from: from_client,
           to: target_id,
           method: method_id
         };
@@ -924,19 +909,15 @@ export class RPC extends MessageEmitter {
           exp
         );
       }
+    } else {
+      console.warn("No manager id provided, cannot notify service update");
     }
   }
 
   get_client_info() {
     const services = [];
     for (let service of Object.values(this._services)) {
-      services.push({
-        id: `${this._client_id}:${service["id"]}`,
-        type: service["type"],
-        name: service["name"],
-        description: service["description"] || "",
-        config: service["config"]
-      });
+      services.push(this._extract_service_info(service));
     }
 
     return {
@@ -957,7 +938,23 @@ export class RPC extends MessageEmitter {
         ? data["to"]
         : remote_workspace + "/" + data["to"];
       data["ctx"]["to"] = data["to"];
-      const local_workspace = data.to.split("/")[0];
+      let local_workspace;
+      if (!this._local_workspace) {
+        local_workspace = data["to"].split("/")[0];
+      } else if (this._local_workspace === "*") {
+        local_workspace = remote_workspace;
+      } else {
+        if (this._local_workspace) {
+          assert(
+            data["to"].split("/")[0] === this._local_workspace,
+            "Workspace mismatch: " +
+              data["to"].split("/")[0] +
+              " != " +
+              this._local_workspace
+          );
+        }
+        local_workspace = this._local_workspace;
+      }
       const local_parent = data.parent;
 
       let resolve, reject;
@@ -1026,12 +1023,14 @@ export class RPC extends MessageEmitter {
         ) {
           session_target_id = local_workspace + "/" + session_target_id;
         }
-        if (session_target_id !== data.from) {
+        if (this._local_workspace !== "*" && session_target_id !== data.from) {
           throw new Error(
             "Access denied for method call (" +
               method_name +
               ") from " +
-              data.from
+              data.from +
+              " to target " +
+              session_target_id
           );
         }
       }

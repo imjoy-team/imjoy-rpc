@@ -19,29 +19,21 @@ class WebsocketRPCConnection {
     WebSocketClass = null
   ) {
     assert(server_url && client_id, "server_url and client_id are required");
-    server_url = server_url + "?client_id=" + client_id;
-    if (workspace) {
-      server_url += "&workspace=" + workspace;
-    }
-    if (token) {
-      server_url += "&token=" + token;
-    }
-    this._websocket = null;
-    this._handle_message = null;
-    this._reconnection_token = null;
     this._server_url = server_url;
-    this._timeout = timeout * 1000; // converting to ms
-    this._opening = null;
-    this._retry_count = 0;
-    this._closing = false;
     this._client_id = client_id;
     this._workspace = workspace;
-    // Allow to override the WebSocket class for mocking or testing
-    this._WebSocketClass = WebSocketClass;
-  }
-
-  set_reconnection_token(token) {
-    this._reconnection_token = token;
+    this._token = token;
+    this._reconnection_token = null;
+    this._websocket = null;
+    this._handle_message = null;
+    this._handle_connect = null; // Connection open event handler
+    this._disconnect_handler = null; // Disconnection event handler
+    this._timeout = timeout * 1000; // Convert seconds to milliseconds
+    this._WebSocketClass = WebSocketClass || WebSocket; // Allow overriding the WebSocket class
+    this._opening = null;
+    this._closing = false;
+    this._legacy_auth = null;
+    this.connection_info = null;
   }
 
   on_message(handler) {
@@ -49,115 +41,157 @@ class WebsocketRPCConnection {
     this._handle_message = handler;
   }
 
-  async open() {
-    if (this._opening) {
-      return this._opening;
+  on_connect(handler){
+    this._handle_connect = handler;
+    if (this._websocket && this._websocket.readyState === WebSocket.OPEN) {
+      this._handle_connect(this);
     }
-    this._opening = new Promise((resolve, reject) => {
-      const server_url = this._reconnection_token
-        ? `${this._server_url}&reconnection_token=${this._reconnection_token}`
-        : this._server_url;
-      console.info("Creating a new connection to ", server_url.split("?")[0]);
+  }
 
-      let websocket = null;
-      if (server_url.startsWith("wss://local-hypha-server:")) {
-        if (this._WebSocketClass) {
-          websocket = new this._WebSocketClass(server_url);
-        } else {
-          console.log("Using local websocket");
-          console.log("Connecting to local websocket " + server_url);
-          websocket = new LocalWebSocket(
-            server_url,
-            this._client_id,
-            this._workspace
-          );
-        }
-      } else {
-        if (this._WebSocketClass) {
-          websocket = new this._WebSocketClass(server_url);
-        } else {
-          websocket = new WebSocket(server_url);
-        }
-      }
+  on_disconnected(handler) {
+    this._disconnect_handler = handler;
+  }
+
+  set_reconnection_token(token) {
+    this._reconnection_token = token;
+  }
+
+  async _attempt_connection(server_url, attempt_fallback = true) {
+    return new Promise((resolve, reject) => {
+      this._legacy_auth = false;
+      const websocket = new this._WebSocketClass(server_url);
       websocket.binaryType = "arraybuffer";
-      websocket.onmessage = event => {
+
+      websocket.onopen = () => {
+        console.info("WebSocket connection established");
+        resolve(websocket);
+      };
+
+      websocket.onerror = event => {
+        console.error("WebSocket connection error:", event);
+        reject(event);
+      };
+
+      websocket.onclose = event => {
+        if (event.code === 1003 && attempt_fallback) {
+          console.info(
+            "Received 1003 error, attempting connection with query parameters."
+          );
+          this._attempt_connection_with_query_params(server_url)
+            .then(resolve)
+            .catch(reject);
+        } else if (this._disconnect_handler) {
+          this._disconnect_handler(this, event.reason);
+        }
+      };
+    });
+  }
+
+  async _attempt_connection_with_query_params(server_url) {
+    // Initialize an array to hold parts of the query string
+    const queryParamsParts = [];
+
+    // Conditionally add each parameter if it has a non-empty value
+    if (this._client_id)
+      queryParamsParts.push(`client_id=${encodeURIComponent(this._client_id)}`);
+    if (this._workspace)
+      queryParamsParts.push(`workspace=${encodeURIComponent(this._workspace)}`);
+    if (this._token)
+      queryParamsParts.push(`token=${encodeURIComponent(this._token)}`);
+    if (this._reconnection_token)
+      queryParamsParts.push(
+        `reconnection_token=${encodeURIComponent(this._reconnection_token)}`
+      );
+
+    // Join the parts with '&' to form the final query string, prepend '?' if there are any parameters
+    const queryString =
+      queryParamsParts.length > 0 ? `?${queryParamsParts.join("&")}` : "";
+
+    // Construct the full URL by appending the query string if it exists
+    const full_url = server_url + queryString;
+
+    this._legacy_auth = true; // Assuming this flag is needed for some other logic
+    return await this._attempt_connection(full_url, false);
+  }
+
+  async open() {
+    if (this._closing || this._websocket) {
+      return; // Avoid opening a new connection if closing or already open
+    }
+    try {
+      this._opening = true;
+      this._websocket = await this._attempt_connection(this._server_url);
+      if (!this._legacy_auth) {
+        // Send authentication info as the first message if connected without query params
+        const authInfo = JSON.stringify({
+          client_id: this._client_id,
+          workspace: this._workspace,
+          token: this._token,
+          reconnection_token: this._reconnection_token
+        });
+        this._websocket.send(authInfo);
+        // Wait for the first message from the server
+        await waitFor(
+          new Promise((resolve, reject) => {
+            this._websocket.onmessage = event => {
+              const data = event.data;
+              const first_message = JSON.parse(data);
+              if (!first_message.success) {
+                const error = first_message.error || "Unknown error";
+                console.error("Failed to connect, " + error);
+                this.connection_info = None;
+                reject(new Error(error));
+              } else if (first_message) {
+                console.log(
+                  "Successfully connected: " + JSON.stringify(first_message)
+                );
+                this.connection_info = first_message;
+              }
+              resolve();
+            };
+          }),
+          this._timeout / 1000.0,
+          "Failed to receive the first message from the server"
+        );
+      }
+
+      this._websocket.onmessage = event => {
         const data = event.data;
         this._handle_message(data);
       };
 
-      websocket.onopen = () => {
-        this._websocket = websocket;
-        console.info("WebSocket connection established");
-        this._retry_count = 0; // Reset retry count
-        resolve();
-      };
-
-      websocket.onclose = event => {
-        console.log("websocket closed");
-        if (!this._closing) {
-          console.log("Websocket connection interrupted, retrying...");
-          this._retry_count++;
-          setTimeout(() => this.open(), this._timeout);
-        }
-        this._websocket = null;
-      };
-
-      websocket.onerror = event => {
-        console.log("Error occurred in websocket connection: ", event);
-        reject(new Error("Websocket connection failed."));
-        this._websocket = null;
-      };
-    }).finally(() => {
-      this._opening = null;
-    });
-    return this._opening;
+      if (this._handle_connect) {
+        await this._handle_connect(this);
+      }
+    } catch (error) {
+      console.error("Failed to connect to", this._server_url, error);
+    } finally {
+      this._opening = false;
+    }
   }
 
   async emit_message(data) {
-    assert(this._handle_message, "No handler for message");
-    if (!this._websocket || this._websocket.readyState !== WebSocket.OPEN) {
-      await this.open();
+    if (this._closing) {
+      throw new Error("Connection is closing");
     }
-    return new Promise((resolve, reject) => {
-      if (!this._websocket) {
-        reject(new Error("Websocket connection not available"));
-      } else if (this._websocket.readyState === WebSocket.CONNECTING) {
-        const timeout = setTimeout(() => {
-          reject(new Error("WebSocket connection timed out"));
-        }, this._timeout);
-
-        this._websocket.addEventListener("open", () => {
-          clearTimeout(timeout);
-          try {
-            this._websocket.send(data);
-            resolve();
-          } catch (exp) {
-            console.error(`Failed to send data, error: ${exp}`);
-            reject(exp);
-          }
-        });
-      } else if (this._websocket.readyState === WebSocket.OPEN) {
-        try {
-          this._websocket.send(data);
-          resolve();
-        } catch (exp) {
-          console.error(`Failed to send data, error: ${exp}`);
-          reject(exp);
-        }
-      } else {
-        reject(new Error("WebSocket is not in the OPEN or CONNECTING state"));
-      }
-    });
+    await this._opening;
+    if (!this._websocket || this._websocket.readyState !== WebSocket.OPEN) {
+      throw new Error("WebSocket connection is not open");
+    }
+    try {
+      this._websocket.send(data);
+    } catch (exp) {
+      console.error(`Failed to send data, error: ${exp}`);
+      throw exp;
+    }
   }
 
   disconnect(reason) {
     this._closing = true;
-    const ws = this._websocket;
-    this._websocket = null;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.close(1000, reason);
+    if (this._websocket && this._websocket.readyState === WebSocket.OPEN) {
+      this._websocket.close(1000, reason);
+      console.info(`WebSocket connection disconnected (${reason})`);
     }
-    console.info(`Websocket connection disconnected (${reason})`);
   }
 }
 
@@ -221,8 +255,13 @@ export async function connectToServer(config) {
     config.WebSocketClass
   );
   await connection.open();
+  let workspace = config.get("workspace")
+  if(connection.connection_info){
+    workspace = connection.connection_info.get("workspace")
+  }
   const rpc = new RPC(connection, {
     client_id: clientId,
+    workspace,
     manager_id: "workspace-manager",
     default_context: { connection_type: "websocket" },
     name: config.name,

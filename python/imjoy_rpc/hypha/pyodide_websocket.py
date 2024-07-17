@@ -2,7 +2,7 @@
 import asyncio
 import inspect
 from js import WebSocket
-import js
+import json
 
 try:
     from pyodide.ffi import to_js
@@ -109,67 +109,93 @@ class LocalWebSocket {
 
 
 class PyodideWebsocketRPCConnection:
-    """Represent a pyodide websocket RPC connection."""
+    """Represent a Pyodide websocket RPC connection, with local and remote server connection capabilities."""
 
-    def __init__(
-        self, server_url, client_id, workspace=None, token=None, logger=None, timeout=5
-    ):
-        """Set up instance."""
+    def __init__(self, server_url, client_id, workspace=None, token=None, reconnection_token=None, logger=None, timeout=5):
+        assert server_url and client_id, "server_url and client_id are required"
+        self.server_url = server_url
+        self.client_id = client_id
+        self.workspace = workspace
+        self.token = token
+        self.reconnection_token = reconnection_token
+        self.logger = logger
+        self.timeout = timeout
         self._websocket = None
         self._handle_message = None
-        assert server_url and client_id
-
-        server_url = server_url + f"?client_id={client_id}"
-        if workspace is not None:
-            server_url += f"&workspace={workspace}"
-        if token:
-            server_url += f"&token={token}"
-        self._server_url = server_url
-        self._logger = logger
-        self._timeout = timeout
-        self._client_id = client_id
-        self._workspace = workspace
+        self._handle_connect = None
+        self._is_async = False
+        self._legacy_auth = False
+        self.connection_info = None
 
     def on_message(self, handler):
         """Register a message handler."""
         self._handle_message = handler
         self._is_async = inspect.iscoroutinefunction(handler)
 
-    async def open(self):
-        """Open the connection."""
-        if self._server_url.startswith("wss://local-hypha-server:"):
-            js.console.log("Connecting to local websocket " + self._server_url)
-            LocalWebSocket = js.eval("(" + local_websocket_patch + ")")
-            self._websocket = LocalWebSocket.new(
-                self._server_url, self._client_id, self._workspace
-            )
-        else:
-            self._websocket = WebSocket.new(self._server_url)
-        self._websocket.binaryType = "arraybuffer"
+    async def _attempt_connection(self, server_url):
+        """Attempt to establish a WebSocket connection."""
+        fut = asyncio.Future()
+        websocket = WebSocket.new(server_url)
+        websocket.binaryType = 'arraybuffer'
+
+        def onopen(evt):
+            # Send authentication info as the first message
+            auth_info = json.dumps({
+                'client_id': self.client_id,
+                'workspace': self.workspace,
+                'token': self.token,
+                'reconnection_token': self.reconnection_token
+            })
+            websocket.send(to_js(auth_info))
 
         def onmessage(evt):
-            """Handle event."""
-            data = evt.data.to_py().tobytes()
-            self._handle_message(data)
+            # Handle the first message as connection info
+            first_message = json.loads(evt.data.to_py().tobytes())
+            if not first_message.get("success"):
+                error = first_message.get("error", "Unknown error")
+                self.logger.error("Failed to connect: %s", error)
+                self.connection_info = None
+                raise ConnectionAbortedError(error)
+            elif first_message:
+                self.logger.info("Successfully connected: %s", first_message)
+                self.connection_info = first_message
+            fut.set_result(websocket)
 
-        self._websocket.onmessage = onmessage
+        websocket.onopen = onopen
+        websocket.onmessage = onmessage
+        websocket.onerror = lambda evt: fut.set_exception(ConnectionError('WebSocket error occurred'))
+        websocket.onclose = lambda evt: fut.set_exception(ConnectionError('WebSocket closed unexpectedly'))
+        return await fut
 
-        fut = asyncio.Future()
+    async def open(self):
+        """Open connection, attempting fallback on specific errors."""
+        try:
+            self._websocket = await self._attempt_connection(self.server_url)
+        except ConnectionError as e:
+            self.logger.error(f"Failed to open connection: {e}")
+            server_url_with_params = self._create_url_with_params()
+            self._websocket = await self._attempt_connection(server_url_with_params)
+        self._websocket.onmessage = lambda evt: self._handle_message(evt.data.to_py().tobytes())
+        await self._handle_connect(self)
 
-        def closed(evt):
-            """Handle closed event."""
-            if self._logger:
-                self._logger.info("websocket closed")
-            self._websocket = None
+    def on_connect(self, handler):
+        """Register a connect handler."""
+        self._handle_connect = handler
+        assert inspect.iscoroutinefunction(handler), "On connect handler must be a coroutine function"
 
-        self._websocket.onclose = closed
-
-        def opened(evt=None):
-            """Handle opened event."""
-            fut.set_result(None)
-
-        self._websocket.onopen = opened
-        return await asyncio.wait_for(fut, timeout=self._timeout)
+    def _create_url_with_params(self):
+        """Create URL with query parameters."""
+        query_params = []
+        if self.client_id:
+            query_params.append(f"client_id={self.client_id}")
+        if self.workspace:
+            query_params.append(f"workspace={self.workspace}")
+        if self.token:
+            query_params.append(f"token={self.token}")
+        if self.reconnection_token:
+            query_params.append(f"reconnection_token={self.reconnection_token}")
+        query_string = "&".join(query_params)
+        return f"{self.server_url}?{query_string}"
 
     async def emit_message(self, data):
         """Emit a message."""
@@ -177,20 +203,15 @@ class PyodideWebsocketRPCConnection:
         if not self._websocket:
             await self.open()
         try:
-            data = to_js(data)
-            self._websocket.send(data)
+            self._websocket.send(to_js(json.dumps(data)))
         except Exception as exp:
-            #   data = msgpack_unpackb(data);
-            if self._logger:
-                self._logger.error("Failed to send data, error: %s", exp)
-            print("Failed to send data, error: %s", exp)
+            self.logger.error("Failed to send data, error: %s", exp)
             raise
 
     async def disconnect(self, reason=None):
-        """Disconnect."""
-        ws = self._websocket
+        """Disconnect the WebSocket."""
+        if self._websocket:
+            self._websocket.close(1000, reason)
         self._websocket = None
-        if ws:
-            ws.close(1000, reason)
-        if self._logger:
-            self._logger.info("Websocket connection disconnected (%s)", reason)
+        if self.logger:
+            self.logger.info(f"WebSocket connection disconnected ({reason})")
