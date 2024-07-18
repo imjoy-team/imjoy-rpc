@@ -255,9 +255,9 @@ export async function connectToServer(config) {
     config.WebSocketClass
   );
   await connection.open();
-  let workspace = config.get("workspace")
+  let workspace = config.workspace
   if(connection.connection_info){
-    workspace = connection.connection_info.get("workspace")
+    workspace = connection.connection_info.workspace
   }
   const rpc = new RPC(connection, {
     client_id: clientId,
@@ -265,14 +265,17 @@ export async function connectToServer(config) {
     manager_id: "workspace-manager",
     default_context: { connection_type: "websocket" },
     name: config.name,
-    method_timeout: config.method_timeout
+    method_timeout: config.method_timeout,
+    app_id: config.app_id,
   });
   const wm = await rpc.get_remote_service("workspace-manager:default");
   wm.rpc = rpc;
 
   async function _export(api) {
     api.id = "default";
-    api.name = config.name || api.id;
+    api.name = api.name || config.name || api.id;
+    api.description = api.description || config.description
+    api.docs = api.docs || config.docs
     await rpc.register_service(api, true);
     // const svc = await rpc.get_remote_service(rpc._client_id + ":default");
     // if (svc.setup) {
@@ -295,23 +298,16 @@ export async function connectToServer(config) {
   wm.listPlugins = wm.listServices;
   wm.disconnect = disconnect;
   wm.registerCodec = rpc.register_codec.bind(rpc);
-
-  wm.emit = async function(message) {
-    assert(
-      message && typeof message === "object",
-      "message must be a dictionary"
-    );
-    assert("to" in message, "message must have a 'to' field");
-    assert("type" in message, "message must have a 'type' field");
-    assert(type !== "method", "message type cannot be 'method'");
-    return await rpc.emit(message);
-  };
-
-  wm.on = function(type, handler) {
-    assert(type !== "method", "message type cannot be 'method'");
-    rpc.on(type, handler);
-  };
-
+  wm.emit = rpc.emit
+  wm.on = rpc.on
+  if(rpc.manager_id){
+    rpc.on("force-exit", async (message) => {
+      if (message.from.endsWith("/" + rpc.manager_id)){
+        console.log("Disconnecting from server, reason:", message.reason)
+        await disconnect()
+      }
+    });
+  }
   if (config.webrtc) {
     await registerRTCService(wm, clientId + "-rtc", config.webrtc_config);
   }

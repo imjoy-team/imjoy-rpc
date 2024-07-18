@@ -105,6 +105,7 @@ async def _setup_rpc(config):
         method_timeout=config.get("method_timeout", 10.0),
         loop=config.get("loop"),
         workspace=config["workspace"],
+        app_id=config.get("app_id"),
     )
     return rpc
 

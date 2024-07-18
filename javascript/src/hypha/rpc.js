@@ -159,7 +159,8 @@ export class RPC extends MessageEmitter {
       max_message_buffer_size = 0,
       debug = false,
       workspace = null,
-      silent = false
+      silent = false,
+      app_id = null
     }
   ) {
     super(debug);
@@ -168,6 +169,7 @@ export class RPC extends MessageEmitter {
     assert(client_id, "client_id is required");
     this._client_id = client_id;
     this._name = name;
+    this._app_id = app_id;
     this._local_workspace = workspace;
     this.manager_id = manager_id;
     this._silent = silent;
@@ -313,7 +315,7 @@ export class RPC extends MessageEmitter {
       throw new Error(`Message with key ${key} does not exists.`);
     }
     cache[key] = concatArrayBuffers(cache[key]);
-    console.debug(`Processing message ${key} (size=${cache[key].length})`);
+    console.debug(`Processing message ${key} (bytes=${cache[key].byteLength})`);
     let unpacker = decodeMulti(cache[key]);
     const { done, value } = unpacker.next();
     const main = value;
@@ -330,6 +332,7 @@ export class RPC extends MessageEmitter {
       Object.assign(main, extra.value);
     }
     this._fire(main["type"], main);
+    console.debug(this._client_id, `Processed message ${key} (bytes=${cache[key].byteLength})`);
     delete cache[key];
   }
 
@@ -348,7 +351,7 @@ export class RPC extends MessageEmitter {
       }
       this._fire(main["type"], main);
     } catch (error) {
-      console.error(error);
+      console.error("Failed to process message", error);
     }
   }
 
@@ -408,7 +411,15 @@ export class RPC extends MessageEmitter {
       service_uri = this._client_id + ":" + service_uri;
     }
     const provider = service_uri.split(":")[0];
-    assert(provider);
+    let service_id = service_uri.split(":")[1];
+    if(service_id.includes("@")) {
+      service_id = service_id.split("@")[0];
+      const app_id = service_uri.split("@")[1];
+      if(this._app_id)
+        assert(app_id === this._app_id, `Invalid app id: ${app_id} != ${this._app_id}`);
+    }
+    assert(provider, `Invalid service uri: ${service_uri}`);
+
     try {
       const method = this._generate_remote_method({
         _rtarget: provider,
@@ -418,11 +429,11 @@ export class RPC extends MessageEmitter {
         _rsig: "get_service(service_id)"
       });
       const svc = await waitFor(
-        method(service_uri.split(":")[1]),
+        method(service_id),
         timeout,
         "Timeout Error: Failed to get remote service: " + service_uri
       );
-      svc.id = service_uri;
+      svc.id = `${provider}:${service_id}`;
       return svc;
     } catch (e) {
       console.error("Failed to get remote service: " + service_uri, e);
@@ -548,7 +559,8 @@ export class RPC extends MessageEmitter {
       type: service["type"],
       name: service["name"],
       description: service["description"] || "",
-      config: service["config"]
+      config: service["config"],
+      app_id: this._app_id,
     }
   }
 
@@ -716,9 +728,9 @@ export class RPC extends MessageEmitter {
         data.slice(start_byte, start_byte + CHUNK_SIZE),
         !!session_id
       );
-      // console.log(
-      //   `Sending chunk ${idx + 1}/${chunk_num} (${total_size} bytes)`
-      // );
+      console.log(
+        `Sending chunk ${idx + 1}/${chunk_num} (${total_size} bytes)`
+      );
     }
     // console.log(`All chunks sent (${chunk_num})`);
     await message_cache.process(message_id, !!session_id);
@@ -880,6 +892,9 @@ export class RPC extends MessageEmitter {
                 // Only start the timer after we send the message successfully
                 timer.start();
               }
+            }).catch(function(err) {
+              console.error("Failed to send message", err);
+              reject(err);
             });
         }
       });
@@ -973,7 +988,7 @@ export class RPC extends MessageEmitter {
         if (promise.heartbeat && promise.interval) {
           async function heartbeat() {
             try {
-              // console.log("Reset heartbeat timer: " + data.method);
+              console.log("Reset heartbeat timer: " + data.method);
               await promise.heartbeat();
             } catch (err) {
               console.error(err);

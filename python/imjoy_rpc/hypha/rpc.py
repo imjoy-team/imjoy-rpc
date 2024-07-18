@@ -145,6 +145,7 @@ class RPC(MessageEmitter):
         loop=None,
         workspace=None,
         silent=False,
+        app_id=None,
     ):
         """Set up instance."""
         self._codecs = codecs or {}
@@ -152,6 +153,7 @@ class RPC(MessageEmitter):
         assert client_id is not None, "client_id is required"
         self._client_id = client_id
         self._name = name
+        self._app_id = app_id
         self._local_workspace = workspace
         self.manager_id = manager_id
         self._silent = silent
@@ -336,7 +338,7 @@ class RPC(MessageEmitter):
     async def disconnect(self):
         """Disconnect."""
         self._fire("disconnect")
-        self._connection.disconnect()
+        await self._connection.disconnect()
 
     async def get_manager_service(self, timeout=None):
         """Get remote root service."""
@@ -378,6 +380,10 @@ class RPC(MessageEmitter):
         elif ":" not in service_uri:
             service_uri = self._client_id + ":" + service_uri
         provider, service_id = service_uri.split(":")
+        if "@" in service_id:
+            service_id, app_id = service_id.split("@")
+            if self._app_id:
+                assert app_id == str(self._app_id), f"App id mismatch: {app_id} != {self._app_id}"
         assert provider
         try:
             method = self._generate_remote_method(
@@ -515,6 +521,7 @@ class RPC(MessageEmitter):
             "name": service["name"],
             "description": service.get("description", ""),
             "config": service["config"],
+            "app_id": self._app_id,
         }
 
     async def register_service(self, api, overwrite=False, notify=True, context=None):

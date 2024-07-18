@@ -290,6 +290,7 @@ async def connect_to_server(config):
         name=config.get("name"),
         method_timeout=config.get("method_timeout"),
         loop=config.get("loop"),
+        app_id=config.get("app_id"),
     )
     wm = await rpc.get_remote_service("workspace-manager:default")
     wm.rpc = rpc
@@ -299,8 +300,12 @@ async def connect_to_server(config):
         # Convert class instance to a dict
         if not isinstance(api, dict) and inspect.isclass(type(api)):
             api = {a: getattr(api, a) for a in dir(api)}
-        api["id"] = "default"
-        api["name"] = config.get("name", "default")
+        # api.name = api.name || config.name || api.id;
+        # api.description = api.description || config.description
+        # api.docs = api.docs || config.docs
+        api["id"] = api.get("id") or api.get("name") or config.get("name") or api.id
+        api["description"] = api.get("description") or config.get("description")
+        api["docs"] = api.get("docs") or config.get("docs")
         return asyncio.ensure_future(rpc.register_service(api, overwrite=True))
 
     async def get_plugin(query):
@@ -319,20 +324,22 @@ async def connect_to_server(config):
     wm.list_plugins = wm.list_services
     wm.disconnect = disconnect
     wm.register_codec = rpc.register_codec
-
-    def emit_msg(message):
-        assert isinstance(message, dict), "message must be a dictionary"
-        assert "to" in message, "message must have a 'to' field"
-        assert "type" in message, "message must have a 'type' field"
-        assert message["type"] != "method", "message type cannot be 'method'"
-        return rpc.emit(message)
-
-    def on_msg(type, handler):
-        assert type != "method", "message type cannot be 'method'"
-        rpc.on(type, handler)
-
-    wm.emit = emit_msg
-    wm.on = on_msg
+    wm.emit = rpc.emit
+    wm.on = rpc.on
+#     if(this.manager_id){
+#     wm.on("disconnect", async (message) => {
+#       if (message.from.endswith(this.manager_id)){
+#         console.log("Disconnecting from server, reason:", message.reason)
+#         await disconnect()
+#       }
+#     });
+#   }
+    if rpc.manager_id:
+        async def handle_disconnect(message):
+            if message["from"].endswith("/" + rpc.manager_id):
+                logger.info("Disconnecting from server, reason: %s", message.get("reason"))
+                await disconnect()
+        rpc.on("force-exit", handle_disconnect)
 
     if config.get("webrtc", False):
         from .webrtc_client import AIORTC_AVAILABLE, register_rtc_service
