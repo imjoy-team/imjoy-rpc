@@ -507,7 +507,8 @@ class RPC(MessageEmitter):
                 }
             )
             # For class instance, we need set a default id
-            api["id"] = api.get("id", "default")
+            if "id" not in api or not api["id"]:
+                api["id"] = "default"
         else:
             raise Exception("Invalid service object type: {}".format(type(api)))
 
@@ -563,11 +564,13 @@ class RPC(MessageEmitter):
                 {"service_id": service["id"], "api": service, "type": "add"},
             )
             await self._notify_service_update()
+        if "description" not in service:
+            service["description"] = ""
         return {
             "id": f'{self._client_id}:{service["id"]}',
             "type": service["type"],
             "name": service["name"],
-            "description": service.get("description", ""),
+            "description": service["description"],
             "config": service["config"],
         }
 
@@ -576,7 +579,7 @@ class RPC(MessageEmitter):
         if isinstance(service, str):
             service = self._services.get(service)
         if service["id"] not in self._services:
-            raise Exception(f"Service not found: {service.get('id')}")
+            raise Exception(f"Service not found: {service['id']}")
         del self._services[service["id"]]
         if notify:
             self._fire(
