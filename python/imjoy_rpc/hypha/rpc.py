@@ -934,7 +934,7 @@ class RPC(MessageEmitter):
                     "id": f'{self._client_id}:{service["id"]}',
                     "type": service["type"],
                     "name": service["name"],
-                    "description": service.get("description", ""),
+                    "description": service["description"] if "description" in service else "",
                     "config": service["config"],
                 }
                 for service in self._services.values()
